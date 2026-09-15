@@ -54,7 +54,7 @@ namespace SailTrim
             if (hud == null || hud.m_shipWindIndicatorRoot == null || player == null) { SetVisible(false); return; }
 
             bool piloting = Plugin.IsLocalPlayerPiloting(out var ship);
-            if (!piloting) ship = Plugin.PassengerHud.Value ? player.GetStandingOnShip() : null;
+            if (!piloting) ship = Plugin.PassengerHud.Value ? Plugin.GetShipAboard(player) : null;
             if (ship == null || !hud.m_shipHudRoot.activeInHierarchy) { SetVisible(false); return; }
             var st = SailTrimShip.Get(ship);
             if (st == null || (!piloting && !st.ManualMode)) { SetVisible(false); return; }

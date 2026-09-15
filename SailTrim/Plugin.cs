@@ -113,6 +113,17 @@ namespace SailTrim
         private static Ship _crewShip;
         internal static Ship CrewShip => _crewShip;
 
+        /// <summary>The ship the local player is aboard, whether standing, holding the mast or at the rudder.</summary>
+        internal static Ship GetShipAboard(Player player)
+        {
+            if (player == null) return null;
+            if (_crewShip != null && _crewShip.IsPlayerInBoat(player)) return _crewShip;
+            var standing = player.GetStandingOnShip();
+            if (standing != null) return standing;
+            var local = Ship.GetLocalShip();
+            return local != null && local.IsPlayerInBoat(player) ? local : null;
+        }
+
         internal static void TakeSheet(Ship ship)
         {
             var st = SailTrimShip.Get(ship);
@@ -137,7 +148,7 @@ namespace SailTrim
         {
             if (_crewShip == null) return;
             var cst = SailTrimShip.Get(_crewShip);
-            bool stillValid = player != null && player.IsAttached() && player.GetStandingOnShip() == _crewShip
+            bool stillValid = player != null && player.IsAttached() && _crewShip.IsPlayerInBoat(player)
                               && !piloting && cst != null && cst.ManualMode && CrewCanTrim.Value;
             if (!stillValid) { ReleaseSheet(); return; }
             if (player.TakeInput() && !Hud.InRadial())

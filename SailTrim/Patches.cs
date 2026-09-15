@@ -136,7 +136,7 @@ namespace SailTrim
                 return;
             }
             if (!Plugin.Enabled.Value || !Plugin.PassengerHud.Value || !__instance.IsVisible()) return;
-            Ship ship = player.GetStandingOnShip();
+            Ship ship = Plugin.GetShipAboard(player);
             var st = ship != null ? SailTrimShip.Get(ship) : null;
             if (st == null || !st.ManualMode) return;
 

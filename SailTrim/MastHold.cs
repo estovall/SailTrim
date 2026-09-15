@@ -59,7 +59,7 @@ namespace SailTrim
                 return false;
             }
             if (player.GetControlledShip() != null) return false;
-            if (player.GetStandingOnShip() != _ship) return false;
+            if (!_ship.IsPlayerInBoat(player)) return false;
             if (st.SheetHand != 0L && st.SheetHand != player.GetPlayerID())
             {
                 player.Message(MessageHud.MessageType.Center, "Someone has the sheet");
