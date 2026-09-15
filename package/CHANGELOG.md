@@ -2,7 +2,7 @@
 
 ## 1.2.0
 
-- Crew trimming: a passenger with the mod holds fast on the mast (interact with it) to take the sheet and trims with W/S while the pilot steers, 20% faster than the pilot could alone. Use the mast again or jump to let go.
+- Crew trimming: a passenger with the mod holds fast on the mast (interact with it) to take the sheet and trims with W/S while the pilot steers, 20% faster than the pilot could alone. Use the mast again or jump to let go. The pilot can trim at the same time; nobody else aboard can.
 - Passenger readout: everyone aboard with the mod sees the ship HUD with the sail icon, speed gauge and trim state.
 - Mast strain: heeling past 35 degrees for more than a few seconds damages the hull until you ease out or reef.
 - Wind shadow: land upwind takes some wind away (at most 40%, so rivers and fjords stay sailable).

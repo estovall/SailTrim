@@ -181,14 +181,17 @@ namespace SailTrim
             _nview.InvokeRPC(RpcSheetHandName, id, take);
         }
 
-        /// <summary>Whoever may move the sheet right now: the crew member holding it, else the pilot.</summary>
+        /// <summary>Who may move the sheet: the pilot, and a crew member holding fast on the mast. Both at once.</summary>
         internal bool IsLocalSheetAuthority()
         {
             var p = Player.m_localPlayer;
             if (p == null) return false;
-            if (SheetHand != 0L) return SheetHand == p.GetPlayerID();
+            if (SheetHand != 0L && SheetHand == p.GetPlayerID()) return true;
             return IsLocalPilot();
         }
+
+        /// <summary>True while this client has changed the sheet very recently, so it should not be overwritten by the synced value.</summary>
+        private bool RecentlyTrimmed => Time.time - _lastSendTime < 0.6f;
 
         /// <summary>Pilot pushes their opt-in/opt-out choice to the ship whenever it differs from what was last sent.</summary>
         internal void PilotSetMode(bool manual)
@@ -220,7 +223,6 @@ namespace SailTrim
         // ------------------------------------------------------------------
         internal void PilotTrimInput(float moveZ, float dt)
         {
-            if (SheetHand != 0L) { MaybeSend(force: false); return; } // a crew member has the sheet
             bool takeInput = Player.m_localPlayer != null && Player.m_localPlayer.TakeInput();
             bool ease = false, haul = false;
             if (Plugin.MoveKeysTrimSheet.Value)
@@ -288,7 +290,8 @@ namespace SailTrim
                 // Keep our optimistic claim for a moment until the owner confirms it.
                 if (!(lp != null && SheetHand == lp.GetPlayerID() && hand != SheetHand && Time.time - _lastSendTime < 1f))
                     SheetHand = hand;
-                if (!IsLocalSheetAuthority())
+                // Pilot and mast hand share the sheet: whoever pulled last wins, the other follows the synced value.
+                if (!IsLocalSheetAuthority() || !RecentlyTrimmed)
                     SheetAngle = Mathf.Clamp(zdo.GetFloat(ZdoSheetHash, SheetAngle), 0f, 90f);
                 if (!IsLocalPilot())
                     ManualMode = zdo.GetBool(ZdoModeHash, ManualMode);

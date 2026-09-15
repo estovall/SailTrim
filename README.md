@@ -63,7 +63,8 @@ Q lowers and hold-E lets go. It disappears once you have used the keys.
 Any passenger with the mod sees the ship HUD like the pilot does (wind circle, sail icon, speed gauge, trim
 state). Walk to the mast and press **E** to hold fast: you are held at the mast foot and W/S trim the sail
 while the pilot steers, exactly as a longship crew would, and a dedicated hand works the sheet 20% faster than
-a pilot doing two jobs. The pilot's W/S do nothing while you hold it, and their readout says so. Press E on the
+a pilot doing two jobs. The pilot can still trim too; whoever pulled last wins and the other follows. Nobody
+else aboard can touch the sheet. Press E on the
 mast again, jump, or take the rudder yourself to let go.
 
 ### Opting out

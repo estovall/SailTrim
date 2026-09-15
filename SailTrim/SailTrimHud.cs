@@ -112,7 +112,7 @@ namespace SailTrim
             string hint = "";
             if (piloting)
             {
-                if (st.SheetHand != 0L) hint = "A crew member has the sheet";
+                if (st.SheetHand != 0L) hint = "A crew member is on the sheet with you";
                 else if (Plugin.ControlHints.Value && !_hintDismissed && !ship.IsSailUp())
                 {
                     string use = Localization.instance != null ? Localization.instance.Localize("$KEY_Use") : "E";
