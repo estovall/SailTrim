@@ -105,6 +105,35 @@ namespace SailTrim
             if (f < 1f) rot = Quaternion.Slerp(__state, rot, Mathf.Clamp01(f));
         }
 
+        // ---------------- Server/client handshake and config sync ----------------
+        [HarmonyPatch(typeof(ZNet), "OnNewConnection")]
+        [HarmonyPostfix]
+        private static void ZNet_OnNewConnection(ZNetPeer peer) => SailTrimNet.OnNewConnection(peer);
+
+        [HarmonyPatch(typeof(ZNet), "SendPeerInfo")]
+        [HarmonyPrefix]
+        private static void ZNet_SendPeerInfo(ZRpc rpc) => SailTrimNet.BeforeSendPeerInfo(rpc);
+
+        [HarmonyPatch(typeof(ZNet), "RPC_PeerInfo")]
+        [HarmonyPrefix]
+        private static bool ZNet_RPC_PeerInfo(ZRpc rpc) => SailTrimNet.CheckPeer(rpc);
+
+        [HarmonyPatch(typeof(ZNet), "Update")]
+        [HarmonyPostfix]
+        private static void ZNet_Update() => SailTrimNet.ServerUpdate();
+
+        [HarmonyPatch(typeof(ZNet), nameof(ZNet.Disconnect))]
+        [HarmonyPostfix]
+        private static void ZNet_Disconnect(ZNetPeer peer) => SailTrimNet.OnPeerDisconnected(peer);
+
+        [HarmonyPatch(typeof(ZNet), "OnDestroy")]
+        [HarmonyPostfix]
+        private static void ZNet_OnDestroy() => SailTrimNet.ResetAll();
+
+        [HarmonyPatch(typeof(FejdStartup), "ShowConnectError")]
+        [HarmonyPostfix]
+        private static void FejdStartup_ShowConnectError(FejdStartup __instance) => SailTrimNet.OnShowConnectError(__instance);
+
         // Swallow the vanilla "tap Use = let go of the rudder" while piloting. Plugin.Update
         // re-implements Use as tap = raise sail, hold = release. Gamepad "JoyUse" is untouched.
         [HarmonyPatch(typeof(ZInput), nameof(ZInput.GetButtonDown), typeof(string))]

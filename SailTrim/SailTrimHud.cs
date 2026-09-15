@@ -95,7 +95,7 @@ namespace SailTrim
             // ---- Text ----
             if (!manual)
             {
-                _stateText.text = $"Vanilla sailing  ·  {Plugin.ToggleKey.Value} for manual trim";
+                _stateText.text = $"Vanilla sailing" + (char)10 + $"{Plugin.ToggleKey.Value} for manual trim";
                 _stateText.color = ColIdle;
                 _infoText.text = "";
                 _hintText.text = "";
@@ -214,10 +214,12 @@ namespace SailTrim
                 _unitText.color = ColGold;
 
                 // State and info lines under the circle.
-                _stateText = MakeText("State", _container, fontSource, d * 0.16f, new Vector2(0f, -d * 0.64f), new Vector2(d * 3.5f, d * 0.24f));
-                _infoText = MakeText("Info", _container, fontSource, d * 0.13f, new Vector2(0f, -d * 0.82f), new Vector2(d * 3.5f, d * 0.22f));
+                _stateText = MakeText("State", _container, fontSource, d * 0.16f, new Vector2(0f, -d * 0.74f), new Vector2(d * 2.4f, d * 0.44f));
+                _stateText.textWrappingMode = TextWrappingModes.Normal;
+                _stateText.alignment = TextAlignmentOptions.Top;
+                _infoText = MakeText("Info", _container, fontSource, d * 0.13f, new Vector2(0f, -d * 0.98f), new Vector2(d * 2.6f, d * 0.22f));
                 _infoText.color = ColText;
-                _hintText = MakeText("Hint", _container, fontSource, d * 0.12f, new Vector2(0f, -d * 1.08f), new Vector2(d * 2.6f, d * 0.4f));
+                _hintText = MakeText("Hint", _container, fontSource, d * 0.12f, new Vector2(0f, -d * 1.3f), new Vector2(d * 2.6f, d * 0.4f));
                 _hintText.color = ColGold;
                 _hintText.textWrappingMode = TextWrappingModes.Normal;
                 _hintText.alignment = TextAlignmentOptions.Top;

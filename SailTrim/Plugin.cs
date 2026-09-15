@@ -10,16 +10,21 @@ using UnityEngine;
 namespace SailTrim
 {
     [BepInPlugin(GUID, NAME, VERSION)]
-    [BepInProcess("valheim.exe")]
     public class Plugin : BaseUnityPlugin
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.0.0";
+        public const string VERSION = "1.1.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
         private Harmony _harmony;
+
+        // ---- Config: server ----
+        internal static ConfigEntry<ServerEnforcement> Enforcement;
+        internal static ConfigEntry<bool> LockConfig;
+        /// <summary>Settings the server pushes to every client while connected (gameplay-affecting ones).</summary>
+        internal static readonly List<ConfigEntryBase> ServerSyncedEntries = new List<ConfigEntryBase>();
 
         // ---- Config: general ----
         internal static ConfigEntry<bool> Enabled;
@@ -122,6 +127,11 @@ namespace SailTrim
 
         private void BindConfig()
         {
+            Enforcement = Config.Bind("0. Server", "Enforcement", ServerEnforcement.Warn,
+                "Only read on the server (dedicated or the hosting player). Off = anyone may join. Warn = players without a matching SailTrim may join but get a warning on screen (and the server logs it). Require = players without the same SailTrim version are refused with an 'incompatible version' message.");
+            LockConfig = Config.Bind("0. Server", "LockConfig", true,
+                "Only read on the server. true = the server's physics, heel, gust, pitch and hull-speed settings are pushed to every client on connect, so the whole server sails by the same rules. Personal settings (keys, HUD, camera, opt-in) always stay per player.");
+
             Enabled = Config.Bind("1. General", "Enabled", true,
                 "Master switch. When false the boat sails exactly like vanilla (patches stay loaded but pass through).");
             ShowHud = Config.Bind("1. General", "ShowHud", true,
@@ -284,6 +294,17 @@ namespace SailTrim
             FlapFrequency = Config.Bind("5. Visuals", "FlapFrequency", 4f,
                 new ConfigDescription("Flap oscillation rate in Hz while luffing.",
                     new AcceptableValueRange<float>(0.5f, 12f)));
+
+            // Gameplay-affecting settings the server owns when LockConfig is on.
+            ServerSyncedEntries.Clear();
+            foreach (var kv in Config)
+            {
+                string sec = kv.Key.Section, key = kv.Key.Key;
+                bool synced = sec == "3. Physics" || sec == "4. Heel" || sec == "6. Realism" || sec == "7. Pitch"
+                              || (sec == "1. General" && (key == "Enabled" || key == "HullSpeedScale"))
+                              || (sec == "2. Controls" && (key == "MaxSheetAngle" || key == "SheetRate" || key == "DefaultSheetAngle"));
+                if (synced) ServerSyncedEntries.Add(kv.Value);
+            }
         }
 
         /// <summary>
@@ -315,6 +336,13 @@ namespace SailTrim
                 new MethodTarget(typeof(Ship), nameof(Ship.CustomFixedUpdate), new[] { typeof(float) }),
                 new MethodTarget(typeof(ZInput), nameof(ZInput.GetButtonDown), new[] { typeof(string) }),
                 new MethodTarget(typeof(GameCamera), "ApplyCameraTilt", new[] { typeof(Player), typeof(float), typeof(Quaternion).MakeByRefType() }),
+                new MethodTarget(typeof(ZNet), "OnNewConnection", new[] { typeof(ZNetPeer) }),
+                new MethodTarget(typeof(ZNet), "SendPeerInfo", new[] { typeof(ZRpc), typeof(string) }),
+                new MethodTarget(typeof(ZNet), "RPC_PeerInfo", new[] { typeof(ZRpc), typeof(ZPackage) }),
+                new MethodTarget(typeof(ZNet), "Update", Type.EmptyTypes),
+                new MethodTarget(typeof(ZNet), "OnDestroy", Type.EmptyTypes),
+                new MethodTarget(typeof(ZNet), nameof(ZNet.Disconnect), new[] { typeof(ZNetPeer) }),
+                new MethodTarget(typeof(FejdStartup), "ShowConnectError", new[] { typeof(ZNet.ConnectionStatus) }),
                 new MethodTarget(typeof(ZInput), nameof(ZInput.GetButton), new[] { typeof(string) }),
                 new MethodTarget(typeof(ZInput), nameof(ZInput.GetKey), new[] { typeof(KeyCode), typeof(bool) }),
                 new MethodTarget(typeof(ZInput), nameof(ZInput.GetKeyDown), new[] { typeof(KeyCode), typeof(bool) }),
@@ -372,6 +400,7 @@ namespace SailTrim
 
         private void Update()
         {
+            SailTrimNet.ClientUpdate();
             if (!Enabled.Value) { _wasPiloting = false; return; }
 
             var player = Player.m_localPlayer;
