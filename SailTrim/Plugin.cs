@@ -14,7 +14,7 @@ namespace SailTrim
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.1.1";
+        public const string VERSION = "1.2.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -39,6 +39,10 @@ namespace SailTrim
         // ---- Config: controls ----
         internal static ConfigEntry<bool> ManualTrim;
         internal static ConfigEntry<bool> PilotOwnsShip;
+        internal static ConfigEntry<bool> CrewCanTrim;
+        internal static ConfigEntry<KeyCode> CrewSheetKey;
+        internal static ConfigEntry<bool> PassengerHud;
+        internal static ConfigEntry<bool> ShowApparentWind;
         internal static ConfigEntry<KeyCode> ToggleKey;
         internal static ConfigEntry<float> ReleaseHoldTime;
         internal static ConfigEntry<KeyCode> LowerSailKey;
@@ -91,11 +95,64 @@ namespace SailTrim
         internal static ConfigEntry<bool> GybesEnabled;
         internal static ConfigEntry<float> GybeDamagePercent;
         internal static ConfigEntry<float> GybeRollRate;
+        internal static ConfigEntry<float> WindShadowMax;
+        internal static ConfigEntry<float> WindShadowOnset;
+        internal static ConfigEntry<float> WindShadowRange;
+        internal static ConfigEntry<float> DownwindRolling;
+        internal static ConfigEntry<float> RollPeriod;
 
         // ---- Config: visuals ----
         internal static ConfigEntry<float> YardTurnRate;
         internal static ConfigEntry<float> FlapAmplitude;
         internal static ConfigEntry<float> FlapFrequency;
+
+        // ---- Crew-on-the-sheet state (local player as passenger) ----
+        internal static bool CrewActive => _crewShip != null;
+        private static Ship _crewShip;
+
+        internal static Ship CrewShip => _crewShip;
+
+        private void UpdateCrew(Player player, bool piloting)
+        {
+            Ship standing = player != null ? player.GetStandingOnShip() : null;
+            SailTrimShip st = standing != null ? SailTrimShip.Get(standing) : null;
+            bool takeInput = player != null && player.TakeInput() && !Hud.InRadial();
+
+            if (_crewShip != null)
+            {
+                var cst = SailTrimShip.Get(_crewShip);
+                bool stillValid = standing == _crewShip && !piloting && cst != null && cst.ManualMode && CrewCanTrim.Value;
+                if (!stillValid)
+                {
+                    cst?.CrewSetSheetHand(false);
+                    _crewShip = null;
+                    return;
+                }
+                if (takeInput && CrewSheetKey.Value != KeyCode.None && ZInput.GetKeyDown(CrewSheetKey.Value, false))
+                {
+                    cst.CrewSetSheetHand(false);
+                    _crewShip = null;
+                    player.Message(MessageHud.MessageType.Center, "Sheet released");
+                    return;
+                }
+                if (takeInput)
+                    cst.CrewTrimInput(ZInput.GetButton("Forward"), ZInput.GetButton("Backward"), Time.deltaTime);
+                return;
+            }
+
+            if (!CrewCanTrim.Value || piloting || st == null || !st.ManualMode) return;
+            if (takeInput && CrewSheetKey.Value != KeyCode.None && ZInput.GetKeyDown(CrewSheetKey.Value, false))
+            {
+                if (st.SheetHand != 0L && st.SheetHand != player.GetPlayerID())
+                {
+                    player.Message(MessageHud.MessageType.Center, "Someone else has the sheet");
+                    return;
+                }
+                _crewShip = standing;
+                st.CrewSetSheetHand(true);
+                player.Message(MessageHud.MessageType.Center, "You have the sheet: W sheet in, S ease out");
+            }
+        }
 
         // ---- Input state for tap/hold on the Use button ----
         private bool _wasPiloting;
@@ -159,6 +216,14 @@ namespace SailTrim
                 "Your personal opt-in, remembered between sessions. Starts OFF: whenever you hold the rudder the boat sails exactly like vanilla (W/S step the sail, tap E lets go, auto-trim). Press ToggleKey (H) at the helm to switch to manual trim; your choice is saved here. Other players keep their own setting.");
             PilotOwnsShip = Config.Bind("2. Controls", "PilotOwnsShip", true,
                 "When you take the rudder with manual trim on, your client takes over simulating the ship (the game's normal ownership hand-off). Guarantees the boat sails by your trim even if a passenger without the mod boarded first.");
+            CrewCanTrim = Config.Bind("2. Controls", "CrewCanTrim", true,
+                "A passenger with the mod can take the sheet with CrewSheetKey and trim with W/S while the pilot steers. While they hold it the pilot's W/S do nothing.");
+            CrewSheetKey = Config.Bind("2. Controls", "CrewSheetKey", KeyCode.B,
+                "Passenger key: take / release the sheet. You stand still while holding it.");
+            PassengerHud = Config.Bind("1. General", "PassengerHud", true,
+                "Show the trim readout and speed gauge to passengers with the mod, not just the pilot.");
+            ShowApparentWind = Config.Bind("1. General", "ShowApparentWind", true,
+                "Draw a second, thinner arrow on the wind circle for the apparent wind: the wind the sail actually feels, shifted forward by your own speed. Trim to this one.");
             ToggleKey = Config.Bind("2. Controls", "ToggleKey", KeyCode.H,
                 "Key that switches ManualTrim on/off in game (saved to this config).");
             ReleaseHoldTime = Config.Bind("2. Controls", "ReleaseHoldTime", 0.5f,
@@ -281,6 +346,21 @@ namespace SailTrim
                     new AcceptableValueRange<float>(0f, 2f)));
             GybesEnabled = Config.Bind("6. Realism", "GybesEnabled", false,
                 "Off by default: a square yard has no boom to slam, so a Viking ship 'wearing round' was undramatic. On = when the wind crosses the stern with the sail up you get a roll kick and some hull damage unless the sheet was hauled in first.");
+            WindShadowMax = Config.Bind("6. Realism", "WindShadowMax", 0.4f,
+                new ConfigDescription("Most wind you can lose in the lee of land upwind (0.4 = down to 60% of the wind). Deliberately mild so rivers and fjords stay sailable. 0 disables.",
+                    new AcceptableValueRange<float>(0f, 0.9f)));
+            WindShadowOnset = Config.Bind("6. Realism", "WindShadowOnset", 10f,
+                new ConfigDescription("Land upwind must rise more than this many degrees above the water, seen from the boat, before it starts to shelter you. Low river banks stay below it.",
+                    new AcceptableValueRange<float>(2f, 45f)));
+            WindShadowRange = Config.Bind("6. Realism", "WindShadowRange", 25f,
+                new ConfigDescription("Degrees above the onset at which the shelter reaches WindShadowMax (a cliff or mountain right upwind).",
+                    new AcceptableValueRange<float>(5f, 60f)));
+            DownwindRolling = Config.Bind("6. Realism", "DownwindRolling", 0.6f,
+                new ConfigDescription("Rhythmic roll when running within ~30 degrees of dead downwind with the sail up, growing with wind and sail area. Heading up or reefing cures it. 0 disables.",
+                    new AcceptableValueRange<float>(0f, 5f)));
+            RollPeriod = Config.Bind("6. Realism", "RollPeriod", 4f,
+                new ConfigDescription("Seconds per roll cycle for a Karve-sized hull; wider hulls roll slower.",
+                    new AcceptableValueRange<float>(1.5f, 12f)));
             GybeDamagePercent = Config.Bind("6. Realism", "GybeDamagePercent", 5f,
                 new ConfigDescription("Hull damage from an uncontrolled gybe, as a percent of max health (full sail, strong wind, sheet fully eased). Half sail, lighter wind or a hauled-in sheet reduce it.",
                     new AcceptableValueRange<float>(0f, 50f)));
@@ -340,6 +420,9 @@ namespace SailTrim
                 new MethodTarget(typeof(ZInput), nameof(ZInput.GetButtonDown), new[] { typeof(string) }),
                 new MethodTarget(typeof(GameCamera), "ApplyCameraTilt", new[] { typeof(Player), typeof(float), typeof(Quaternion).MakeByRefType() }),
                 new MethodTarget(typeof(ZNet), "OnNewConnection", new[] { typeof(ZNetPeer) }),
+                new MethodTarget(typeof(Player), nameof(Player.SetControls), new[] { typeof(Vector3), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool) }),
+                new MethodTarget(typeof(Player), nameof(Player.GetStandingOnShip), Type.EmptyTypes),
+                new MethodTarget(typeof(Heightmap), nameof(Heightmap.GetHeight), new[] { typeof(Vector3), typeof(float).MakeByRefType() }),
                 new MethodTarget(typeof(ZNet), "SendPeerInfo", new[] { typeof(ZRpc), typeof(string) }),
                 new MethodTarget(typeof(ZNet), "RPC_PeerInfo", new[] { typeof(ZRpc), typeof(ZPackage) }),
                 new MethodTarget(typeof(ZNet), "Update", Type.EmptyTypes),
@@ -416,7 +499,10 @@ namespace SailTrim
                     ManualTrim.Value ? "Sail trim: manual (SailTrim)" : "Sail trim: vanilla auto-trim");
             }
 
-            if (!IsLocalPlayerPiloting(out var ship) || !ManualTrim.Value)
+            bool pilotingNow = IsLocalPlayerPiloting(out var ship);
+            UpdateCrew(player, pilotingNow);
+
+            if (!pilotingNow || !ManualTrim.Value)
             {
                 _wasPiloting = false;
                 _useHeld = false;

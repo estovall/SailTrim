@@ -16,6 +16,8 @@ namespace SailTrim
     {
         public const string RpcName = "SailTrim_Sheet";
         public const string RpcModeName = "SailTrim_Mode";
+        public const string RpcSheetHandName = "SailTrim_SheetHand";
+        public static readonly int ZdoSheetHandHash = "sailtrim_sheethand".GetStableHashCode();
         public static readonly int ZdoSheetHash = "sailtrim_sheet".GetStableHashCode();
         public static readonly int ZdoModeHash = "sailtrim_manual".GetStableHashCode();
 
@@ -41,6 +43,12 @@ namespace SailTrim
         public float SheetAngle { get; private set; }
         /// <summary>False = the current pilot opted out, so this ship sails vanilla for everyone.</summary>
         public bool ManualMode { get; private set; } = true;
+        /// <summary>Player ID of the crew member holding the sheet, or 0 when the pilot trims.</summary>
+        public long SheetHand { get; private set; }
+        /// <summary>Apparent wind (the wind the sail feels), blowing-toward direction in the ship's frame, smoothed for the HUD.</summary>
+        public Vector3 ApparentWindToLocal { get; private set; } = Vector3.forward;
+        /// <summary>0 = open water, 1 = fully in the lee of land upwind.</summary>
+        public float ShadowFactor { get; private set; }
         public float WindFromAngle { get; private set; }
         public float AngleOfAttack { get; private set; }
         public bool IsLuffing { get; private set; }
@@ -123,6 +131,8 @@ namespace SailTrim
             if (_nview == null || !_nview.IsValid()) return;
             _nview.Register<float>(RpcName, RPC_Sheet);
             _nview.Register<bool>(RpcModeName, RPC_Mode);
+            _nview.Register<long, bool>(RpcSheetHandName, RPC_SheetHand);
+            SheetHand = _nview.GetZDO().GetLong(ZdoSheetHandHash, 0L);
             SheetAngle = Mathf.Clamp(_nview.GetZDO().GetFloat(ZdoSheetHash, Plugin.DefaultSheetAngle.Value), 0f, 90f);
             ManualMode = _nview.GetZDO().GetBool(ZdoModeHash, true);
             _initialised = true;
@@ -152,6 +162,33 @@ namespace SailTrim
                 _nview.GetZDO().Set(ZdoModeHash, ManualMode);
         }
 
+        // Crew member takes or releases the sheet (sent to the owner; the owner mirrors it into the ZDO).
+        private void RPC_SheetHand(long sender, long playerId, bool take)
+        {
+            if (take) SheetHand = playerId;
+            else if (SheetHand == playerId) SheetHand = 0L;
+            if (_nview != null && _nview.IsValid() && _nview.IsOwner())
+                _nview.GetZDO().Set(ZdoSheetHandHash, SheetHand);
+        }
+
+        internal void CrewSetSheetHand(bool take)
+        {
+            var p = Player.m_localPlayer;
+            if (p == null || _nview == null || !_nview.IsValid()) return;
+            long id = p.GetPlayerID();
+            if (take) SheetHand = id; else if (SheetHand == id) SheetHand = 0L; // optimistic, confirmed by the owner
+            _nview.InvokeRPC(RpcSheetHandName, id, take);
+        }
+
+        /// <summary>Whoever may move the sheet right now: the crew member holding it, else the pilot.</summary>
+        internal bool IsLocalSheetAuthority()
+        {
+            var p = Player.m_localPlayer;
+            if (p == null) return false;
+            if (SheetHand != 0L) return SheetHand == p.GetPlayerID();
+            return IsLocalPilot();
+        }
+
         /// <summary>Pilot pushes their opt-in/opt-out choice to the ship whenever it differs from what was last sent.</summary>
         internal void PilotSetMode(bool manual)
         {
@@ -163,6 +200,9 @@ namespace SailTrim
         }
 
         private float _lastClaimTime = -999f;
+        private float _shadowTarget, _shadowSmoothed, _shadowNextSample;
+        private float _rollPhase;
+        private static readonly float[] ShadowDistances = { 25f, 50f, 90f, 150f, 250f };
 
         /// <summary>Pilot's client claims the ship's network ownership (vanilla API) if it does not have it.</summary>
         internal void EnsurePilotOwnsShip()
@@ -179,6 +219,7 @@ namespace SailTrim
         // ------------------------------------------------------------------
         internal void PilotTrimInput(float moveZ, float dt)
         {
+            if (SheetHand != 0L) { MaybeSend(force: false); return; } // a crew member has the sheet
             bool takeInput = Player.m_localPlayer != null && Player.m_localPlayer.TakeInput();
             bool ease = false, haul = false;
             if (Plugin.MoveKeysTrimSheet.Value)
@@ -195,6 +236,17 @@ namespace SailTrim
             }
             if (ease == haul) { MaybeSend(force: false); return; }
 
+            float delta = Plugin.SheetRate.Value * dt * (ease ? 1f : -1f);
+            SheetAngle = Mathf.Clamp(SheetAngle + delta, 0f, Plugin.MaxSheetAngle.Value);
+            MaybeSend(force: false);
+        }
+
+        /// <summary>Crew member on the sheet (runs on their client every frame).</summary>
+        internal void CrewTrimInput(bool haul, bool ease, float dt)
+        {
+            if (!IsLocalSheetAuthority()) return;
+            if (Plugin.InvertSheetKeys.Value) { bool t = haul; haul = ease; ease = t; }
+            if (ease == haul) { MaybeSend(force: false); return; }
             float delta = Plugin.SheetRate.Value * dt * (ease ? 1f : -1f);
             SheetAngle = Mathf.Clamp(SheetAngle + delta, 0f, Plugin.MaxSheetAngle.Value);
             MaybeSend(force: false);
@@ -220,18 +272,26 @@ namespace SailTrim
             if (_nview == null || !_nview.IsValid() || !_initialised) return;
             if (_nview.IsOwner())
             {
+                // A crew member who left the boat drops the sheet.
+                if (SheetHand != 0L && !_ship.IsPlayerInBoat(SheetHand)) SheetHand = 0L;
                 _nview.GetZDO().Set(ZdoSheetHash, SheetAngle);
                 _nview.GetZDO().Set(ZdoModeHash, ManualMode);
-            }
-            else if (!IsLocalPilot())
-            {
-                SheetAngle = Mathf.Clamp(_nview.GetZDO().GetFloat(ZdoSheetHash, SheetAngle), 0f, 90f);
-                ManualMode = _nview.GetZDO().GetBool(ZdoModeHash, ManualMode);
+                _nview.GetZDO().Set(ZdoSheetHandHash, SheetHand);
             }
             else
             {
-                // Local pilot: their own preference is authoritative; re-send if the ship disagrees.
-                PilotSetMode(Plugin.ManualTrim.Value);
+                var zdo = _nview.GetZDO();
+                long hand = zdo.GetLong(ZdoSheetHandHash, SheetHand);
+                var lp = Player.m_localPlayer;
+                // Keep our optimistic claim for a moment until the owner confirms it.
+                if (!(lp != null && SheetHand == lp.GetPlayerID() && hand != SheetHand && Time.time - _lastSendTime < 1f))
+                    SheetHand = hand;
+                if (!IsLocalSheetAuthority())
+                    SheetAngle = Mathf.Clamp(zdo.GetFloat(ZdoSheetHash, SheetAngle), 0f, 90f);
+                if (!IsLocalPilot())
+                    ManualMode = zdo.GetBool(ZdoModeHash, ManualMode);
+                else
+                    PilotSetMode(Plugin.ManualTrim.Value); // local pilot's preference is authoritative
             }
         }
 
@@ -273,6 +333,7 @@ namespace SailTrim
             float trueStrength = Mathf.Lerp(0.25f, 1f, intensity);
             GustFactor = ComputeGust();
             trueStrength *= Mathf.Max(0.1f, 1f + GustFactor);
+            trueStrength *= 1f - Plugin.WindShadowMax.Value * _shadowSmoothed;
 
             // Apparent wind = true wind - boat velocity (scaled by config)
             float refSpeed = Plugin.WindSpeedReference.Value;
@@ -567,6 +628,31 @@ namespace SailTrim
 
             float impulse = (dir * torque * fade + damping) * dt;
             _body.AddTorque(t.forward * impulse, ForceMode.Impulse);
+
+            ApplyDownwindRolling(dt, t, roll, maxHeel, beamNorm, halfBeam, inertia);
+        }
+
+        /// <summary>
+        /// Running dead downwind with the sail up, a square-rigger rolls rhythmically: the sail's drive has no
+        /// steadying side component. A gentle periodic roll torque that grows with wind and sail area and fades
+        /// as you head up past ~30 degrees off dead downwind, or reef. Damped so it never builds on itself.
+        /// </summary>
+        private void ApplyDownwindRolling(float dt, Transform t, float roll, float maxHeel, float beamNorm, float halfBeam, float inertia)
+        {
+            if (Plugin.DownwindRolling.Value <= 0f || !_ship.IsSailUp()) return;
+            float downwind = Mathf.Clamp01((Mathf.Abs(WindFromAngle) - 150f) / 30f);
+            if (downwind <= 0f) { _rollPhase = 0f; return; }
+
+            float sail = _ship.m_speed == Ship.Speed.Full ? 1f : 0.5f;
+            float wind = Mathf.Clamp(_lastWindStrength, 0f, 1.5f);
+            float period = Plugin.RollPeriod.Value * Mathf.Sqrt(Mathf.Max(0.3f, halfBeam) / 2f);
+            _rollPhase += dt / Mathf.Max(1f, period);
+            float amp = Plugin.DownwindRolling.Value * _body.mass * beamNorm * sail * wind * wind * downwind;
+            float torque = amp * Mathf.Sin(_rollPhase * 2f * Mathf.PI);
+            float fade = 1f - Utils.LerpStep(maxHeel - 10f, maxHeel, Mathf.Abs(roll));
+            float rollRateRad = Vector3.Dot(_body.angularVelocity, t.forward);
+            float damping = -Plugin.RollDamping.Value * rollRateRad * inertia * downwind;
+            _body.AddTorque(t.forward * ((torque * fade + damping) * dt), ForceMode.Impulse);
         }
 
         /// <summary>
@@ -657,7 +743,14 @@ namespace SailTrim
                 IsStalled = !IsLuffing && !IsBackwinded && a.aoa > Plugin.StallAngle.Value;
             }
 
+            UpdateWindShadow(a, dt);
             UpdateReadout(a, dt);
+            {
+                Vector3 local = _ship.transform.InverseTransformDirection(a.windTo);
+                local.y = 0f;
+                if (local.sqrMagnitude > 1e-4f)
+                    ApparentWindToLocal = Vector3.Slerp(ApparentWindToLocal, local.normalized, 1f - Mathf.Exp(-dt / 0.5f));
+            }
 
             // Vanilla points the mast object's forward DOWNWIND (the sail bellies away from mast.forward's
             // back face), and builds the rotation in the hull plane so the rig heels with the hull.
@@ -682,6 +775,38 @@ namespace SailTrim
             if (Time.time < _gybeSwingUntil) turnRate *= 3f; // the yard slams across
             Quaternion to = Quaternion.LookRotation(facing, a.up);
             mast.transform.rotation = Quaternion.RotateTowards(mast.transform.rotation, to, turnRate * dt);
+        }
+
+        /// <summary>
+        /// Lee of the land: sample terrain height upwind at a few distances. Land that subtends more than
+        /// WindShadowOnset degrees above the water starts to shelter the boat; the effect is capped at
+        /// WindShadowMax so a river between banks is slower, never becalmed. Same terrain on every client.
+        /// </summary>
+        private void UpdateWindShadow(Aero a, float dt)
+        {
+            if (Plugin.WindShadowMax.Value <= 0f) { _shadowSmoothed = 0f; ShadowFactor = 0f; return; }
+            if (Time.time >= _shadowNextSample)
+            {
+                _shadowNextSample = Time.time + 0.3f;
+                Vector3 from = -a.windTo;
+                Vector3 pos = _ship.transform.position;
+                float water = ZoneSystem.instance != null ? ZoneSystem.instance.m_waterLevel : 30f;
+                float baseY = Mathf.Max(water, pos.y);
+                float worst = 0f;
+                foreach (float d in ShadowDistances)
+                {
+                    Vector3 pnt = pos + from * d;
+                    if (!Heightmap.GetHeight(pnt, out float h)) continue;
+                    float rise = h - baseY;
+                    if (rise <= 0f) continue;
+                    float ang = Mathf.Atan2(rise, d) * Mathf.Rad2Deg;
+                    float sh = Mathf.Clamp01((ang - Plugin.WindShadowOnset.Value) / Mathf.Max(1f, Plugin.WindShadowRange.Value));
+                    if (sh > worst) worst = sh;
+                }
+                _shadowTarget = worst;
+            }
+            _shadowSmoothed = Mathf.MoveTowards(_shadowSmoothed, _shadowTarget, dt * 0.5f);
+            ShadowFactor = _shadowSmoothed;
         }
 
         /// <summary>

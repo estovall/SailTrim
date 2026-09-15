@@ -109,6 +109,19 @@ namespace SailTrim
             if (f < 1f) rot = Quaternion.Slerp(__state, rot, Mathf.Clamp01(f));
         }
 
+        // A passenger holding the sheet stands still: W/S go to the sail, not their feet.
+        [HarmonyPatch(typeof(Player), nameof(Player.SetControls))]
+        [HarmonyPrefix]
+        private static void Player_SetControls(Player __instance, ref Vector3 movedir, ref bool jump, ref bool run, ref bool autoRun, ref bool crouch)
+        {
+            if (!Plugin.CrewActive || __instance != Player.m_localPlayer) return;
+            movedir = Vector3.zero;
+            jump = false;
+            run = false;
+            autoRun = false;
+            crouch = false;
+        }
+
         // ---------------- Server/client handshake and config sync ----------------
         [HarmonyPatch(typeof(ZNet), "OnNewConnection")]
         [HarmonyPostfix]

@@ -41,6 +41,7 @@ drawn at vanilla's angle.
 | Hold **S** | Ease the sheet out: the yard swings away from the centreline |
 | **A / D** | Rudder, unchanged |
 | **H** | Switch *you* between vanilla sailing (the default) and manual trim; saved to your config |
+| **B** (passenger) | Take / release the sheet: trim with W/S while someone else steers |
 
 Gamepad: the left stick forward/back sheets in/eases; the gamepad Use button releases the helm exactly like
 vanilla. There are no default gamepad bindings for raise/lower, so use a keyboard for those or bind
@@ -56,6 +57,16 @@ off with `ShowHud = false`.
 
 When you take the helm with the sail furled, a gold line under the HUD reminds you that tap-E raises,
 Q lowers and hold-E lets go. It disappears once you have used the keys.
+
+### Sailing as a crew
+
+Any passenger with the mod sees the same readout as the pilot (sail icon, speed gauge, trim state). Press **B**
+while standing aboard to take the sheet: you stand still and W/S trim the sail while the pilot steers, exactly
+as a longship crew would. The pilot's W/S do nothing while you hold it, and their readout says so. Press B
+again, walk off the boat, or take the rudder yourself to let go.
+
+The wind circle also shows a thin blue arrow for the **apparent wind**: the wind the sail actually feels, which
+shifts forward as the boat speeds up. Trim to that arrow, not the vanilla one.
 
 ### Opting out
 
@@ -90,6 +101,12 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 * **Gusts and lulls.** Rare by design: on average one event every 12 minutes, lasting about 40 s, up to
   ±40% wind strength. The readout shows **GUST** / **lull** while one is on. Between events the wind only
   has a tiny wobble. Everyone sees the same gusts (they are derived from world time).
+* **Wind shadow.** Land upwind takes wind away: a cliff or forested hill close to windward can cost you up
+  to 40% of the breeze, then it fills in as you clear the point. Deliberately mild (`WindShadowMax`), so rivers
+  between low banks stay sailable; the readout shows **Lee** when it bites.
+* **Downwind rolling.** Running within about 30° of dead downwind with the sail up, the boat rolls
+  rhythmically, more in strong wind and at full sail. Head up a few degrees or drop to Half and it settles.
+  Gentle by default (`DownwindRolling`).
 * **Weather helm.** A heeled boat tries to round up into the wind; hold rudder against it or ease the sheet.
   It grows with the square of heel, so a little heel barely tugs and a lot really rounds you up.
   Heel and weather helm both scale with hull beam, so the Karve is tender and the longship stiff.
@@ -145,6 +162,10 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 | `LeewayFactor` | 0.4 | Extra sideways slip when stalled/heeled (0 = off) |
 | `PitchTorque` / `PitchWindPower` / `MaxPitchAngle` | 5 / 2 / 15 | Bow-down torque per unit drive, its wind scaling, and where it fades out |
 | `NoseDiveLoss` / `NoseDiveDamagePerSecond` | 0.4 / 0.3 | Drive lost and hull % per second with the bow buried |
+| `WindShadowMax` / `WindShadowOnset` / `WindShadowRange` | 0.4 / 10 / 25 | Max wind lost in the lee of land, and the land angles where it starts and peaks |
+| `DownwindRolling` / `RollPeriod` | 0.6 / 4 | Rolling strength when running, and the roll period for a Karve |
+| `CrewCanTrim` / `CrewSheetKey` | true / B | Crew trimming on/off and its key |
+| `PassengerHud` / `ShowApparentWind` | true / true | Readout for passengers, apparent-wind arrow |
 | `GybesEnabled` / `GybeDamagePercent` / `GybeRollRate` | false / 5 / 30 | Gybe on/off (off: a square yard has no boom to slam), hull damage %, roll kick |
 
 Everything else is documented inline in the cfg. While connected to a server with `LockConfig` on, the
