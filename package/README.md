@@ -15,9 +15,18 @@ Built against Valheim **1.0.12** (Unity 6000.0.75f1) with BepInEx 5.4.x.
 3. Start the game. `BepInEx\config\com.maxst.sailtrim.cfg` is created on first launch. Edit it with the game
    closed (or use a config manager) to change keys and physics.
 
-The dedicated server does **not** need the mod. Ship physics runs on the client that "owns" the ship.
-If someone without the mod is aboard, their client may own the ship and sail it vanilla-style; give
-everyone the dll.
+**Server (recommended).** Put the same `SailTrim.dll` in the dedicated server's `BepInEx\plugins` too (or
+just have it installed if a player hosts). Ship physics always runs on a client, so the server copy does
+not sail anything; it does two useful things, both configurable in the server's
+`BepInEx\config\com.maxst.sailtrim.cfg` under `0. Server`:
+
+| Server setting | Default | Meaning |
+| --- | --- | --- |
+| `Enforcement` | Warn | `Off`: anyone may join. `Warn`: players without a matching SailTrim can join but get an on-screen warning (and the server logs it). `Require`: they are refused with an "incompatible version" message that names the mod. |
+| `LockConfig` | true | The server's physics, heel, gust, pitch and hull-speed settings are pushed to every client on connect, so everyone sails by the same rules. Keys, HUD, camera tilt and the H opt-in stay personal. |
+
+Without a server copy everything still works, but nothing stops a friend from forgetting to install it: if
+their client happens to own the ship, the boat sails vanilla-style for everyone aboard.
 
 ## Controls (while holding the rudder)
 
@@ -136,7 +145,8 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 | `NoseDiveLoss` / `NoseDiveDamagePerSecond` | 0.4 / 0.3 | Drive lost and hull % per second with the bow buried |
 | `GybesEnabled` / `GybeDamagePercent` / `GybeRollRate` | false / 5 / 30 | Gybe on/off (off: a square yard has no boom to slam), hull damage %, roll kick |
 
-Everything else (lift/drag scales, smoothing, yard turn rate, HUD position) is documented inline in the cfg.
+Everything else is documented inline in the cfg. While connected to a server with `LockConfig` on, the
+server's values replace yours for the physics sections (your file is not changed); they come back when you leave.
 
 ## Building from source
 
