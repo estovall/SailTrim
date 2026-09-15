@@ -41,6 +41,7 @@ drawn at vanilla's angle.
 | Hold **S** | Ease the sheet out: the yard swings away from the centreline |
 | **A / D** | Rudder, unchanged |
 | **H** | Switch *you* between vanilla sailing (the default) and manual trim; saved to your config |
+| **Hold fast** on the mast (passenger) | Take the sheet and trim with W/S while someone else steers |
 
 Gamepad: the left stick forward/back sheets in/eases; the gamepad Use button releases the helm exactly like
 vanilla. There are no default gamepad bindings for raise/lower, so use a keyboard for those or bind
@@ -56,6 +57,14 @@ off with `ShowHud = false`.
 
 When you take the helm with the sail furled, a gold line under the HUD reminds you that tap-E raises,
 Q lowers and hold-E lets go. It disappears once you have used the keys.
+
+### Sailing as a crew
+
+Any passenger with the mod sees the ship HUD like the pilot does (wind circle, sail icon, speed gauge, trim
+state). Use the ship's **Hold fast** spot on the mast (E): you are held at the mast and W/S trim the sail
+while the pilot steers, exactly as a longship crew would, and a dedicated hand works the sheet 20% faster than
+a pilot doing two jobs. The pilot can still trim too; whoever pulled last wins and the other follows. Nobody
+else aboard can touch the sheet. Jump, or take the rudder yourself, to let go.
 
 ### Opting out
 
@@ -90,12 +99,20 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 * **Gusts and lulls.** Rare by design: on average one event every 12 minutes, lasting about 40 s, up to
   ±40% wind strength. The readout shows **GUST** / **lull** while one is on. Between events the wind only
   has a tiny wobble. Everyone sees the same gusts (they are derived from world time).
+* **Wind shadow.** Land upwind takes wind away: a cliff or forested hill close to windward can cost you up
+  to 40% of the breeze, then it fills in as you clear the point. Deliberately mild (`WindShadowMax`), so rivers
+  between low banks stay sailable; the readout shows **Lee** when it bites.
+* **Downwind rolling.** Running within about 30° of dead downwind with the sail up, the boat rolls
+  rhythmically, more in strong wind and at full sail. Head up a few degrees or drop to Half and it settles.
+  Gentle by default (`DownwindRolling`).
 * **Weather helm.** A heeled boat tries to round up into the wind; hold rudder against it or ease the sheet.
   It grows with the square of heel, so a little heel barely tugs and a lot really rounds you up.
   Heel and weather helm both scale with hull beam, so the Karve is tender and the longship stiff.
 * **Heel and speed.** A little heel helps: about 5% faster at 8° (less hull in the water), gone by 16°.
   Past that, lying over costs speed: 25° is about 18% slower than flat. Ease out in a gust.
 * **Leeway.** A stalled sail or a hard-heeled boat slides sideways instead of tracking straight.
+* **Mast strain.** Heel past 35° for more than about 4 seconds and the rig is straining: the hull takes
+  0.5% of its health per second until you ease out or reef. A brief knockdown in a gust costs nothing.
 * **Hull speed.** Each hull has a speed it was built for (from its waterline length). Push past it and
   wave-making drag climbs and the bow digs in much harder, so a Karve driven at longship speeds buries its
   bow long before the longship would. The gauge turns red and reads "over".
@@ -145,6 +162,11 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 | `LeewayFactor` | 0.4 | Extra sideways slip when stalled/heeled (0 = off) |
 | `PitchTorque` / `PitchWindPower` / `MaxPitchAngle` | 5 / 2 / 15 | Bow-down torque per unit drive, its wind scaling, and where it fades out |
 | `NoseDiveLoss` / `NoseDiveDamagePerSecond` | 0.4 / 0.3 | Drive lost and hull % per second with the bow buried |
+| `WindShadowMax` / `WindShadowOnset` / `WindShadowRange` | 0.4 / 10 / 25 | Max wind lost in the lee of land, and the land angles where it starts and peaks |
+| `DownwindRolling` / `RollPeriod` | 0.6 / 4 | Rolling strength when running, and the roll period for a Karve |
+| `CrewCanTrim` / `CrewTrimBonus` | true / 0.2 | Crew trimming on/off and its speed bonus |
+| `PassengerHud` | true | Ship HUD and readout for passengers |
+| `MastStrainAngle` / `MastStrainGrace` / `MastStrainDamagePerSecond` | 35 / 4 / 0.5 | Heel that strains the rig, seconds before damage, hull % per second |
 | `GybesEnabled` / `GybeDamagePercent` / `GybeRollRate` | false / 5 / 30 | Gybe on/off (off: a square yard has no boom to slam), hull damage %, roll kick |
 
 Everything else is documented inline in the cfg. While connected to a server with `LockConfig` on, the

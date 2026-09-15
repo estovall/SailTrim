@@ -41,7 +41,7 @@ drawn at vanilla's angle.
 | Hold **S** | Ease the sheet out: the yard swings away from the centreline |
 | **A / D** | Rudder, unchanged |
 | **H** | Switch *you* between vanilla sailing (the default) and manual trim; saved to your config |
-| **E on the mast** (passenger) | Hold fast: take the sheet and trim with W/S while someone else steers |
+| **Hold fast** on the mast (passenger) | Take the sheet and trim with W/S while someone else steers |
 
 Gamepad: the left stick forward/back sheets in/eases; the gamepad Use button releases the helm exactly like
 vanilla. There are no default gamepad bindings for raise/lower, so use a keyboard for those or bind
@@ -61,11 +61,10 @@ Q lowers and hold-E lets go. It disappears once you have used the keys.
 ### Sailing as a crew
 
 Any passenger with the mod sees the ship HUD like the pilot does (wind circle, sail icon, speed gauge, trim
-state). Walk to the mast and press **E** to hold fast: you are held at the mast foot and W/S trim the sail
+state). Use the ship's **Hold fast** spot on the mast (E): you are held at the mast and W/S trim the sail
 while the pilot steers, exactly as a longship crew would, and a dedicated hand works the sheet 20% faster than
 a pilot doing two jobs. The pilot can still trim too; whoever pulled last wins and the other follows. Nobody
-else aboard can touch the sheet. Press E on the
-mast again, jump, or take the rudder yourself to let go.
+else aboard can touch the sheet. Jump, or take the rudder yourself, to let go.
 
 ### Opting out
 
