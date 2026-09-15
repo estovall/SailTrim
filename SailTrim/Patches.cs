@@ -12,8 +12,17 @@ namespace SailTrim
         {
             if (__instance.GetComponent<SailTrimShip>() == null)
                 __instance.gameObject.AddComponent<SailTrimShip>().Init(__instance);
-            if (__instance.m_mastObject != null && __instance.m_mastObject.GetComponent<MastHold>() == null)
-                __instance.m_mastObject.AddComponent<MastHold>().Init(__instance);
+            if (__instance.m_mastObject != null)
+            {
+                // If the ship already has a vanilla seat/hold on the mast, hook that instead of adding our own.
+                var chairs = __instance.m_mastObject.GetComponentsInChildren<Chair>(true);
+                if (chairs.Length > 0)
+                {
+                    foreach (var c in chairs) MastChairs[c] = __instance;
+                }
+                else if (__instance.m_mastObject.GetComponent<MastHold>() == null)
+                    __instance.m_mastObject.AddComponent<MastHold>().Init(__instance);
+            }
         }
 
         // Register the sheet RPC alongside vanilla's Forward/Backward/Rudder RPCs.
@@ -109,6 +118,40 @@ namespace SailTrim
             if (!Plugin.Enabled.Value) return;
             float f = Plugin.CameraTilt.Value;
             if (f < 1f) rot = Quaternion.Slerp(__state, rot, Mathf.Clamp01(f));
+        }
+
+        internal static readonly System.Collections.Generic.Dictionary<Chair, Ship> MastChairs = new System.Collections.Generic.Dictionary<Chair, Ship>();
+
+        // Vanilla hold/seat on the mast: taking it also takes the sheet.
+        [HarmonyPatch(typeof(Chair), nameof(Chair.Interact))]
+        [HarmonyPostfix]
+        private static void Chair_Interact(Chair __instance, Humanoid human, bool hold)
+        {
+            if (hold || !Plugin.Enabled.Value || !Plugin.CrewCanTrim.Value) return;
+            if (!MastChairs.TryGetValue(__instance, out var ship) || ship == null) return;
+            var player = human as Player;
+            if (player == null || player != Player.m_localPlayer || !player.IsAttached()) return;
+            var st = SailTrimShip.Get(ship);
+            if (st == null || !st.ManualMode || Plugin.CrewShip == ship) return;
+            if (st.SheetHand != 0L && st.SheetHand != player.GetPlayerID())
+            {
+                player.Message(MessageHud.MessageType.Center, "Someone else has the sheet");
+                return;
+            }
+            Plugin.TakeSheet(ship);
+        }
+
+        [HarmonyPatch(typeof(Chair), nameof(Chair.GetHoverText))]
+        [HarmonyPostfix]
+        private static void Chair_GetHoverText(Chair __instance, ref string __result)
+        {
+            if (!Plugin.Enabled.Value || !Plugin.CrewCanTrim.Value) return;
+            if (!MastChairs.TryGetValue(__instance, out var ship) || ship == null) return;
+            var st = SailTrimShip.Get(ship);
+            if (st == null || !st.ManualMode) return;
+            var lp = Player.m_localPlayer;
+            if (st.SheetHand != 0L && (lp == null || st.SheetHand != lp.GetPlayerID())) __result += "\nSomeone has the sheet";
+            else __result += "\nTrim the sail with W/S";
         }
 
         // A passenger holding the sheet stands still: W/S go to the sail, not their feet.

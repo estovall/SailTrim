@@ -456,6 +456,8 @@ namespace SailTrim
                 new MethodTarget(typeof(Player), nameof(Player.AttachStop), Type.EmptyTypes),
                 new MethodTarget(typeof(Player), nameof(Player.IsAttached), Type.EmptyTypes),
                 new MethodTarget(typeof(Hud), "UpdateShipHud", new[] { typeof(Player), typeof(float) }),
+                new MethodTarget(typeof(Chair), nameof(Chair.Interact), new[] { typeof(Humanoid), typeof(bool), typeof(bool) }),
+                new MethodTarget(typeof(Chair), nameof(Chair.GetHoverText), Type.EmptyTypes),
                 new MethodTarget(typeof(Heightmap), nameof(Heightmap.GetHeight), new[] { typeof(Vector3), typeof(float).MakeByRefType() }),
                 new MethodTarget(typeof(ZNet), "SendPeerInfo", new[] { typeof(ZRpc), typeof(string) }),
                 new MethodTarget(typeof(ZNet), "RPC_PeerInfo", new[] { typeof(ZRpc), typeof(ZPackage) }),

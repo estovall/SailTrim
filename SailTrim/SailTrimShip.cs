@@ -141,6 +141,11 @@ namespace SailTrim
                 Plugin.Log.LogInfo($"SailTrim: {_ship.name} float collider {_ship.m_floatCollider.size}, mass {_body.mass:0}, sailForceFactor {_ship.m_sailForceFactor}, sailForceOffset {_ship.m_sailForceOffset}");
             if (_ship.m_mastObject != null)
             {
+                // Which interactables live on the mast (vanilla may have its own hold-fast component there).
+                var hovs = _ship.m_mastObject.GetComponentsInChildren<MonoBehaviour>(true);
+                var names = new System.Collections.Generic.List<string>();
+                foreach (var mb in hovs) if (mb is Hoverable || mb is Interactable) names.Add(mb.GetType().Name + "@" + mb.gameObject.name);
+                Plugin.Log.LogInfo($"SailTrim: {_ship.name} mast interactables: " + (names.Count > 0 ? string.Join(", ", names) : "none"));
                 var cols = _ship.m_mastObject.GetComponentsInChildren<Collider>(true);
                 Plugin.Log.LogInfo($"SailTrim: {_ship.name} mast object '{_ship.m_mastObject.name}' has {cols.Length} collider(s)" +
                     (cols.Length > 0 ? ": " + string.Join(", ", System.Array.ConvertAll(cols, c => c.name + "(" + c.GetType().Name + (c.isTrigger ? ",trigger" : "") + ")")) : ""));
