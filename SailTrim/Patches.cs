@@ -14,13 +14,25 @@ namespace SailTrim
                 __instance.gameObject.AddComponent<SailTrimShip>().Init(__instance);
             if (__instance.m_mastObject != null)
             {
-                // If the ship already has a vanilla seat/hold on the mast, hook that instead of adding our own.
-                var chairs = __instance.m_mastObject.GetComponentsInChildren<Chair>(true);
-                if (chairs.Length > 0)
+                // Vanilla ships have a "Hold fast" seat at the mast (a Chair somewhere in the ship hierarchy,
+                // not necessarily under the mast object). Hook every seat near the mast or named for holding.
+                Vector3 mastPos = __instance.m_mastObject.transform.position;
+                int hooked = 0;
+                var names = new System.Collections.Generic.List<string>();
+                foreach (var c in __instance.GetComponentsInChildren<Chair>(true))
                 {
-                    foreach (var c in chairs) MastChairs[c] = __instance;
+                    Vector3 p = c.m_attachPoint != null ? c.m_attachPoint.position : c.transform.position;
+                    Vector3 dv = p - mastPos; dv.y = 0f;
+                    string nm = c.m_name ?? "";
+                    bool isHold = nm.IndexOf("hold", System.StringComparison.OrdinalIgnoreCase) >= 0
+                                  || nm.IndexOf("fast", System.StringComparison.OrdinalIgnoreCase) >= 0
+                                  || nm.IndexOf("mast", System.StringComparison.OrdinalIgnoreCase) >= 0;
+                    bool near = dv.magnitude < 2.5f;
+                    names.Add($"{nm}@{c.gameObject.name} d={dv.magnitude:0.0}{(isHold || near ? " HOOKED" : "")}");
+                    if (isHold || near) { MastChairs[c] = __instance; hooked++; }
                 }
-                else
+                Plugin.Log.LogInfo($"SailTrim: {__instance.name} seats: " + (names.Count > 0 ? string.Join(" | ", names) : "none"));
+                if (hooked == 0)
                 {
                     // The game only routes hover/interact to a component sitting ON the hit collider's own
                     // object (otherwise it falls back to the ship's rigidbody root), so attach to each collider.
