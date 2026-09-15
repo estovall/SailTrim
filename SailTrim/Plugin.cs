@@ -124,24 +124,40 @@ namespace SailTrim
             return local != null && local.IsPlayerInBoat(player) ? local : null;
         }
 
+        private static bool _releasing;
+
         internal static void TakeSheet(Ship ship)
         {
             var st = SailTrimShip.Get(ship);
             if (st == null) return;
             _crewShip = ship;
             st.CrewSetSheetHand(true);
+            Log.LogInfo("SailTrim: took the sheet on " + ship.name);
             Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "You have the sheet: W sheet in, S ease out");
         }
 
         internal static void ReleaseSheet()
         {
             if (_crewShip == null) return;
-            var st = SailTrimShip.Get(_crewShip);
-            st?.CrewSetSheetHand(false);
-            var p = Player.m_localPlayer;
-            if (p != null && p.IsAttached()) p.AttachStop();
+            var ship = _crewShip;
             _crewShip = null;
+            SailTrimShip.Get(ship)?.CrewSetSheetHand(false);
+            var p = Player.m_localPlayer;
+            _releasing = true;
+            try { if (p != null && p.IsAttached()) p.AttachStop(); }
+            finally { _releasing = false; }
+            Log.LogInfo("SailTrim: released the sheet on " + ship.name);
             p?.Message(MessageHud.MessageType.Center, "Sheet released");
+        }
+
+        /// <summary>Something other than us detached the crew member: drop the sheet without calling AttachStop again.</summary>
+        internal static void OnCrewDetached()
+        {
+            if (_releasing || _crewShip == null) return;
+            var ship = _crewShip;
+            _crewShip = null;
+            SailTrimShip.Get(ship)?.CrewSetSheetHand(false);
+            Log.LogInfo("SailTrim: crew detached from the mast on " + ship.name);
         }
 
         private void UpdateCrew(Player player, bool piloting)
@@ -150,7 +166,12 @@ namespace SailTrim
             var cst = SailTrimShip.Get(_crewShip);
             bool stillValid = player != null && player.IsAttached() && _crewShip.IsPlayerInBoat(player)
                               && !piloting && cst != null && cst.ManualMode && CrewCanTrim.Value;
-            if (!stillValid) { ReleaseSheet(); return; }
+            if (!stillValid)
+            {
+                Log.LogInfo($"SailTrim: dropping the sheet (attached {player?.IsAttached()}, aboard {_crewShip.IsPlayerInBoat(player)}, piloting {piloting}, manual {cst?.ManualMode})");
+                ReleaseSheet();
+                return;
+            }
             if (player.TakeInput() && !Hud.InRadial())
                 cst.CrewTrimInput(ZInput.GetButton("Forward"), ZInput.GetButton("Backward"), Time.deltaTime);
         }

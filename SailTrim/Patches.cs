@@ -114,14 +114,23 @@ namespace SailTrim
         // A passenger holding the sheet stands still: W/S go to the sail, not their feet.
         [HarmonyPatch(typeof(Player), nameof(Player.SetControls))]
         [HarmonyPrefix]
-        private static void Player_SetControls(Player __instance, ref Vector3 movedir, ref bool jump, ref bool run, ref bool autoRun, ref bool crouch)
+        private static void Player_SetControls(Player __instance, ref Vector3 movedir, ref bool attack, ref bool attackHold,
+            ref bool secondaryAttack, ref bool secondaryAttackHold, ref bool block, ref bool blockHold, ref bool jump,
+            ref bool crouch, ref bool run, ref bool autoRun, ref bool dodge)
         {
             if (!Plugin.CrewActive || __instance != Player.m_localPlayer) return;
+            // Hands are on the sheet: no walking, fighting or blocking. Jump is the one thing that lets go.
             movedir = Vector3.zero;
-            jump = false;
-            run = false;
-            autoRun = false;
-            crouch = false;
+            attack = attackHold = secondaryAttack = secondaryAttackHold = block = blockHold = false;
+            run = autoRun = crouch = dodge = false;
+        }
+
+        // Whatever detaches the crew member (jump, a hit, the boat breaking up) also drops the sheet.
+        [HarmonyPatch(typeof(Player), nameof(Player.AttachStop))]
+        [HarmonyPrefix]
+        private static void Player_AttachStop(Player __instance)
+        {
+            if (Plugin.CrewActive && __instance == Player.m_localPlayer) Plugin.OnCrewDetached();
         }
 
         // Show the vanilla ship HUD (wind circle etc.) to passengers of a manual-trim ship, rudder bits hidden.
