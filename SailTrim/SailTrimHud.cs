@@ -20,10 +20,6 @@ namespace SailTrim
         private static RectTransform _container;
         private static RectTransform _sailRect;          // pilot: inside vanilla's rotating root
         private static Image _sailImage;
-        private static RectTransform _sailRectPassenger; // passenger: inside our container
-        private static Image _sailImagePassenger;
-        private static RectTransform _arrowRoot;
-        private static Image _arrowImage;
         private static RectTransform _gaugeRoot;
         private static Image _gaugeFill;
         private static Image _gaugeOver;
@@ -48,7 +44,6 @@ namespace SailTrim
         private static readonly Color ColLuff = new Color(1f, 0.62f, 0.35f);
         private static readonly Color ColBad = new Color(1f, 0.42f, 0.38f);
         private static readonly Color ColIdle = new Color(0.8f, 0.78f, 0.72f);
-        private static readonly Color ColArrow = new Color(0.75f, 0.9f, 1f, 0.85f);
         private const float GaugeOverRange = 0.4f;
 
         internal static void Update()
@@ -59,12 +54,8 @@ namespace SailTrim
             if (hud == null || hud.m_shipWindIndicatorRoot == null || player == null) { SetVisible(false); return; }
 
             bool piloting = Plugin.IsLocalPlayerPiloting(out var ship);
-            if (piloting && !hud.m_shipHudRoot.activeInHierarchy) { SetVisible(false); return; }
-            if (!piloting)
-            {
-                ship = Plugin.PassengerHud.Value ? player.GetStandingOnShip() : null;
-                if (ship == null || !hud.IsVisible()) { SetVisible(false); return; }
-            }
+            if (!piloting) ship = Plugin.PassengerHud.Value ? player.GetStandingOnShip() : null;
+            if (ship == null || !hud.m_shipHudRoot.activeInHierarchy) { SetVisible(false); return; }
             var st = SailTrimShip.Get(ship);
             if (st == null || (!piloting && !st.ManualMode)) { SetVisible(false); return; }
 
@@ -76,7 +67,6 @@ namespace SailTrim
             _container.rotation = _canvasRoot.rotation;
 
             bool manual = piloting ? Plugin.ManualTrim.Value : st.ManualMode;
-            float shipYaw = ship.GetShipYawAngle();
 
             // ---- Sail icon ----
             float sailAng = 0f;
@@ -89,26 +79,11 @@ namespace SailTrim
                 if (st.State == SailTrimShip.TrimState.Luffing && ship.IsSailUp())
                     sailAng += Mathf.Sin(Time.time * Mathf.PI * 2f * Plugin.FlapFrequency.Value) * 4f;
             }
-            Show(_sailRect, piloting && manual);
-            Show(_sailRectPassenger, !piloting && manual);
-            if (piloting && manual)
+            Show(_sailRect, manual);
+            if (manual)
             {
                 _sailRect.localRotation = Quaternion.Euler(0f, 0f, sailAng);
                 _sailImage.color = StateColor(st, ship, sailIcon: true);
-            }
-            else if (!piloting && manual)
-            {
-                _sailRectPassenger.localRotation = Quaternion.Euler(0f, 0f, shipYaw + sailAng);
-                _sailImagePassenger.color = StateColor(st, ship, sailIcon: true);
-            }
-
-            // ---- Apparent wind arrow: same convention as vanilla's wind icon, on the container ----
-            bool showArrow = manual && Plugin.ShowApparentWind.Value && ship.IsSailUp();
-            Show(_arrowRoot, showArrow);
-            if (showArrow)
-            {
-                float apparentAngle = 0f - Utils.YawFromDirection(st.ApparentWindToLocal);
-                _arrowRoot.localRotation = Quaternion.Euler(0f, 0f, shipYaw + apparentAngle);
             }
 
             // ---- Speed gauge ----
@@ -129,8 +104,8 @@ namespace SailTrim
                 _hintText.text = "";
                 return;
             }
-            _stateText.text = StateLabel(st, ship);
-            _stateText.color = StateColor(st, ship, sailIcon: false);
+            _stateText.text = st.IsMastStraining ? "Mast straining – ease out or reef" : StateLabel(st, ship);
+            _stateText.color = st.IsMastStraining ? ColBad : StateColor(st, ship, sailIcon: false);
             string extra = st.GustFactor > 0.12f ? "   Gust" : (st.GustFactor < -0.12f ? "   Lull" : (st.ShadowFactor > 0.35f ? "   Lee" : ""));
             _infoText.text = $"Sheet {st.SheetAngle:0}°   Heel {Mathf.Abs(st.HeelAngle):0}°{extra}";
 
@@ -146,8 +121,8 @@ namespace SailTrim
             }
             else if (Plugin.CrewCanTrim.Value)
             {
-                if (Plugin.CrewActive) hint = $"You have the sheet: W in, S out  ·  {Plugin.CrewSheetKey.Value} release";
-                else if (st.SheetHand == 0L) hint = $"{Plugin.CrewSheetKey.Value}: take the sheet";
+                if (Plugin.CrewActive) hint = "You have the sheet: W in, S out" + (char)10 + "Use the mast again or jump to let go";
+                else if (st.SheetHand == 0L) hint = "Hold fast on the mast to trim the sail";
                 else hint = "Someone has the sheet";
             }
             _hintText.text = hint;
@@ -231,22 +206,6 @@ namespace SailTrim
                 _container.anchorMin = _container.anchorMax = _container.pivot = new Vector2(0.5f, 0.5f);
                 _container.sizeDelta = Vector2.zero;
                 _container.localScale = Vector3.one;
-
-                // Passenger sail icon (vanilla's root is hidden for passengers).
-                _sailRectPassenger = MakeImage("SailPassenger", _container, sailSprite, out _sailImagePassenger);
-                _sailRectPassenger.sizeDelta = new Vector2(d * 0.6f, d * 0.6f);
-
-                // Apparent-wind arrow: a rotating root with the arrow sitting at the vanilla icon's radius,
-                // default position at the bottom (wind from astern), like vanilla's own wind icon.
-                var arrowRootGo = new GameObject("ApparentWind", typeof(RectTransform));
-                _arrowRoot = arrowRootGo.GetComponent<RectTransform>();
-                _arrowRoot.SetParent(_container, false);
-                _arrowRoot.anchorMin = _arrowRoot.anchorMax = _arrowRoot.pivot = new Vector2(0.5f, 0.5f);
-                _arrowRoot.sizeDelta = Vector2.zero;
-                RectTransform arrowRect = MakeImage("Arrow", _arrowRoot, MakeArrowSprite(), out _arrowImage);
-                arrowRect.anchoredPosition = new Vector2(0f, -_radius);
-                arrowRect.sizeDelta = new Vector2(d * 0.16f, d * 0.16f);
-                _arrowImage.color = ColArrow;
 
                 // Speed gauge: 270-degree ring left of the circle, gap at the bottom, number inside.
                 float gd = d * 0.6f;
@@ -381,31 +340,6 @@ namespace SailTrim
                 float r = Mathf.Sqrt(dx * dx + dy * dy);
                 if (r <= 4.5f) c = Color.Lerp(c, new Color(1f, 1f, 1f, 1f), Mathf.Clamp01(4.5f - r));
                 px[y * n + x] = c;
-            }
-            tex.SetPixels(px);
-            tex.Apply();
-            tex.filterMode = FilterMode.Bilinear;
-            return Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
-        }
-
-        /// <summary>Small chevron pointing +Y (toward the circle centre when placed at the bottom).</summary>
-        private static Sprite MakeArrowSprite()
-        {
-            const int n = 48;
-            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
-            var px = new Color[n * n];
-            float cx = n * 0.5f;
-            for (int y = 0; y < n; y++)
-            for (int x = 0; x < n; x++)
-            {
-                float dx = Mathf.Abs(x + 0.5f - cx);
-                float yy = y + 0.5f;
-                // Chevron: two strokes from the tip (top centre) down to the sides, stroke width ~5px.
-                float tipY = n * 0.82f;
-                float dist = Mathf.Abs((tipY - yy) - dx); // distance from the V line |dx| = tipY - y
-                bool inBand = yy <= tipY && yy >= n * 0.3f && dx <= (tipY - yy) + 2.5f && dist <= 2.6f;
-                float a = inBand ? Mathf.Clamp01(2.6f - dist + 1f) : 0f;
-                px[y * n + x] = new Color(1f, 1f, 1f, a);
             }
             tex.SetPixels(px);
             tex.Apply();

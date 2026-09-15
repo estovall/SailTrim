@@ -41,7 +41,7 @@ drawn at vanilla's angle.
 | Hold **S** | Ease the sheet out: the yard swings away from the centreline |
 | **A / D** | Rudder, unchanged |
 | **H** | Switch *you* between vanilla sailing (the default) and manual trim; saved to your config |
-| **B** (passenger) | Take / release the sheet: trim with W/S while someone else steers |
+| **E on the mast** (passenger) | Hold fast: take the sheet and trim with W/S while someone else steers |
 
 Gamepad: the left stick forward/back sheets in/eases; the gamepad Use button releases the helm exactly like
 vanilla. There are no default gamepad bindings for raise/lower, so use a keyboard for those or bind
@@ -60,13 +60,11 @@ Q lowers and hold-E lets go. It disappears once you have used the keys.
 
 ### Sailing as a crew
 
-Any passenger with the mod sees the same readout as the pilot (sail icon, speed gauge, trim state). Press **B**
-while standing aboard to take the sheet: you stand still and W/S trim the sail while the pilot steers, exactly
-as a longship crew would. The pilot's W/S do nothing while you hold it, and their readout says so. Press B
-again, walk off the boat, or take the rudder yourself to let go.
-
-The wind circle also shows a thin blue arrow for the **apparent wind**: the wind the sail actually feels, which
-shifts forward as the boat speeds up. Trim to that arrow, not the vanilla one.
+Any passenger with the mod sees the ship HUD like the pilot does (wind circle, sail icon, speed gauge, trim
+state). Walk to the mast and press **E** to hold fast: you are held at the mast foot and W/S trim the sail
+while the pilot steers, exactly as a longship crew would, and a dedicated hand works the sheet 20% faster than
+a pilot doing two jobs. The pilot's W/S do nothing while you hold it, and their readout says so. Press E on the
+mast again, jump, or take the rudder yourself to let go.
 
 ### Opting out
 
@@ -113,6 +111,8 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 * **Heel and speed.** A little heel helps: about 5% faster at 8° (less hull in the water), gone by 16°.
   Past that, lying over costs speed: 25° is about 18% slower than flat. Ease out in a gust.
 * **Leeway.** A stalled sail or a hard-heeled boat slides sideways instead of tracking straight.
+* **Mast strain.** Heel past 35° for more than about 4 seconds and the rig is straining: the hull takes
+  0.5% of its health per second until you ease out or reef. A brief knockdown in a gust costs nothing.
 * **Hull speed.** Each hull has a speed it was built for (from its waterline length). Push past it and
   wave-making drag climbs and the bow digs in much harder, so a Karve driven at longship speeds buries its
   bow long before the longship would. The gauge turns red and reads "over".
@@ -164,8 +164,9 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 | `NoseDiveLoss` / `NoseDiveDamagePerSecond` | 0.4 / 0.3 | Drive lost and hull % per second with the bow buried |
 | `WindShadowMax` / `WindShadowOnset` / `WindShadowRange` | 0.4 / 10 / 25 | Max wind lost in the lee of land, and the land angles where it starts and peaks |
 | `DownwindRolling` / `RollPeriod` | 0.6 / 4 | Rolling strength when running, and the roll period for a Karve |
-| `CrewCanTrim` / `CrewSheetKey` | true / B | Crew trimming on/off and its key |
-| `PassengerHud` / `ShowApparentWind` | true / true | Readout for passengers, apparent-wind arrow |
+| `CrewCanTrim` / `CrewTrimBonus` | true / 0.2 | Crew trimming on/off and its speed bonus |
+| `PassengerHud` | true | Ship HUD and readout for passengers |
+| `MastStrainAngle` / `MastStrainGrace` / `MastStrainDamagePerSecond` | 35 / 4 / 0.5 | Heel that strains the rig, seconds before damage, hull % per second |
 | `GybesEnabled` / `GybeDamagePercent` / `GybeRollRate` | false / 5 / 30 | Gybe on/off (off: a square yard has no boom to slam), hull damage %, roll kick |
 
 Everything else is documented inline in the cfg. While connected to a server with `LockConfig` on, the

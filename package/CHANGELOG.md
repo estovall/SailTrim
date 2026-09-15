@@ -2,9 +2,9 @@
 
 ## 1.2.0
 
-- Crew trimming: a passenger with the mod presses B to take the sheet and trims with W/S while the pilot steers. Press B again to let go.
-- Passenger readout: everyone aboard with the mod sees the sail icon, speed gauge and trim state.
-- Apparent-wind arrow on the wind circle: the wind the sail actually feels, shifted forward by your own speed. Trim to this one.
+- Crew trimming: a passenger with the mod holds fast on the mast (interact with it) to take the sheet and trims with W/S while the pilot steers, 20% faster than the pilot could alone. Use the mast again or jump to let go.
+- Passenger readout: everyone aboard with the mod sees the ship HUD with the sail icon, speed gauge and trim state.
+- Mast strain: heeling past 35 degrees for more than a few seconds damages the hull until you ease out or reef.
 - Wind shadow: land upwind takes some wind away (at most 40%, so rivers and fjords stay sailable).
 - Downwind rolling: running near dead downwind with the sail up rolls the boat rhythmically; head up a little or reef to settle it.
 

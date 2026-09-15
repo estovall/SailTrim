@@ -45,8 +45,9 @@ namespace SailTrim
         public bool ManualMode { get; private set; } = true;
         /// <summary>Player ID of the crew member holding the sheet, or 0 when the pilot trims.</summary>
         public long SheetHand { get; private set; }
-        /// <summary>Apparent wind (the wind the sail feels), blowing-toward direction in the ship's frame, smoothed for the HUD.</summary>
-        public Vector3 ApparentWindToLocal { get; private set; } = Vector3.forward;
+        /// <summary>True while the boat has been heeled past MastStrainAngle for longer than the grace period.</summary>
+        public bool IsMastStraining { get; private set; }
+        private float _strainTimer, _strainDamageAcc, _strainDamageTimer;
         /// <summary>0 = open water, 1 = fully in the lee of land upwind.</summary>
         public float ShadowFactor { get; private set; }
         public float WindFromAngle { get; private set; }
@@ -247,7 +248,8 @@ namespace SailTrim
             if (!IsLocalSheetAuthority()) return;
             if (Plugin.InvertSheetKeys.Value) { bool t = haul; haul = ease; ease = t; }
             if (ease == haul) { MaybeSend(force: false); return; }
-            float delta = Plugin.SheetRate.Value * dt * (ease ? 1f : -1f);
+            // A dedicated hand on the sheet works it faster than a pilot doing two jobs.
+            float delta = Plugin.SheetRate.Value * (1f + Plugin.CrewTrimBonus.Value) * dt * (ease ? 1f : -1f);
             SheetAngle = Mathf.Clamp(SheetAngle + delta, 0f, Plugin.MaxSheetAngle.Value);
             MaybeSend(force: false);
         }
@@ -745,12 +747,7 @@ namespace SailTrim
 
             UpdateWindShadow(a, dt);
             UpdateReadout(a, dt);
-            {
-                Vector3 local = _ship.transform.InverseTransformDirection(a.windTo);
-                local.y = 0f;
-                if (local.sqrMagnitude > 1e-4f)
-                    ApparentWindToLocal = Vector3.Slerp(ApparentWindToLocal, local.normalized, 1f - Mathf.Exp(-dt / 0.5f));
-            }
+            UpdateMastStrain(dt);
 
             // Vanilla points the mast object's forward DOWNWIND (the sail bellies away from mast.forward's
             // back face), and builds the rotation in the hull plane so the rig heels with the hull.
@@ -775,6 +772,33 @@ namespace SailTrim
             if (Time.time < _gybeSwingUntil) turnRate *= 3f; // the yard slams across
             Quaternion to = Quaternion.LookRotation(facing, a.up);
             mast.transform.rotation = Quaternion.RotateTowards(mast.transform.rotation, to, turnRate * dt);
+        }
+
+        /// <summary>Rig strain: every client tracks it for the readout; only the owner applies damage.</summary>
+        private void UpdateMastStrain(float dt)
+        {
+            bool over = _ship.IsSailUp() && Mathf.Abs(HeelAngle) > Plugin.MastStrainAngle.Value;
+            _strainTimer = over ? _strainTimer + dt : Mathf.Max(0f, _strainTimer - dt * 2f);
+            IsMastStraining = _strainTimer > Plugin.MastStrainGrace.Value;
+
+            if (!IsMastStraining || Plugin.MastStrainDamagePerSecond.Value <= 0f || _nview == null || !_nview.IsValid() || !_nview.IsOwner())
+            {
+                _strainDamageAcc = 0f; _strainDamageTimer = 0f;
+                return;
+            }
+            var wnt = _ship.GetComponent<WearNTear>();
+            if (wnt == null) return;
+            _strainDamageAcc += wnt.m_health * (Plugin.MastStrainDamagePerSecond.Value / 100f) * dt;
+            _strainDamageTimer += dt;
+            if (_strainDamageTimer >= 1f)
+            {
+                var hit = new HitData();
+                hit.m_damage.m_blunt = _strainDamageAcc;
+                hit.m_point = _ship.m_mastObject != null ? _ship.m_mastObject.transform.position : _ship.transform.position;
+                hit.m_dir = Vector3.down;
+                wnt.Damage(hit);
+                _strainDamageAcc = 0f; _strainDamageTimer = 0f;
+            }
         }
 
         /// <summary>

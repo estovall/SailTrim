@@ -12,6 +12,8 @@ namespace SailTrim
         {
             if (__instance.GetComponent<SailTrimShip>() == null)
                 __instance.gameObject.AddComponent<SailTrimShip>().Init(__instance);
+            if (__instance.m_mastObject != null && __instance.m_mastObject.GetComponent<MastHold>() == null)
+                __instance.m_mastObject.AddComponent<MastHold>().Init(__instance);
         }
 
         // Register the sheet RPC alongside vanilla's Forward/Backward/Rudder RPCs.
@@ -120,6 +122,40 @@ namespace SailTrim
             run = false;
             autoRun = false;
             crouch = false;
+        }
+
+        // Show the vanilla ship HUD (wind circle etc.) to passengers of a manual-trim ship, rudder bits hidden.
+        [HarmonyPatch(typeof(Hud), "UpdateShipHud")]
+        [HarmonyPostfix]
+        private static void Hud_UpdateShipHud(Hud __instance, Player player)
+        {
+            if (player == null) return;
+            if (player.GetControlledShip() != null)
+            {
+                if (__instance.m_shipControlsRoot != null && !__instance.m_shipControlsRoot.activeSelf) __instance.m_shipControlsRoot.SetActive(true);
+                return;
+            }
+            if (!Plugin.Enabled.Value || !Plugin.PassengerHud.Value || !__instance.IsVisible()) return;
+            Ship ship = player.GetStandingOnShip();
+            var st = ship != null ? SailTrimShip.Get(ship) : null;
+            if (st == null || !st.ManualMode) return;
+
+            __instance.m_shipHudRoot.SetActive(true);
+            __instance.m_rudderSlow.SetActive(false);
+            __instance.m_rudderForward.SetActive(false);
+            __instance.m_rudderFastForward.SetActive(false);
+            __instance.m_rudderBackward.SetActive(false);
+            __instance.m_rudderLeft.SetActive(false);
+            __instance.m_rudderRight.SetActive(false);
+            __instance.m_rudder.SetActive(false);
+            var speed = ship.GetSpeedSetting();
+            __instance.m_fullSail.SetActive(speed == Ship.Speed.Full);
+            __instance.m_halfSail.SetActive(speed == Ship.Speed.Half);
+            if (__instance.m_shipRudderIndicator != null) __instance.m_shipRudderIndicator.gameObject.SetActive(false);
+            if (__instance.m_shipControlsRoot != null) __instance.m_shipControlsRoot.SetActive(false);
+            __instance.m_shipWindIndicatorRoot.localRotation = Quaternion.Euler(0f, 0f, ship.GetShipYawAngle());
+            __instance.m_shipWindIconRoot.localRotation = Quaternion.Euler(0f, 0f, ship.GetWindAngle());
+            __instance.m_shipWindIcon.color = Color.Lerp(Hud.s_shipWindIconColor, Color.white, ship.GetWindAngleFactor());
         }
 
         // ---------------- Server/client handshake and config sync ----------------

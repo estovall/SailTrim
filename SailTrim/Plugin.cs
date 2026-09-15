@@ -40,9 +40,8 @@ namespace SailTrim
         internal static ConfigEntry<bool> ManualTrim;
         internal static ConfigEntry<bool> PilotOwnsShip;
         internal static ConfigEntry<bool> CrewCanTrim;
-        internal static ConfigEntry<KeyCode> CrewSheetKey;
+        internal static ConfigEntry<float> CrewTrimBonus;
         internal static ConfigEntry<bool> PassengerHud;
-        internal static ConfigEntry<bool> ShowApparentWind;
         internal static ConfigEntry<KeyCode> ToggleKey;
         internal static ConfigEntry<float> ReleaseHoldTime;
         internal static ConfigEntry<KeyCode> LowerSailKey;
@@ -73,6 +72,9 @@ namespace SailTrim
         internal static ConfigEntry<float> HeelDriveShare;
         internal static ConfigEntry<float> StallHeelBoost;
         internal static ConfigEntry<float> MaxHeelAngle;
+        internal static ConfigEntry<float> MastStrainAngle;
+        internal static ConfigEntry<float> MastStrainGrace;
+        internal static ConfigEntry<float> MastStrainDamagePerSecond;
 
         // ---- Config: pitch ----
         internal static ConfigEntry<float> PitchTorque;
@@ -106,52 +108,40 @@ namespace SailTrim
         internal static ConfigEntry<float> FlapAmplitude;
         internal static ConfigEntry<float> FlapFrequency;
 
-        // ---- Crew-on-the-sheet state (local player as passenger) ----
+        // ---- Crew-on-the-sheet state (local player holding fast on a mast) ----
         internal static bool CrewActive => _crewShip != null;
         private static Ship _crewShip;
-
         internal static Ship CrewShip => _crewShip;
+
+        internal static void TakeSheet(Ship ship)
+        {
+            var st = SailTrimShip.Get(ship);
+            if (st == null) return;
+            _crewShip = ship;
+            st.CrewSetSheetHand(true);
+            Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "You have the sheet: W sheet in, S ease out");
+        }
+
+        internal static void ReleaseSheet()
+        {
+            if (_crewShip == null) return;
+            var st = SailTrimShip.Get(_crewShip);
+            st?.CrewSetSheetHand(false);
+            var p = Player.m_localPlayer;
+            if (p != null && p.IsAttached()) p.AttachStop();
+            _crewShip = null;
+            p?.Message(MessageHud.MessageType.Center, "Sheet released");
+        }
 
         private void UpdateCrew(Player player, bool piloting)
         {
-            Ship standing = player != null ? player.GetStandingOnShip() : null;
-            SailTrimShip st = standing != null ? SailTrimShip.Get(standing) : null;
-            bool takeInput = player != null && player.TakeInput() && !Hud.InRadial();
-
-            if (_crewShip != null)
-            {
-                var cst = SailTrimShip.Get(_crewShip);
-                bool stillValid = standing == _crewShip && !piloting && cst != null && cst.ManualMode && CrewCanTrim.Value;
-                if (!stillValid)
-                {
-                    cst?.CrewSetSheetHand(false);
-                    _crewShip = null;
-                    return;
-                }
-                if (takeInput && CrewSheetKey.Value != KeyCode.None && ZInput.GetKeyDown(CrewSheetKey.Value, false))
-                {
-                    cst.CrewSetSheetHand(false);
-                    _crewShip = null;
-                    player.Message(MessageHud.MessageType.Center, "Sheet released");
-                    return;
-                }
-                if (takeInput)
-                    cst.CrewTrimInput(ZInput.GetButton("Forward"), ZInput.GetButton("Backward"), Time.deltaTime);
-                return;
-            }
-
-            if (!CrewCanTrim.Value || piloting || st == null || !st.ManualMode) return;
-            if (takeInput && CrewSheetKey.Value != KeyCode.None && ZInput.GetKeyDown(CrewSheetKey.Value, false))
-            {
-                if (st.SheetHand != 0L && st.SheetHand != player.GetPlayerID())
-                {
-                    player.Message(MessageHud.MessageType.Center, "Someone else has the sheet");
-                    return;
-                }
-                _crewShip = standing;
-                st.CrewSetSheetHand(true);
-                player.Message(MessageHud.MessageType.Center, "You have the sheet: W sheet in, S ease out");
-            }
+            if (_crewShip == null) return;
+            var cst = SailTrimShip.Get(_crewShip);
+            bool stillValid = player != null && player.IsAttached() && player.GetStandingOnShip() == _crewShip
+                              && !piloting && cst != null && cst.ManualMode && CrewCanTrim.Value;
+            if (!stillValid) { ReleaseSheet(); return; }
+            if (player.TakeInput() && !Hud.InRadial())
+                cst.CrewTrimInput(ZInput.GetButton("Forward"), ZInput.GetButton("Backward"), Time.deltaTime);
         }
 
         // ---- Input state for tap/hold on the Use button ----
@@ -217,13 +207,12 @@ namespace SailTrim
             PilotOwnsShip = Config.Bind("2. Controls", "PilotOwnsShip", true,
                 "When you take the rudder with manual trim on, your client takes over simulating the ship (the game's normal ownership hand-off). Guarantees the boat sails by your trim even if a passenger without the mod boarded first.");
             CrewCanTrim = Config.Bind("2. Controls", "CrewCanTrim", true,
-                "A passenger with the mod can take the sheet with CrewSheetKey and trim with W/S while the pilot steers. While they hold it the pilot's W/S do nothing.");
-            CrewSheetKey = Config.Bind("2. Controls", "CrewSheetKey", KeyCode.B,
-                "Passenger key: take / release the sheet. You stand still while holding it.");
+                "A passenger with the mod can hold fast on the mast (interact with it) to take the sheet and trim with W/S while the pilot steers. While they hold it the pilot's W/S do nothing.");
+            CrewTrimBonus = Config.Bind("2. Controls", "CrewTrimBonus", 0.2f,
+                new ConfigDescription("Extra sheet speed when a dedicated crew member is on the sheet (0.2 = 20% faster than the pilot trimming alone).",
+                    new AcceptableValueRange<float>(0f, 1f)));
             PassengerHud = Config.Bind("1. General", "PassengerHud", true,
-                "Show the trim readout and speed gauge to passengers with the mod, not just the pilot.");
-            ShowApparentWind = Config.Bind("1. General", "ShowApparentWind", true,
-                "Draw a second, thinner arrow on the wind circle for the apparent wind: the wind the sail actually feels, shifted forward by your own speed. Trim to this one.");
+                "Show the ship HUD (wind circle, sail icon, speed gauge, trim state) to passengers with the mod, not just the pilot.");
             ToggleKey = Config.Bind("2. Controls", "ToggleKey", KeyCode.H,
                 "Key that switches ManualTrim on/off in game (saved to this config).");
             ReleaseHoldTime = Config.Bind("2. Controls", "ReleaseHoldTime", 0.5f,
@@ -293,6 +282,15 @@ namespace SailTrim
                     new AcceptableValueRange<float>(0f, 1f)));
             StallHeelBoost = Config.Bind("4. Heel", "StallHeelBoost", 1f,
                 new ConfigDescription("Extra heel multiplier reached at 90 degrees angle of attack (fully stalled). Scales in from StallAngle.",
+                    new AcceptableValueRange<float>(0f, 5f)));
+            MastStrainAngle = Config.Bind("4. Heel", "MastStrainAngle", 35f,
+                new ConfigDescription("Heel angle beyond which the rig is under strain. Hold it longer than MastStrainGrace and the hull takes damage until you ease out or reef.",
+                    new AcceptableValueRange<float>(15f, 60f)));
+            MastStrainGrace = Config.Bind("4. Heel", "MastStrainGrace", 4f,
+                new ConfigDescription("Seconds of heel past MastStrainAngle before damage starts (a gust knockdown you recover from quickly costs nothing).",
+                    new AcceptableValueRange<float>(0f, 30f)));
+            MastStrainDamagePerSecond = Config.Bind("4. Heel", "MastStrainDamagePerSecond", 0.5f,
+                new ConfigDescription("Hull damage per second, as a percent of max health, while the rig is straining. 0 disables.",
                     new AcceptableValueRange<float>(0f, 5f)));
             MaxHeelAngle = Config.Bind("4. Heel", "MaxHeelAngle", 45f,
                 new ConfigDescription("The heeling torque fades out over the last 10 degrees before this angle, so the mod can never knock the boat down.",
@@ -422,6 +420,10 @@ namespace SailTrim
                 new MethodTarget(typeof(ZNet), "OnNewConnection", new[] { typeof(ZNetPeer) }),
                 new MethodTarget(typeof(Player), nameof(Player.SetControls), new[] { typeof(Vector3), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool) }),
                 new MethodTarget(typeof(Player), nameof(Player.GetStandingOnShip), Type.EmptyTypes),
+                new MethodTarget(typeof(Player), nameof(Player.AttachStart), new[] { typeof(Transform), typeof(GameObject), typeof(bool), typeof(bool), typeof(bool), typeof(string), typeof(Vector3), typeof(Transform) }),
+                new MethodTarget(typeof(Player), nameof(Player.AttachStop), Type.EmptyTypes),
+                new MethodTarget(typeof(Player), nameof(Player.IsAttached), Type.EmptyTypes),
+                new MethodTarget(typeof(Hud), "UpdateShipHud", new[] { typeof(Player), typeof(float) }),
                 new MethodTarget(typeof(Heightmap), nameof(Heightmap.GetHeight), new[] { typeof(Vector3), typeof(float).MakeByRefType() }),
                 new MethodTarget(typeof(ZNet), "SendPeerInfo", new[] { typeof(ZRpc), typeof(string) }),
                 new MethodTarget(typeof(ZNet), "RPC_PeerInfo", new[] { typeof(ZRpc), typeof(ZPackage) }),
