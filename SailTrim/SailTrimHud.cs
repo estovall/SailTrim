@@ -121,7 +121,7 @@ namespace SailTrim
             }
             else if (Plugin.CrewCanTrim.Value)
             {
-                if (Plugin.CrewActive) hint = "You have the sheet: W in, S out" + (char)10 + "Use the mast again or jump to let go";
+                if (Plugin.CrewActive) hint = "You have the sheet: W in, S out" + (char)10 + "Jump to let go";
                 else if (st.SheetHand == 0L) hint = "Hold fast on the mast to trim the sail";
                 else hint = "Someone has the sheet";
             }

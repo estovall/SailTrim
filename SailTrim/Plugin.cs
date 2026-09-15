@@ -168,8 +168,10 @@ namespace SailTrim
                               && !piloting && cst != null && cst.ManualMode && CrewCanTrim.Value;
             if (!stillValid)
             {
+                // Drop the sheet only. If they are still seated on the mast (e.g. the captain switched to
+                // auto-trim) they stay there as a plain vanilla seat; jumping stands them up as usual.
                 Log.LogInfo($"SailTrim: dropping the sheet (attached {player?.IsAttached()}, aboard {_crewShip.IsPlayerInBoat(player)}, piloting {piloting}, manual {cst?.ManualMode})");
-                ReleaseSheet();
+                OnCrewDetached();
                 return;
             }
             if (player.TakeInput() && !Hud.InRadial())
