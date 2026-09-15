@@ -20,8 +20,16 @@ namespace SailTrim
                 {
                     foreach (var c in chairs) MastChairs[c] = __instance;
                 }
-                else if (__instance.m_mastObject.GetComponent<MastHold>() == null)
-                    __instance.m_mastObject.AddComponent<MastHold>().Init(__instance);
+                else
+                {
+                    // The game only routes hover/interact to a component sitting ON the hit collider's own
+                    // object (otherwise it falls back to the ship's rigidbody root), so attach to each collider.
+                    foreach (var col in __instance.m_mastObject.GetComponentsInChildren<Collider>(true))
+                    {
+                        if (col.isTrigger || col.gameObject.GetComponent<MastHold>() != null) continue;
+                        col.gameObject.AddComponent<MastHold>().Init(__instance);
+                    }
+                }
             }
         }
 

@@ -13,19 +13,25 @@ namespace SailTrim
         private Transform _attachPoint;
         private const float UseRange = 3.5f;
 
+        private const string PointName = "SailTrim_MastHoldPoint";
+
         internal void Init(Ship ship)
         {
             _ship = ship;
-            var go = new GameObject("SailTrim_MastHoldPoint");
+            var existing = ship.transform.Find(PointName);
+            if (existing != null) { _attachPoint = existing; return; }
+            var go = new GameObject(PointName);
             _attachPoint = go.transform;
             _attachPoint.SetParent(ship.transform, false);
-            Vector3 local = ship.transform.InverseTransformPoint(transform.position);
+            Vector3 local = ship.transform.InverseTransformPoint(ship.m_mastObject != null ? ship.m_mastObject.transform.position : transform.position);
+            local.y = 0f;
             local.z -= 0.9f; // just aft of the mast foot, facing forward
             _attachPoint.localPosition = local;
             _attachPoint.localRotation = Quaternion.identity;
         }
 
-        private bool InRange(Humanoid h) => h != null && Vector3.Distance(h.transform.position, transform.position) < UseRange;
+        private Vector3 MastPos => _ship != null && _ship.m_mastObject != null ? _ship.m_mastObject.transform.position : transform.position;
+        private bool InRange(Humanoid h) => h != null && Vector3.Distance(h.transform.position, MastPos) < UseRange;
 
         public string GetHoverText()
         {
