@@ -25,8 +25,10 @@ not sail anything; it does two useful things, both configurable in the server's
 | `Enforcement` | Warn | `Off`: anyone may join. `Warn`: players without a matching SailTrim can join but get an on-screen warning (and the server logs it). `Require`: they are refused with an "incompatible version" message that names the mod. |
 | `LockConfig` | true | The server's physics, heel, gust, pitch and hull-speed settings are pushed to every client on connect, so everyone sails by the same rules. Keys, HUD, camera tilt and the H opt-in stay personal. |
 
-Without a server copy everything still works, but nothing stops a friend from forgetting to install it: if
-their client happens to own the ship, the boat sails vanilla-style for everyone aboard.
+Without a server copy everything still works, but nothing stops a friend from forgetting to install it.
+Since 1.1.1 the pilot's client takes over simulating the ship whenever they hold the rudder with manual
+trim on, so an unmodded passenger sees the boat move exactly as the pilot sails it; they only see the yard
+drawn at vanilla's angle.
 
 ## Controls (while holding the rudder)
 

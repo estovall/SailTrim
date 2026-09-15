@@ -36,6 +36,10 @@ namespace SailTrim
             st.PilotSetMode(Plugin.ManualTrim.Value);
             if (!Plugin.ManualTrim.Value) return true;
 
+            // Physics runs on the ship's owner. Make sure that is the pilot, so a passenger without the mod
+            // (or with it opted out) never ends up simulating a manual-trim boat vanilla-style.
+            st.EnsurePilotOwnsShip();
+
             // Rudder only: zero z so vanilla never sees a Forward/Backward press.
             ship.ApplyControlls(new Vector3(moveDir.x, 0f, 0f));
             st.PilotTrimInput(moveDir.z, Time.fixedDeltaTime);

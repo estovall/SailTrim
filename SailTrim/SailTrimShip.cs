@@ -128,6 +128,12 @@ namespace SailTrim
             _initialised = true;
             if (_ship.m_floatCollider != null && _body != null)
                 Plugin.Log.LogInfo($"SailTrim: {_ship.name} float collider {_ship.m_floatCollider.size}, mass {_body.mass:0}, sailForceFactor {_ship.m_sailForceFactor}, sailForceOffset {_ship.m_sailForceOffset}");
+            if (_ship.m_mastObject != null)
+            {
+                var cols = _ship.m_mastObject.GetComponentsInChildren<Collider>(true);
+                Plugin.Log.LogInfo($"SailTrim: {_ship.name} mast object '{_ship.m_mastObject.name}' has {cols.Length} collider(s)" +
+                    (cols.Length > 0 ? ": " + string.Join(", ", System.Array.ConvertAll(cols, c => c.name + "(" + c.GetType().Name + (c.isTrigger ? ",trigger" : "") + ")")) : ""));
+            }
         }
 
         // Sent by the pilot to the ship OWNER (ZNetView.InvokeRPC(string, ...) targets the ZDO owner).
@@ -154,6 +160,18 @@ namespace SailTrim
             if (m == _lastSentMode || _nview == null || !_nview.IsValid()) return;
             _lastSentMode = m;
             _nview.InvokeRPC(RpcModeName, manual);
+        }
+
+        private float _lastClaimTime = -999f;
+
+        /// <summary>Pilot's client claims the ship's network ownership (vanilla API) if it does not have it.</summary>
+        internal void EnsurePilotOwnsShip()
+        {
+            if (!Plugin.PilotOwnsShip.Value || _nview == null || !_nview.IsValid() || _nview.IsOwner()) return;
+            if (Time.time - _lastClaimTime < 1f) return;
+            _lastClaimTime = Time.time;
+            _nview.ClaimOwnership();
+            Plugin.Log.LogInfo("SailTrim: claimed ownership of " + _ship.name + " for the pilot.");
         }
 
         // ------------------------------------------------------------------

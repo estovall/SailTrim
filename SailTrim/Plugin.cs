@@ -14,7 +14,7 @@ namespace SailTrim
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.1.0";
+        public const string VERSION = "1.1.1";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -38,6 +38,7 @@ namespace SailTrim
 
         // ---- Config: controls ----
         internal static ConfigEntry<bool> ManualTrim;
+        internal static ConfigEntry<bool> PilotOwnsShip;
         internal static ConfigEntry<KeyCode> ToggleKey;
         internal static ConfigEntry<float> ReleaseHoldTime;
         internal static ConfigEntry<KeyCode> LowerSailKey;
@@ -156,6 +157,8 @@ namespace SailTrim
 
             ManualTrim = Config.Bind("2. Controls", "ManualTrim", false,
                 "Your personal opt-in, remembered between sessions. Starts OFF: whenever you hold the rudder the boat sails exactly like vanilla (W/S step the sail, tap E lets go, auto-trim). Press ToggleKey (H) at the helm to switch to manual trim; your choice is saved here. Other players keep their own setting.");
+            PilotOwnsShip = Config.Bind("2. Controls", "PilotOwnsShip", true,
+                "When you take the rudder with manual trim on, your client takes over simulating the ship (the game's normal ownership hand-off). Guarantees the boat sails by your trim even if a passenger without the mod boarded first.");
             ToggleKey = Config.Bind("2. Controls", "ToggleKey", KeyCode.H,
                 "Key that switches ManualTrim on/off in game (saved to this config).");
             ReleaseHoldTime = Config.Bind("2. Controls", "ReleaseHoldTime", 0.5f,

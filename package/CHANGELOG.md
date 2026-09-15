@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- The pilot's client now takes ownership of the ship when they hold the rudder with manual trim on (`PilotOwnsShip`), so the boat always sails by the pilot's trim even if a passenger without the mod boarded first. Passengers without the mod see the boat's motion correctly; only their yard angle is drawn vanilla-style.
+
 ## 1.1.0
 
 - Server support. Install on the dedicated server (or the hosting player) as well as clients.
