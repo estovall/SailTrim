@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+
+- Fixed: with manual trim on, tapping E at the rudder let go of the helm instead of raising the sail whenever Jotunn was installed (single-player and servers alike). Jotunn re-evaluates the Use button after SailTrim swallows it; SailTrim now re-applies the swallow after Jotunn. Tap E = raise, hold E = release works again.
+
 ## 1.2.0
 
 - Crew trimming: a passenger with the mod uses the ship's "Hold fast" spot on the mast to take the sheet and trims with W/S while the pilot steers, 20% faster than the pilot could alone. Jump to let go. The pilot can trim at the same time; nobody else aboard can.

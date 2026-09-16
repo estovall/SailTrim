@@ -5,3 +5,6 @@ obj/
 dist/*.zip
 dist/
 package/SailTrim.dll
+
+# Hexium service-account token (never commit)
+hexium-token.txt

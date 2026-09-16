@@ -261,14 +261,30 @@ namespace SailTrim
 
         // Swallow the vanilla "tap Use = let go of the rudder" while piloting. Plugin.Update
         // re-implements Use as tap = raise sail, hold = release. Gamepad "JoyUse" is untouched.
+        private static bool SwallowUse(string name)
+        {
+            return name == "Use" && Plugin.Enabled.Value && Plugin.ManualTrim.Value && Plugin.IsLocalPlayerPiloting(out _);
+        }
+
         [HarmonyPatch(typeof(ZInput), nameof(ZInput.GetButtonDown), typeof(string))]
         [HarmonyPrefix]
         private static bool ZInput_GetButtonDown(string name, ref bool __result)
         {
-            if (name != "Use" || !Plugin.Enabled.Value || !Plugin.ManualTrim.Value) return true;
-            if (!Plugin.IsLocalPlayerPiloting(out _)) return true;
+            if (!SwallowUse(name)) return true;
             __result = false;
             return false;
+        }
+
+        // Jotunn (a dependency of many mods) postfixes ZInput.GetButtonDown and overwrites __result with a
+        // reverse-patched call to the unpatched original, which undoes the prefix above: Player.Update then
+        // sees the Use press and calls StopDoodadControl. Re-apply the swallow after every other postfix.
+        [HarmonyPatch(typeof(ZInput), nameof(ZInput.GetButtonDown), typeof(string))]
+        [HarmonyPostfix]
+        [HarmonyPriority(Priority.Last)]
+        [HarmonyAfter("com.jotunn.jotunn")]
+        private static void ZInput_GetButtonDown_Post(string name, ref bool __result)
+        {
+            if (__result && SwallowUse(name)) __result = false;
         }
     }
 }
