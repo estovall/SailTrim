@@ -259,6 +259,16 @@ namespace SailTrim
         [HarmonyPostfix]
         private static void FejdStartup_ShowConnectError(FejdStartup __instance) => SailTrimNet.OnShowConnectError(__instance);
 
+        // "SailTrim" tab in the vanilla Settings menu: key bindings and key-behaviour toggles only.
+        // Runs before Settings reads its tab list, so the game initialises our tab like its own.
+        [HarmonyPatch(typeof(Settings), "Awake")]
+        [HarmonyPrefix]
+        private static void Settings_Awake(Settings __instance)
+        {
+            try { SettingsTab.Install(__instance); }
+            catch (System.Exception e) { Plugin.Log.LogWarning("SailTrim: could not add the settings tab: " + e); }
+        }
+
         // Swallow the vanilla "tap Use = let go of the rudder" while piloting. Plugin.Update
         // re-implements Use as tap = raise sail, hold = release. Gamepad "JoyUse" is untouched.
         private static bool SwallowUse(string name)

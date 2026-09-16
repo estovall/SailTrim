@@ -443,6 +443,7 @@ namespace SailTrim
             {
                 new MethodTarget(typeof(ShipControlls), nameof(ShipControlls.ApplyControlls), new[] { typeof(Vector3), typeof(Vector3), typeof(bool), typeof(bool), typeof(bool) }),
                 new MethodTarget(typeof(Ship), "Awake", Type.EmptyTypes),
+                new MethodTarget(typeof(Settings), "Awake", Type.EmptyTypes),
                 new MethodTarget(typeof(Ship), "Start", Type.EmptyTypes),
                 new MethodTarget(typeof(Ship), "GetSailForce", new[] { typeof(float), typeof(float) }),
                 new MethodTarget(typeof(Ship), "UpdateSail", new[] { typeof(float) }),
