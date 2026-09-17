@@ -1,4 +1,9 @@
-# Pick-up notes: in-game settings tab (branch `settings-tab`)
+# Pick-up notes (history)
+
+**Status 2026-09-17: everything below is released as 1.4.0** (main `83e72a9`, Hexium `1.4.0.zip`). Branches `settings-tab` and
+`square-rig` are merged. The dedicated server needs 1.4.0; see DownloadsSAILTRIM-1.4.0-SERVER-NOTE.md on the home PC.
+Kept for the reasoning and test history.
+
 
 Written 2026-09-16 ~00:30 Central on Max's home PC, right before switching computers. Read this first on the new
 machine. `main` is the released **1.2.1**; this branch carries the unfinished settings tab on top of it.
