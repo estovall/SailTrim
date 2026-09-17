@@ -188,7 +188,8 @@ namespace SailTrim
             scroll.vertical = true;
             scroll.movementType = ScrollRect.MovementType.Clamped;
             scroll.inertia = false;
-            scroll.scrollSensitivity = 40f;
+            scroll.scrollSensitivity = 0f; // the wheel is handled in Update: one notch = three rows
+            _scroll = scroll; _list = list; _viewport = viewport;
             var layout = listGo.AddComponent<VerticalLayoutGroup>();
             layout.childAlignment = TextAnchor.UpperCenter;
             layout.childControlWidth = false; layout.childControlHeight = false;
@@ -436,8 +437,14 @@ namespace SailTrim
             RefreshKeyTexts();
         }
 
+        private ScrollRect _scroll;
+        private RectTransform _list, _viewport;
+        private float _wheelAcc;
+        private const float WheelStepPixels = 3f * 44f; // three rows per notch
+
         private void Update()
         {
+            UpdateWheel();
             if (_capturing == null) return;
             _captureDelay -= Time.unscaledDeltaTime;
             if (_captureDelay > 0f) return;
@@ -450,6 +457,22 @@ namespace SailTrim
                 EndCapture();
                 return;
             }
+        }
+
+        /// <summary>Mouse wheel scrolls the list a fixed three rows per notch, whatever the wheel's raw scale.</summary>
+        private void UpdateWheel()
+        {
+            if (_scroll == null || _list == null || _viewport == null) return;
+            float w = ZInput.GetMouseScrollWheel();
+            if (w == 0f) { return; }
+            _wheelAcc += w;
+            if (Mathf.Abs(_wheelAcc) < 0.1f) return;
+            float dir = Mathf.Sign(_wheelAcc);
+            _wheelAcc = 0f;
+            float range = LayoutUtility.GetPreferredHeight(_list) + 40f - _viewport.rect.height;
+            if (range <= 1f) { _scroll.verticalNormalizedPosition = 1f; return; }
+            // Wheel up (positive) shows earlier rows: normalized 1 = top.
+            _scroll.verticalNormalizedPosition = Mathf.Clamp01(_scroll.verticalNormalizedPosition + dir * WheelStepPixels / range);
         }
 
         private void RefreshKeyTexts()

@@ -551,18 +551,31 @@ namespace SailTrim
             return cl * Mathf.Sin(b) - cd * Mathf.Cos(b);
         }
 
-        /// <summary>Sheet angle with the most drive for this wind angle, scanned in 2 deg steps over the sheet range.</summary>
-        private static float BestSheetFor(float absBeta)
+        /// <summary>
+        /// Sheet angle with the most drive for this wind angle, scanned in 2 deg steps over the sheet range.
+        /// Downwind the drive is nearly flat over a wide band of angles, so the answer is the centre of the band
+        /// that comes within 3% of the best, and halfWidth is that band's half-width (everything in it is "trimmed").
+        /// </summary>
+        private static float BestSheetFor(float absBeta, out float halfWidth)
         {
-            float best = 0f, bestDrive = float.NegativeInfinity;
             float max = Plugin.MaxSheetAngle.Value;
+            float bestDrive = float.NegativeInfinity;
+            for (float s = 0f; s <= max + 0.01f; s += 2f)
+                bestDrive = Mathf.Max(bestDrive, DriveFor(absBeta, Mathf.Min(s, max)));
+            float lo = -1f, hi = -1f;
+            float threshold = bestDrive - 0.03f * Mathf.Abs(bestDrive);
             for (float s = 0f; s <= max + 0.01f; s += 2f)
             {
-                float d = DriveFor(absBeta, Mathf.Min(s, max));
-                if (d > bestDrive + 1e-4f) { bestDrive = d; best = Mathf.Min(s, max); }
+                float sc = Mathf.Min(s, max);
+                if (DriveFor(absBeta, sc) < threshold) continue;
+                if (lo < 0f) lo = sc;
+                hi = sc;
             }
-            return best;
+            if (lo < 0f) { halfWidth = 0f; return max; }
+            halfWidth = (hi - lo) * 0.5f;
+            return (lo + hi) * 0.5f;
         }
+        private float _idealHalfWidth;
 
         /// <summary>
         /// Rare gusts and lulls, deterministic from world time so every client agrees. Each period-long slot
@@ -932,10 +945,10 @@ namespace SailTrim
             UpdateReadout(a, dt);
             UpdateMastStrain(dt);
 
-            // Vanilla points the mast object's forward DOWNWIND (the sail bellies away from mast.forward's
-            // back face), and builds the rotation in the hull plane so the rig heels with the hull.
-            // Aback: the wind is on the other face, so the sail bellies the other way.
-            Vector3 facing = Vector3.ProjectOnPlane(IsBackwinded && _ship.IsSailUp() ? -a.leewardNormal : a.leewardNormal, a.up);
+            // The mast object's forward is the sail's normal; the yard is a symmetric spar and the cloth is blown by
+            // the game's wind, so either sign of the normal draws the same rig. Build it in the hull plane so the rig
+            // heels with the hull.
+            Vector3 facing = Vector3.ProjectOnPlane(a.leewardNormal, a.up);
             if (facing.sqrMagnitude < 1e-4f) return;
             facing.Normalize();
             if (IsLuffing && _ship.IsSailUp() && Plugin.FlapAmplitude.Value > 0f)
@@ -953,12 +966,12 @@ namespace SailTrim
 
             float turnRate = Plugin.YardTurnRate.Value;
             if (Time.time < _gybeSwingUntil) turnRate *= 3f; // the yard slams across
+            // Treat the yard as a line: aim for whichever sign of the normal is the shorter turn from where the
+            // rig is now. Tacking then braces the yard round through square at normal sheet angles, and with the yard
+            // hauled fore-and-aft it barely moves; the wind lays the canvas on the new side, aback against the mast.
             Quaternion to = Quaternion.LookRotation(facing, a.up);
-            // Tacking with the yard hauled nearly fore-and-aft: the leeward face swaps sides, which is a 180 deg turn
-            // of the mast object although the yard itself barely moves. A fore-and-aft yard looks the same end for
-            // end, so flip it instantly and let the remaining small turn animate the short way.
-            if (Quaternion.Angle(mast.transform.rotation, to) > 150f)
-                mast.transform.rotation = mast.transform.rotation * Quaternion.AngleAxis(180f, Vector3.up);
+            Quaternion toFlipped = Quaternion.LookRotation(-facing, a.up);
+            if (Quaternion.Angle(mast.transform.rotation, toFlipped) < Quaternion.Angle(mast.transform.rotation, to)) to = toFlipped;
             mast.transform.rotation = Quaternion.RotateTowards(mast.transform.rotation, to, turnRate * dt);
         }
 
@@ -1039,7 +1052,10 @@ namespace SailTrim
             SmoothAoA = Mathf.Lerp(SmoothAoA, a.aoa, k);
 
             float absBeta = Mathf.Abs(SmoothWindFromAngle);
-            IdealSheet = BestSheetFor(absBeta);
+            // Smooth the target too: the plateau centre still steps as the wind angle drifts.
+            float idealNow = BestSheetFor(absBeta, out float hw);
+            IdealSheet = Mathf.Lerp(IdealSheet, idealNow, k);
+            _idealHalfWidth = Mathf.Lerp(_idealHalfWidth, hw, k);
             float diff = SheetAngle - IdealSheet;
 
             // HUD vectors (boat frame: x = starboard, y = bow).
@@ -1056,7 +1072,8 @@ namespace SailTrim
             else
             {
                 bool wasTrimmed = State == TrimState.Trimmed;
-                float band = wasTrimmed ? 11f : 6f;
+                // Anything inside the near-best plateau counts as trimmed, with hysteresis on top.
+                float band = _idealHalfWidth + (wasTrimmed ? 11f : 6f);
                 bool dragRegime = absBeta >= Plugin.SquareRunAngle.Value;
                 if (Mathf.Abs(diff) <= band) next = TrimState.Trimmed;
                 else if (diff < 0f) next = !dragRegime && SmoothAoA > Plugin.StallAngle.Value ? TrimState.Stalled : TrimState.OverTrimmed;
