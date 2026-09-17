@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (branch spill-tack)
+
+- Let go and haul: tacking with the sheet hauled in (40 deg or less, `SpillSheetAngle`) no longer puts the sail aback. The crew casts off its lower corners, the sail flogs as a loose rag with no drive, the yard is braced round through square, and after `TackHaulTime` the sail fills on the new tack. Carry your way through the dead patch or you will stall in irons. Eased out past the limit, a wind from ahead still puts the sail aback, which is how you back out of irons.
+
 ## 1.4.0
 
 - Square-rig trim: the force curve is now a low-aspect square sail (lift peaks near 30-35 deg and falls off gently), the yard wants roughly half the apparent wind angle instead of a jib-like 22 deg angle of attack, and abaft about 110 deg the sail is a drag device: running with the yard square is "Trimmed", never "Stalled". The trim hint is computed from the force curves themselves, so it always matches the physics. Pointing ability and the 0-90 sheet range are unchanged on purpose.

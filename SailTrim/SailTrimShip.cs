@@ -58,6 +58,21 @@ namespace SailTrim
         public float WindFromAngle { get; private set; }
         public float AngleOfAttack { get; private set; }
         public bool IsLuffing { get; private set; }
+        /// <summary>
+        /// Clews let go: with the sheet hauled in (SheetAngle at or under SpillSheetAngle) the crew does not let the sail
+        /// go aback when the wind comes ahead, they cast off its lower corners. The sail is a loose rag carrying no
+        /// load until it can fill again. Eased further out than that, the corners stay made fast and it goes aback.
+        /// </summary>
+        public bool IsSpilled { get; private set; }
+        /// <summary>A spilled sail whose yard has crossed to the other side: a tack in progress.</summary>
+        public bool IsTacking { get; private set; }
+        private int _spillSide;
+        private bool _spillFlipped;
+        private float _refillTimer;
+        private float _yardErrorDeg;
+        private float _throughSquareUntil = -1f;
+        private float _spillVis;
+        private float _visWind;
         /// <summary>Wind on the wrong side of the sail (e.g. in irons with the yard square): drag only, pushes downwind.</summary>
         public bool IsBackwinded { get; private set; }
         public bool IsStalled { get; private set; }
@@ -79,7 +94,7 @@ namespace SailTrim
         private int _lastSentSpeed = -1;
         private float _lastSpeedSendTime;
 
-        public enum TrimState { Trimmed, UnderTrimmed, OverTrimmed, Luffing, Stalled, Backwinded, NoseDiving }
+        public enum TrimState { Trimmed, UnderTrimmed, OverTrimmed, Luffing, Stalled, Backwinded, NoseDiving, Spilled }
         /// <summary>Readout state, computed from wave-smoothed wind angle and AoA with hysteresis so it does not flicker.</summary>
         public TrimState State { get; private set; }
         /// <summary>Wind-from angle smoothed over a couple of seconds (waves yaw the boat every second or so).</summary>
@@ -287,7 +302,19 @@ namespace SailTrim
                 b = _ship.m_sailUnfurledPosition.position;
             }
             float t = Utils.Frac(Mathf.Clamp(_ship.m_sailPosition, 0f, 0.999f) * 2f);
-            _ship.m_sailBottomTransform.position = Vector3.Lerp(a, b, t);
+            Vector3 foot = Vector3.Lerp(a, b, t);
+            // Clews let go: the foot of the sail rides up a little and thrashes about instead of being held down.
+            _spillVis = Mathf.MoveTowards(_spillVis, IsSpilled ? 1f : 0f, dt * 3f);
+            if (_spillVis > 0.001f && Plugin.SpillFlog.Value > 0f && _ship.m_sailPosition > 0.05f && _ship.m_mastObject != null)
+            {
+                float amt = _spillVis * Plugin.SpillFlog.Value * Mathf.Clamp01(_visWind + 0.3f);
+                Transform mt = _ship.m_mastObject.transform;
+                float tt = Time.time;
+                foot = Vector3.Lerp(foot, _ship.m_sailFurledPosition.position, 0.18f * amt);
+                foot += mt.forward * ((Mathf.Sin(tt * 13f) * 0.45f + Mathf.Sin(tt * 7.3f) * 0.3f) * amt);
+                foot += mt.right * (Mathf.Sin(tt * 9.1f) * 0.25f * amt);
+            }
+            _ship.m_sailBottomTransform.position = foot;
             float blend = _ship.m_sailBlendWeightCurve.Evaluate(_ship.m_sailPosition);
             _ship.m_sailCloth.SerializeData.blendWeight = blend;
             _ship.m_sailCloth.SetParameterChange();
@@ -647,9 +674,11 @@ namespace SailTrim
                 IsLuffing = !IsBackwinded && aoa <= Plugin.LuffAngle.Value;
                 // Abaft SquareRunAngle a square sail is a drag device: the yard goes square and nothing "stalls".
                 IsStalled = !IsLuffing && !IsBackwinded && aoa > Plugin.StallAngle.Value && a.absBeta < Plugin.SquareRunAngle.Value;
+                if (IsSpilled) { IsBackwinded = false; IsLuffing = false; IsStalled = false; }
 
                 float cl, cd;
-                if (IsLuffing) { cl = 0f; cd = 0.05f; }
+                if (IsSpilled) { cl = 0f; cd = 0.06f; } // a flogging rag: a little windage, no drive, no sternway push
+                else if (IsLuffing) { cl = 0f; cd = 0.05f; }
                 else if (IsBackwinded)
                 {
                     // Sail aback: pressed against the mast, no lift, just drag pushing the boat downwind
@@ -675,7 +704,7 @@ namespace SailTrim
                 Vector3 f = (liftDir * cl + a.windTo * cd) / LiftNorm;
 
                 // Keep a filled sail sailable, however badly trimmed (not when aback: that push is meant to be backwards).
-                if (!IsLuffing && !IsBackwinded)
+                if (!IsLuffing && !IsBackwinded && !IsSpilled)
                 {
                     float drive = Vector3.Dot(f, a.fwd);
                     float floor = Plugin.MinFilledDrive.Value * noGoScale;
@@ -941,6 +970,8 @@ namespace SailTrim
                 IsStalled = !IsLuffing && !IsBackwinded && a.aoa > Plugin.StallAngle.Value;
             }
 
+            _visWind = a.windStrength;
+            UpdateSpillState(a, dt);
             UpdateWindShadow(a, dt);
             UpdateReadout(a, dt);
             UpdateMastStrain(dt);
@@ -951,10 +982,12 @@ namespace SailTrim
             Vector3 facing = Vector3.ProjectOnPlane(a.leewardNormal, a.up);
             if (facing.sqrMagnitude < 1e-4f) return;
             facing.Normalize();
-            if (IsLuffing && _ship.IsSailUp() && Plugin.FlapAmplitude.Value > 0f)
+            if ((IsLuffing || IsSpilled) && _ship.IsSailUp() && Plugin.FlapAmplitude.Value > 0f)
             {
-                float wobble = Mathf.Sin(Time.time * Mathf.PI * 2f * Plugin.FlapFrequency.Value)
-                               * Plugin.FlapAmplitude.Value * Mathf.Clamp01(a.windStrength + 0.25f);
+                // A spilled sail flogs harder and faster than one that is merely luffing.
+                float freq = Plugin.FlapFrequency.Value * (IsSpilled ? 1.5f : 1f);
+                float amp = Plugin.FlapAmplitude.Value * (IsSpilled ? 2.2f * Plugin.SpillFlog.Value : 1f);
+                float wobble = Mathf.Sin(Time.time * Mathf.PI * 2f * freq) * amp * Mathf.Clamp01(a.windStrength + 0.25f);
                 facing = Quaternion.AngleAxis(wobble, a.up) * facing;
             }
 
@@ -971,8 +1004,67 @@ namespace SailTrim
             // hauled fore-and-aft it barely moves; the wind lays the canvas on the new side, aback against the mast.
             Quaternion to = Quaternion.LookRotation(facing, a.up);
             Quaternion toFlipped = Quaternion.LookRotation(-facing, a.up);
-            if (Quaternion.Angle(mast.transform.rotation, toFlipped) < Quaternion.Angle(mast.transform.rotation, to)) to = toFlipped;
+            if (Time.time < _throughSquareUntil)
+            {
+                // Tacking with the sail spilled: brace the yard round through square, as a real crew must. The sail
+                // normal keeps its fore/aft sense and swaps sides, so its path crosses the hull's fore-and-aft axis.
+                float curF = Vector3.Dot(mast.transform.forward, a.fwd);
+                float candF = Vector3.Dot(facing, a.fwd);
+                if (Mathf.Abs(curF) > 0.1f && Mathf.Sign(candF) != Mathf.Sign(curF)) to = toFlipped;
+            }
+            else if (Quaternion.Angle(mast.transform.rotation, toFlipped) < Quaternion.Angle(mast.transform.rotation, to)) to = toFlipped;
             mast.transform.rotation = Quaternion.RotateTowards(mast.transform.rotation, to, turnRate * dt);
+            _yardErrorDeg = Quaternion.Angle(mast.transform.rotation, to);
+            if (_yardErrorDeg < 6f) _throughSquareUntil = -1f;
+        }
+
+        /// <summary>
+        /// Let go and haul. Runs on every client once per step (the owner's copy drives the physics).
+        /// Spill starts when the sail would go aback while the sheet is hauled in; it ends when the wind is back on
+        /// the right face, the yard has been braced round, and the crew has had TackHaulTime to set the new tack.
+        /// </summary>
+        private void UpdateSpillState(Aero a, float dt)
+        {
+            float luff = Plugin.LuffAngle.Value;
+            float limit = Plugin.SpillSheetAngle.Value;
+            bool canSpill = limit > 0f && _ship.IsSailUp() && SheetAngle <= limit && a.absBeta < 90f;
+
+            if (!IsSpilled)
+            {
+                if (canSpill && a.aoa < -luff)
+                {
+                    IsSpilled = true;
+                    _spillSide = _boomSide;
+                    _spillFlipped = false;
+                    _refillTimer = 0f;
+                }
+            }
+            else if (!canSpill)
+            {
+                IsSpilled = false; // eased out past the limit (goes aback as usual), sail stowed, or bore right away
+            }
+            else
+            {
+                if (_boomSide != _spillSide)
+                {
+                    _spillSide = _boomSide;
+                    _spillFlipped = true;
+                    // A real yard is braced round through square. Hauled nearly fore-and-aft that would be a half
+                    // turn, so very flat sheets keep the short way.
+                    if (Plugin.TackThroughSquare.Value && SheetAngle >= 15f) _throughSquareUntil = Time.time + 4f;
+                }
+                bool couldFill = a.aoa > luff;
+                bool yardHome = !_spillFlipped || _yardErrorDeg < 15f;
+                if (couldFill && yardHome)
+                {
+                    _refillTimer += dt;
+                    if (_refillTimer >= (_spillFlipped ? Plugin.TackHaulTime.Value : 0.4f)) IsSpilled = false;
+                }
+                else _refillTimer = 0f;
+            }
+
+            IsTacking = IsSpilled && _spillFlipped;
+            if (IsSpilled) { IsBackwinded = false; IsLuffing = false; IsStalled = false; }
         }
 
         /// <summary>Rig strain: every client tracks it for the readout; only the owner applies damage.</summary>
@@ -1067,6 +1159,7 @@ namespace SailTrim
             float luff = Plugin.LuffAngle.Value;
             TrimState next;
             if (IsNoseDiving) next = TrimState.NoseDiving;
+            else if (IsSpilled) next = TrimState.Spilled;
             else if (SmoothAoA < -luff - 2f || (State == TrimState.Backwinded && SmoothAoA < -luff + 2f)) next = TrimState.Backwinded;
             else if (SmoothAoA <= luff || (State == TrimState.Luffing && SmoothAoA <= luff + 3f)) next = TrimState.Luffing;
             else

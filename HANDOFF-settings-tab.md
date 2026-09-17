@@ -106,3 +106,25 @@ hold Q → drops; Shift with sail set → "Hold to stow" message, keep holding �
 (paddle animation, "Rowing" on the HUD); release → stops (hold mode). Space lets go. Then multiplayer: a second
 client should see the partial sail and the paddling. Watch `LogOutput.log` for errors from `UpdateSailSizeManual`.
 1.3.0 (settings tab + HUD-after-rejoin fix) is still on `settings-tab`, verified visually, not yet merged/published.
+
+## Update 2026-09-17 (later): branch `spill-tack`, untested in game when written
+
+Max's ask, after a long talk about how a real square rig tacks ("let go and haul"): when tacking with the sheet
+hauled in, the clews are let go and the sail is a loose rag while the yard is braced round; eased out further, a
+wind from ahead still puts the sail aback as before.
+
+- `SailTrimShip.UpdateSpillState` (called from `UpdateYard`, every client, once per step): spill starts when the sail
+  would go aback (`aoa < -LuffAngle`) while `SheetAngle <= SpillSheetAngle` (40, `3. Physics`, synced) and the wind is
+  forward of the beam. It ends when the wind is back on the right face, the visible yard is within 15 deg of its
+  target, and `TackHaulTime` (1.5 s) has passed (0.4 s if the yard never changed sides). Easing the sheet past the
+  limit ends the spill at once, and the sail then goes aback: that is the deliberate way to back out of irons.
+- Physics (`ComputeSailForce`): spilled = no lift, cd 0.06, no `MinFilledDrive` floor, so no heel and no sternway push.
+- Visuals: `TackThroughSquare` routes the mast rotation through square during a spilled tack (sheets under 15 deg keep
+  the short way, which avoids the half-turn spin fixed in 1.4.0); yard shake is stronger; `UpdateSailSizeManual`
+  lifts and thrashes `m_sailBottomTransform` (the cloth's foot) scaled by `SpillFlog` (`5. Visuals`).
+- HUD: `TrimState.Spilled`, "Tacking – sail spilled" / "Sail spilled – bear away to fill".
+- Version string left at 1.4.0 on purpose so the test build still matches the server. Bump to 1.5.0 at release.
+
+Test: close-hauled (sheet ~25), helm down through the wind: expect luff, then "Tacking – sail spilled", yard sweeping
+through square, a dead patch, then fill on the new tack. Then in irons ease the sheet past 40: expect "Aback" and
+sternway. Watch the loose foot: if the cloth misbehaves, set `SpillFlog = 0`.
