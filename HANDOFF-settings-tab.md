@@ -139,3 +139,21 @@ sternway. Watch the loose foot: if the cloth misbehaves, set `SpillFlog = 0`.
 - Rag: foot lifted 30%, thrash scaled by the sail's drop, and the foot streams downwind (`_visWindTo`) like a flag.
 - Seats bug: benches within 2.5 m of the mast (Karve) and the bow hold-fast (`$ship_holdfast@front`, longship) were
   hooked for crew trimming. Rule is now name contains "hold" AND within 2.5 m of the mast.
+
+### spill-tack, third pass (2026-09-17): Max: "the animation looks pretty terrible", luffing must not shake the yard
+
+What the sail actually is: `Ship.m_sailCloth` is a MagicaCloth2 blown by a global `MagicaWindZone` on EnvMan
+(`SetWindDirection(GetWindDir())`, `main = intensity^2 * 100`). The cloth's foot is pinned to
+`m_sailBottomTransform`, so jittering or sliding that anchor only waggles a stiff sheet (that was the ugly part).
+
+- Yard wobble removed for luffing and spill. `FlapAmplitude` is now unused (binding kept for old cfg files).
+- `UpdateClothFlutter` (called from `UpdateSailSizeManual` just before `SetParameterChange`): blends the cloth's own
+  `SerializeData.wind` from the prefab's values toward turbulence 2, frequency 2, synchronization 0.05, influence
+  x1.35, by 0.65 when luffing and 1.0 when spilled, scaled by `LuffFlutter` (`5. Visuals`). Originals captured once.
+- Spilled look: the foot is smoothly clewed up `SpillClewUp` (0.4) of the way toward the furled position, which
+  leaves the full-length cloth slack so the wind flogs it. No anchor jitter, no downwind slide. `SpillFlog` removed.
+- Through-square sweep only when `SheetAngle >= TackSquareMinSheet` (25, sweep <= 130 deg); flatter sheets take the
+  short way as in 1.4.0. Yard motion eases in and out (`_yardSpeed`).
+
+If the cloth still looks wrong, next things to try: `SerializeData.gravity`, `damping`, and
+`distanceConstraint`/`tetherConstraint` stiffness while spilled. Max tests on the Karve with a very flat sheet (~6 deg).

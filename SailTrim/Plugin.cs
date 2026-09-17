@@ -54,7 +54,9 @@ namespace SailTrim
         internal static ConfigEntry<float> TackHaulTime;
         internal static ConfigEntry<bool> TackThroughSquare;
         internal static ConfigEntry<float> TackSwingTime;
-        internal static ConfigEntry<float> SpillFlog;
+        internal static ConfigEntry<float> SpillClewUp;
+        internal static ConfigEntry<float> LuffFlutter;
+        internal static ConfigEntry<float> TackSquareMinSheet;
         internal static ConfigEntry<KeyCode> LowerSailKey;
         internal static ConfigEntry<KeyCode> RaiseSailKey;
         internal static ConfigEntry<bool> MoveKeysTrimSheet;
@@ -301,6 +303,9 @@ namespace SailTrim
                     new AcceptableValueRange<float>(0f, 10f)));
             TackThroughSquare = Config.Bind("3. Physics", "TackThroughSquare", true,
                 "When tacking with the sail spilled, brace the yard round through square (the long way, as a real square rig must) instead of the shortest way.");
+            TackSquareMinSheet = Config.Bind("3. Physics", "TackSquareMinSheet", 25f,
+                new ConfigDescription("Flattest sheet angle at which a tack sweeps the yard round through square. Below it the yard takes the short way, because through square would be close to a half-turn spin that no real rig could make.",
+                    new AcceptableValueRange<float>(0f, 90f)));
             TackSwingTime = Config.Bind("3. Physics", "TackSwingTime", 1.6f,
                 new ConfigDescription("Seconds the yard takes to sweep round in a tack, whatever the sheet angle (a flatter sheet means a longer sweep at a faster rate). The sail cannot fill until the yard is home.",
                     new AcceptableValueRange<float>(0.3f, 8f)));
@@ -436,11 +441,14 @@ namespace SailTrim
             YardTurnRate = Config.Bind("5. Visuals", "YardTurnRate", 90f,
                 new ConfigDescription("How fast the mast/yard visually rotates toward the commanded angle, degrees per second.",
                     new AcceptableValueRange<float>(10f, 360f)));
-            SpillFlog = Config.Bind("5. Visuals", "SpillFlog", 1f,
-                new ConfigDescription("How violently a spilled sail flogs: yard shake and the thrashing of the sail's loose foot. 0 = no extra motion.",
-                    new AcceptableValueRange<float>(0f, 3f)));
+            SpillClewUp = Config.Bind("5. Visuals", "SpillClewUp", 0.4f,
+                new ConfigDescription("How far the foot of a spilled sail rides up toward the yard while tacking (0.4 = 40% of the way). The slack this gives the cloth is what lets it flog. 0 = the foot stays down.",
+                    new AcceptableValueRange<float>(0f, 0.9f)));
+            LuffFlutter = Config.Bind("5. Visuals", "LuffFlutter", 1f,
+                new ConfigDescription("How strongly the sail cloth itself flutters when luffing or spilled (cloth turbulence and gust rate). The yard no longer shakes. 0 = off.",
+                    new AcceptableValueRange<float>(0f, 1f)));
             FlapAmplitude = Config.Bind("5. Visuals", "FlapAmplitude", 3f,
-                new ConfigDescription("Yaw wobble of the yard (degrees) while the sail is luffing.",
+                new ConfigDescription("No longer used: the yard does not shake; the cloth flutters instead (LuffFlutter). Kept so old config files load cleanly.",
                     new AcceptableValueRange<float>(0f, 15f)));
             FlapFrequency = Config.Bind("5. Visuals", "FlapFrequency", 4f,
                 new ConfigDescription("Flap oscillation rate in Hz while luffing.",

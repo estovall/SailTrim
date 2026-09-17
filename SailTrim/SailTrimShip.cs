@@ -77,6 +77,10 @@ namespace SailTrim
         private int _spillPrevSide;
         private bool _spillSideSeen;
         private float _tackRate = -1f;
+        private float _yardSpeed;
+        private bool _clothCaptured;
+        private float _cloth0Influence, _cloth0Frequency, _cloth0Turbulence, _cloth0Sync;
+        private float _clothFx;
         /// <summary>Wind on the wrong side of the sail (e.g. in irons with the yard square): drag only, pushes downwind.</summary>
         public bool IsBackwinded { get; private set; }
         public bool IsStalled { get; private set; }
@@ -307,27 +311,19 @@ namespace SailTrim
             }
             float t = Utils.Frac(Mathf.Clamp(_ship.m_sailPosition, 0f, 0.999f) * 2f);
             Vector3 foot = Vector3.Lerp(a, b, t);
-            // Clews let go: the foot of the sail rides up a little and thrashes about instead of being held down.
-            _spillVis = Mathf.MoveTowards(_spillVis, IsSpilled ? 1f : 0f, dt * 3f);
-            if (_spillVis > 0.001f && Plugin.SpillFlog.Value > 0f && _ship.m_sailPosition > 0.05f && _ship.m_mastObject != null)
+            // Clews let go: the foot is no longer hauled down and out, so it rides up toward the yard. The cloth keeps
+            // its full length, so it hangs slack and the wind does the flogging. The anchor itself moves smoothly:
+            // the cloth's foot is pinned to it, and shaking the anchor only waggles a stiff sheet.
+            _spillVis = Mathf.MoveTowards(_spillVis, IsSpilled ? 1f : 0f, dt * (IsSpilled ? 2.2f : 1.3f));
+            if (_spillVis > 0.001f && _ship.m_sailPosition > 0.05f)
             {
-                float amt = _spillVis * Plugin.SpillFlog.Value * Mathf.Clamp01(_visWind + 0.3f);
-                Transform mt = _ship.m_mastObject.transform;
-                float tt = Time.time;
-                // Scale by the sail's own drop so a drakkar's rag moves as much, for its size, as a Karve's.
-                float drop = Mathf.Max(1f, (_ship.m_sailUnfurledPosition.position - _ship.m_sailFurledPosition.position).magnitude);
-                foot = Vector3.Lerp(foot, _ship.m_sailFurledPosition.position, 0.3f * Mathf.Min(1f, amt));
-                // Nothing holds the foot down any more, so it streams away downwind like a flag...
-                Vector3 downwind = Vector3.ProjectOnPlane(_visWindTo, mt.up);
-                if (downwind.sqrMagnitude > 1e-4f) foot += downwind.normalized * (0.26f * drop * amt);
-                // ...and thrashes about that line.
-                foot += mt.forward * ((Mathf.Sin(tt * 13f) * 0.12f + Mathf.Sin(tt * 7.3f) * 0.08f) * drop * amt);
-                foot += mt.right * (Mathf.Sin(tt * 9.1f) * 0.07f * drop * amt);
-                foot += mt.up * (Mathf.Abs(Mathf.Sin(tt * 5.7f)) * 0.05f * drop * amt);
+                float k = Mathf.SmoothStep(0f, 1f, _spillVis) * Mathf.Clamp01(Plugin.SpillClewUp.Value);
+                foot = Vector3.Lerp(foot, _ship.m_sailFurledPosition.position, k);
             }
             _ship.m_sailBottomTransform.position = foot;
             float blend = _ship.m_sailBlendWeightCurve.Evaluate(_ship.m_sailPosition);
             _ship.m_sailCloth.SerializeData.blendWeight = blend;
+            UpdateClothFlutter(dt);
             _ship.m_sailCloth.SetParameterChange();
 
             bool moving = Time.time - _lastSailChangeTime < 0.3f || !Mathf.Approximately(_ship.m_sailPosition, target);
@@ -339,6 +335,34 @@ namespace SailTrim
             }
             _sailWasMoving = moving;
             _ship.m_sailWasInPosition = !moving;
+        }
+
+        /// <summary>
+        /// Luffing and flogging happen in the cloth, not the spar. The sail is a MagicaCloth blown by the game's global
+        /// wind zone (true wind direction, strength from wind intensity); its own wind settings decide how it reacts.
+        /// Turbulence and gust frequency up, synchronization down = the panels ripple independently instead of the
+        /// whole sail swaying as one. Values are blended from the prefab's own, captured once, and put back when the
+        /// sail is drawing again.
+        /// </summary>
+        private void UpdateClothFlutter(float dt)
+        {
+            var cloth = _ship.m_sailCloth;
+            if (cloth == null || cloth.SerializeData == null || cloth.SerializeData.wind == null) return;
+            var w = cloth.SerializeData.wind;
+            if (!_clothCaptured)
+            {
+                _cloth0Influence = w.influence; _cloth0Frequency = w.frequency;
+                _cloth0Turbulence = w.turbulence; _cloth0Sync = w.synchronization;
+                _clothCaptured = true;
+            }
+            bool up = _ship.IsSailUp() && _ship.m_sailPosition > 0.05f;
+            float want = !up ? 0f : (IsSpilled ? 1f : (IsLuffing ? 0.65f : 0f));
+            _clothFx = Mathf.MoveTowards(_clothFx, want, dt * 2.5f);
+            float k = Mathf.Clamp01(_clothFx * Plugin.LuffFlutter.Value);
+            w.turbulence = Mathf.Lerp(_cloth0Turbulence, 2f, k);
+            w.frequency = Mathf.Lerp(_cloth0Frequency, 2f, k);
+            w.synchronization = Mathf.Lerp(_cloth0Sync, 0.05f, k);
+            w.influence = Mathf.Lerp(_cloth0Influence, Mathf.Min(2f, _cloth0Influence * 1.35f), k);
         }
 
         // Crew member takes or releases the sheet (sent to the owner; the owner mirrors it into the ZDO).
@@ -994,14 +1018,8 @@ namespace SailTrim
             Vector3 facing = Vector3.ProjectOnPlane(a.leewardNormal, a.up);
             if (facing.sqrMagnitude < 1e-4f) return;
             facing.Normalize();
-            if ((IsLuffing || IsSpilled) && _ship.IsSailUp() && Plugin.FlapAmplitude.Value > 0f)
-            {
-                // A spilled sail flogs harder and faster than one that is merely luffing.
-                float freq = Plugin.FlapFrequency.Value * (IsSpilled ? 1.5f : 1f);
-                float amp = Plugin.FlapAmplitude.Value * (IsSpilled ? 3f * Plugin.SpillFlog.Value : 1f);
-                float wobble = Mathf.Sin(Time.time * Mathf.PI * 2f * freq) * amp * Mathf.Clamp01(a.windStrength + 0.25f);
-                facing = Quaternion.AngleAxis(wobble, a.up) * facing;
-            }
+            // The yard itself stays steady when the sail luffs or is spilled: the flutter is in the cloth
+            // (see UpdateClothFlutter), the way a real sail shakes while its spar does not.
 
             if (_gybeFlag)
             {
@@ -1033,7 +1051,10 @@ namespace SailTrim
             }
             else delta = Mathf.Abs(d1) <= Mathf.Abs(d2) ? d1 : d2;
 
-            float step = Mathf.Sign(delta) * Mathf.Min(Mathf.Abs(delta), turnRate * dt);
+            // Ease in and out: spin up to speed, slow down on the approach, instead of snapping at a constant rate.
+            float wantSpeed = Mathf.Min(turnRate, Mathf.Abs(delta) * 5f + 4f);
+            _yardSpeed = Mathf.MoveTowards(_yardSpeed, wantSpeed, turnRate * 3f * dt);
+            float step = Mathf.Sign(delta) * Mathf.Min(Mathf.Abs(delta), _yardSpeed * dt);
             Vector3 next = Quaternion.AngleAxis(step, a.up) * cur;
             mast.transform.rotation = Quaternion.LookRotation(next, a.up);
             _yardErrorDeg = Mathf.Abs(delta) - Mathf.Abs(step);
@@ -1110,7 +1131,9 @@ namespace SailTrim
         /// <summary>The yard is about to be braced round: sweep it through square, in a bounded time whatever the sheet.</summary>
         private void BeginTackSwing()
         {
-            if (!Plugin.TackThroughSquare.Value) return;
+            // Through square is a sweep of 180 - 2 * sheet degrees. With the yard hauled nearly fore-and-aft that is
+            // almost a half turn, which no real rig could do and which looks wrong, so flat sheets take the short way.
+            if (!Plugin.TackThroughSquare.Value || SheetAngle < Plugin.TackSquareMinSheet.Value) return;
             _throughSquareUntil = Time.time + 6f;
             _tackRate = -1f; // measured on the first step of the sweep
         }
