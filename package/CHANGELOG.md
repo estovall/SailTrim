@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (branch spill-tack)
+## 1.5.0
 
 - Tack animation (visual only, sailing performance unchanged): when the yard changes sides the sail's tension is let go and its foot streams out downwind, the yard sweeps round through square, and the sail is tensioned again. The yard can no longer turn the wrong way round or snap between two equivalent positions.
 - The sail itself luffs: the cloth ripples when luffing, and the yard no longer shakes. Hauled in hard, a drawing sail looks taut with a fair curve; eased out it moves freely.

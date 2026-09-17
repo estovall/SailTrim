@@ -1,7 +1,9 @@
 # Pick-up notes (history)
 
-**Status 2026-09-17: everything below is released as 1.4.0** (main `83e72a9`, Hexium `1.4.0.zip`). Branches `settings-tab` and
-`square-rig` are merged. The dedicated server needs 1.4.0; see DownloadsSAILTRIM-1.4.0-SERVER-NOTE.md on the home PC.
+**Status 2026-09-17 (later): everything below is released as 1.5.0** (Hexium `1.5.0.zip`, branch `spill-tack` merged into
+`main`). 1.5.0 = visual tack motion, cloth luffing/tautness, mast-only crew seat; sailing physics unchanged from 1.4.0.
+**The dedicated server needs 1.5.0** (exact version-string match). Earlier: 1.4.0 (main `83e72a9`), branches
+`settings-tab` and `square-rig` merged.
 Kept for the reasoning and test history.
 
 

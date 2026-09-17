@@ -92,7 +92,11 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 * **Rowing** (Shift / Ctrl) only works with the sail furled; holding a row key with sail set stows the sail
   first (about a second, so a slip does nothing).
 * The yard follows the sheet even with the sail furled, so you can pre-trim before hoisting.
-* Eased too far: the sail **luffs** (yard wobbles, almost no drive). Sheet in.
+* Eased too far: the sail **luffs**: the cloth ripples and there is almost no drive (the yard stays steady). Sheet in.
+* Hauled in hard, a drawing sail looks taut with a fair curve; eased out for a run it moves freely.
+* **Tacking** plays as one motion tied to the bow's swing: within about 25° of the wind the sail's tension eases and
+  its foot streams out downwind, the yard sweeps round through square as the bow passes through the wind, and the
+  sail is tensioned again on the new side. It is visual only; the boat tacks exactly as before.
 * Wind on the wrong face, for example in irons with the yard square: the sail is **aback** and pushes you
   astern. Square-riggers used this to back out of irons; sheet in or bear away to fill it properly.
 * Hauled too far: the sail **stalls**. Drive drops (never to zero, you can still crawl home), and the boat
@@ -167,7 +171,9 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 | `HeelDriveShare` | 0.3 | Part of the drive counts as heel too, so a trimmed reach heels 10-15° |
 | `StallHeelBoost` | 1 | Extra heel when stalled |
 | `MaxHeelAngle` | 45 | Heeling torque fades out over the last 10° before this |
-| `FlapAmplitude` / `FlapFrequency` | 3 / 4 | Luffing wobble |
+| `LuffFlutter` / `CloseHauledTautness` | 1 / 1 | Cloth ripple when luffing; how taut a hard-sheeted sail looks |
+| `TackAnimation` / `TackStartAngle` / `TackMaxYardRate` | true / 25 / 55 | Tack motion on/off, where it begins (deg off the wind), fastest yard swing (deg/s) |
+| `SpillStreamAngle` | 55 | How far the loosened sail's foot swings out downwind during a tack |
 | `GustPeriodMinutes` / `GustChance` | 6 / 0.5 | One event per 6-minute slot with 50% chance (avg every 12 min) |
 | `GustDuration` / `GustStrength` | 40 / 0.4 | Seconds per event, peak ±fraction of wind strength |
 | `LullFraction` | 0.35 | Share of events that are lulls |
@@ -209,7 +215,7 @@ with an error in `BepInEx\LogOutput.log` if a game update changed a signature.
 * `ZInput.GetButtonDown("Use")` — suppressed while piloting so tap-E can't release the helm; the plugin
   re-implements tap = raise, hold = release.
 * `Ship.GetSailForce` — lift/drag model from sheet angle vs. apparent wind.
-* `Ship.UpdateSail` — yard follows the sheet angle, wobbles when luffing.
+* `Ship.UpdateSail` — yard follows the sheet angle (one bounded angle, always through square); the cloth's own wind settings make it luff, tauten and flog.
 * `Ship.CustomFixedUpdate` (postfix) — heel couple on the ship owner.
 * `Ship.Start` / `Ship.UpdateControlls` — `SailTrim_Sheet` / `SailTrim_Mode` RPCs (pilot → ship owner) plus
   `sailtrim_sheet` (float) and `sailtrim_manual` (bool) in the ZDO (owner → everyone), mirroring how vanilla
