@@ -85,6 +85,8 @@ namespace SailTrim
                 if (Vector2.Dot(bellyAfter, belly) < 0f) sailAng += 180f;
                 if (st.State == SailTrimShip.TrimState.Luffing && ship.IsSailUp())
                     sailAng += Mathf.Sin(Time.time * Mathf.PI * 2f * Plugin.FlapFrequency.Value) * 4f;
+                else if (st.State == SailTrimShip.TrimState.Spilled && ship.IsSailUp())
+                    sailAng += Mathf.Sin(Time.time * Mathf.PI * 2f * Plugin.FlapFrequency.Value * 1.5f) * 9f;
             }
             Show(_sailRect, manual);
             if (manual)
@@ -152,6 +154,7 @@ namespace SailTrim
                 case SailTrimShip.TrimState.NoseDiving: return "Bow buried – ease out or reef";
                 case SailTrimShip.TrimState.Backwinded: return "Aback – going astern";
                 case SailTrimShip.TrimState.Luffing: return "Luffing – sheet in";
+                case SailTrimShip.TrimState.Spilled: return st.IsTacking ? "Tacking – sail spilled" : "Sail spilled – bear away to fill";
                 case SailTrimShip.TrimState.Stalled: return "Stalled – ease out";
                 case SailTrimShip.TrimState.OverTrimmed: return "Ease out";
                 case SailTrimShip.TrimState.UnderTrimmed: return "Sheet in";
@@ -167,6 +170,7 @@ namespace SailTrim
                 case SailTrimShip.TrimState.NoseDiving:
                 case SailTrimShip.TrimState.Backwinded:
                 case SailTrimShip.TrimState.Stalled: return ColBad;
+                case SailTrimShip.TrimState.Spilled:
                 case SailTrimShip.TrimState.Luffing: return ColLuff;
                 case SailTrimShip.TrimState.OverTrimmed:
                 case SailTrimShip.TrimState.UnderTrimmed: return ColAdjust;

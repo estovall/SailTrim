@@ -106,3 +106,95 @@ hold Q → drops; Shift with sail set → "Hold to stow" message, keep holding �
 (paddle animation, "Rowing" on the HUD); release → stops (hold mode). Space lets go. Then multiplayer: a second
 client should see the partial sail and the paddling. Watch `LogOutput.log` for errors from `UpdateSailSizeManual`.
 1.3.0 (settings tab + HUD-after-rejoin fix) is still on `settings-tab`, verified visually, not yet merged/published.
+
+## Update 2026-09-17 (later): branch `spill-tack`, untested in game when written
+
+Max's ask, after a long talk about how a real square rig tacks ("let go and haul"): when tacking with the sheet
+hauled in, the clews are let go and the sail is a loose rag while the yard is braced round; eased out further, a
+wind from ahead still puts the sail aback as before.
+
+- `SailTrimShip.UpdateSpillState` (called from `UpdateYard`, every client, once per step): spill starts when the sail
+  would go aback (`aoa < -LuffAngle`) while `SheetAngle <= SpillSheetAngle` (40, `3. Physics`, synced) and the wind is
+  forward of the beam. It ends when the wind is back on the right face, the visible yard is within 15 deg of its
+  target, and `TackHaulTime` (1.5 s) has passed (0.4 s if the yard never changed sides). Easing the sheet past the
+  limit ends the spill at once, and the sail then goes aback: that is the deliberate way to back out of irons.
+- Physics (`ComputeSailForce`): spilled = no lift, cd 0.06, no `MinFilledDrive` floor, so no heel and no sternway push.
+- Visuals: `TackThroughSquare` routes the mast rotation through square during a spilled tack (sheets under 15 deg keep
+  the short way, which avoids the half-turn spin fixed in 1.4.0); yard shake is stronger; `UpdateSailSizeManual`
+  lifts and thrashes `m_sailBottomTransform` (the cloth's foot) scaled by `SpillFlog` (`5. Visuals`).
+- HUD: `TrimState.Spilled`, "Tacking – sail spilled" / "Sail spilled – bear away to fill".
+- Version string left at 1.4.0 on purpose so the test build still matches the server. Bump to 1.5.0 at release.
+
+Test: close-hauled (sheet ~25), helm down through the wind: expect luff, then "Tacking – sail spilled", yard sweeping
+through square, a dead patch, then fill on the new tack. Then in irons ease the sheet past 40: expect "Aback" and
+sternway. Watch the loose foot: if the cloth misbehaves, set `SpillFlog = 0`.
+
+### spill-tack, second pass (2026-09-17, after Max's first test)
+
+- Tack animation was intermittent: Max sails close-hauled at about 6 deg of sheet, below the old 15 deg cut-off for the
+  through-square sweep, and spill only began if a physics step caught the narrow aback window. Now spill also starts
+  when the yard changes sides outright, the sweep always goes through square, and it takes `TackSwingTime` (1.6 s)
+  whatever the sheet. The mast is turned as explicit yaw about the hull's up axis (`SweepCrosses` picks the way
+  round), so a near half-turn cannot tumble the rig.
+- Rag: foot lifted 30%, thrash scaled by the sail's drop, and the foot streams downwind (`_visWindTo`) like a flag.
+- Seats bug: benches within 2.5 m of the mast (Karve) and the bow hold-fast (`$ship_holdfast@front`, longship) were
+  hooked for crew trimming. Rule is now name contains "hold" AND within 2.5 m of the mast.
+
+### spill-tack, third pass (2026-09-17): Max: "the animation looks pretty terrible", luffing must not shake the yard
+
+What the sail actually is: `Ship.m_sailCloth` is a MagicaCloth2 blown by a global `MagicaWindZone` on EnvMan
+(`SetWindDirection(GetWindDir())`, `main = intensity^2 * 100`). The cloth's foot is pinned to
+`m_sailBottomTransform`, so jittering or sliding that anchor only waggles a stiff sheet (that was the ugly part).
+
+- Yard wobble removed for luffing and spill. `FlapAmplitude` is now unused (binding kept for old cfg files).
+- `UpdateClothFlutter` (called from `UpdateSailSizeManual` just before `SetParameterChange`): blends the cloth's own
+  `SerializeData.wind` from the prefab's values toward turbulence 2, frequency 2, synchronization 0.05, influence
+  x1.35, by 0.65 when luffing and 1.0 when spilled, scaled by `LuffFlutter` (`5. Visuals`). Originals captured once.
+- Spilled look: the foot is smoothly clewed up `SpillClewUp` (0.4) of the way toward the furled position, which
+  leaves the full-length cloth slack so the wind flogs it. No anchor jitter, no downwind slide. `SpillFlog` removed.
+- Through-square sweep only when `SheetAngle >= TackSquareMinSheet` (25, sweep <= 130 deg); flatter sheets take the
+  short way as in 1.4.0. Yard motion eases in and out (`_yardSpeed`).
+
+If the cloth still looks wrong, next things to try: `SerializeData.gravity`, `damping`, and
+`distanceConstraint`/`tetherConstraint` stiffness while spilled. Max tests on the Karve with a very flat sheet (~6 deg).
+
+### spill-tack, fourth pass (2026-09-17)
+
+- Max: clewing the foot straight up made the slack sail parachute, not flutter. The released foot now swings out
+  downwind on an arc from the yard (`SpillStreamAngle`, 55 deg in strong wind, radius 0.9 of the hang so the cloth has a
+  little slack), smoothly, with a slow sway only. Stream direction = 0.6 wind + 0.4 of the visible sail normal on the
+  downwind side, projected square to the hang, so a sail streaming aft in a tack clears the mast. `SpillClewUp` removed.
+- Max: hauled in hard, the sail should look tight: fair curve, little flutter. `UpdateClothFlutter` now starts from a
+  "calm" set that depends on the sheet (`taut = 1 - sheet/60`, scaled by `CloseHauledTautness`): turbulence x0.15,
+  frequency x0.5, synchronization to 1, influence x0.9, damping +0.2; luff/spill flutter blends on top of that.
+
+### spill-tack, fifth pass (2026-09-17): physics reverted, tack is visual only
+
+Max: tacking had become nearly impossible (stuck in irons), the animation often did not play, the yard ended on the
+wrong side or snapped. He wants: tension loosens -> yard spins round to the other side -> sail tensions, fluid, with
+NO effect on sailing performance. Lesson: do not change sail physics for a visual request.
+
+- Physics: the spilled state is gone. `ComputeSailForce`, `ComputeAero`, `ApplyHullEffects`, `DriveFor` verified
+  byte-identical to `main` (1.4.0). Config `SpillSheetAngle`, `TackHaulTime`, `TackThroughSquare`,
+  `TackSquareMinSheet` removed.
+- Yard: steered as ONE number, `_yardYaw` = yaw of the sail normal from the bow in the hull plane, clamped to +-90
+  (square = 0, starboard tack negative, port positive). `delta = target - yaw` with no wrap, so the only path between
+  tacks is through square. No second "flipped" facing, no shortest-way choice, nothing to snap to. This is Max's
+  "restrict it so it cannot go the wrong way round" idea. Eased speed (`_yardYawSpeed`).
+- `UpdateTackAnimation`: triggered by `_boomSide` changing with the wind forward of 100 deg. Phase 1 loosen (0.3 s,
+  yard held), phase 2 sweep (`TackSwingTime`, rate from the measured sweep), phase 3 tension (0.9 s). `_tackAnim` 0..1
+  drives the downwind-streaming foot and the cloth flutter. `TackAnimation` (`5. Visuals`) turns it off.
+- `TrimState.Spilled` is never set now; `IsSpilled` is a constant false kept so the HUD compiles.
+
+### spill-tack, sixth pass (2026-09-17): tack motion tied to the bow's swing
+
+Max: slower, start sooner; the cloth was getting dragged through the mast.
+- The timer phases are gone. Inside `TackStartAngle` (25 deg of apparent wind off the bow) `_tackZone` =
+  smoothstep(absBeta / zone) and the yard target is `rawSide * (90 - sheet) * _tackZone`, with the side taken from the
+  sign of `WindFromAngle` (no hysteresis). The target passes through zero head to wind, so the sweep is continuous and
+  runs at the pace of the turn; `TackMaxYardRate` (55 deg/s) caps it. `TackSwingTime` removed.
+- `_tackAnim` (looseness) = 1 - `_tackZone`, held up while the yard is still more than 10 deg from home.
+- Likely cause of the cloth-through-mast: the foot's stream direction used the sail normal, whose sign flipped as the
+  yard passed square, yanking the pinned foot across the mast. Now `_streamDir` is the apparent wind, turned at most
+  45 deg/s, and the swing-out is reduced to 30% while the stream points fore-and-aft (at the mast).
+- Physics re-verified identical to `main`.

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (branch spill-tack)
+
+- Tack animation (visual only, sailing performance unchanged): when the yard changes sides the sail's tension is let go and its foot streams out downwind, the yard sweeps round through square, and the sail is tensioned again. The yard can no longer turn the wrong way round or snap between two equivalent positions.
+- The sail itself luffs: the cloth ripples when luffing, and the yard no longer shakes. Hauled in hard, a drawing sail looks taut with a fair curve; eased out it moves freely.
+- Fixed: crew trimming worked from the benches near the mast on the Karve and from the longship's bow hold-fast. Only the hold-fast at the mast takes the sheet now.
+
 ## 1.4.0
 
 - Square-rig trim: the force curve is now a low-aspect square sail (lift peaks near 30-35 deg and falls off gently), the yard wants roughly half the apparent wind angle instead of a jib-like 22 deg angle of attack, and abaft about 110 deg the sail is a drag device: running with the yard square is "Trimmed", never "Stalled". The trim hint is computed from the force curves themselves, so it always matches the physics. Pointing ability and the 0-90 sheet range are unchanged on purpose.
