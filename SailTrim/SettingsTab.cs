@@ -164,12 +164,31 @@ namespace SailTrim
         // ------------------------------------------------------------------
         private void Build(RectTransform page, RectTransform keyRowTemplate, Toggle toggleTemplate)
         {
+            // Scrollable: a masked viewport filling the page, the list as its content (mouse wheel scrolls).
+            var viewportGo = new GameObject("Viewport", typeof(RectTransform));
+            var viewport = viewportGo.GetComponent<RectTransform>();
+            viewport.SetParent(page, false);
+            viewport.anchorMin = Vector2.zero; viewport.anchorMax = Vector2.one;
+            viewport.offsetMin = new Vector2(20f, 20f); viewport.offsetMax = new Vector2(-20f, -20f);
+            var vpImage = viewportGo.AddComponent<Image>();
+            vpImage.color = new Color(0f, 0f, 0f, 0f); // invisible, but catches the wheel between rows
+            viewportGo.AddComponent<RectMask2D>();
+
             var listGo = new GameObject("List", typeof(RectTransform));
             var list = listGo.GetComponent<RectTransform>();
-            list.SetParent(page, false);
+            list.SetParent(viewport, false);
             list.anchorMin = new Vector2(0.5f, 1f); list.anchorMax = new Vector2(0.5f, 1f); list.pivot = new Vector2(0.5f, 1f);
-            list.anchoredPosition = new Vector2(0f, -40f);
+            list.anchoredPosition = new Vector2(0f, -20f);
             list.sizeDelta = new Vector2(540f, 0f);
+
+            var scroll = page.gameObject.AddComponent<ScrollRect>();
+            scroll.content = list;
+            scroll.viewport = viewport;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.inertia = false;
+            scroll.scrollSensitivity = 40f;
             var layout = listGo.AddComponent<VerticalLayoutGroup>();
             layout.childAlignment = TextAnchor.UpperCenter;
             layout.childControlWidth = false; layout.childControlHeight = false;

@@ -954,6 +954,11 @@ namespace SailTrim
             float turnRate = Plugin.YardTurnRate.Value;
             if (Time.time < _gybeSwingUntil) turnRate *= 3f; // the yard slams across
             Quaternion to = Quaternion.LookRotation(facing, a.up);
+            // Tacking with the yard hauled nearly fore-and-aft: the leeward face swaps sides, which is a 180 deg turn
+            // of the mast object although the yard itself barely moves. A fore-and-aft yard looks the same end for
+            // end, so flip it instantly and let the remaining small turn animate the short way.
+            if (Quaternion.Angle(mast.transform.rotation, to) > 150f)
+                mast.transform.rotation = mast.transform.rotation * Quaternion.AngleAxis(180f, Vector3.up);
             mast.transform.rotation = Quaternion.RotateTowards(mast.transform.rotation, to, turnRate * dt);
         }
 
