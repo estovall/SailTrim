@@ -54,8 +54,9 @@ namespace SailTrim
         internal static ConfigEntry<float> TackHaulTime;
         internal static ConfigEntry<bool> TackThroughSquare;
         internal static ConfigEntry<float> TackSwingTime;
-        internal static ConfigEntry<float> SpillClewUp;
+        internal static ConfigEntry<float> SpillStreamAngle;
         internal static ConfigEntry<float> LuffFlutter;
+        internal static ConfigEntry<float> CloseHauledTautness;
         internal static ConfigEntry<float> TackSquareMinSheet;
         internal static ConfigEntry<KeyCode> LowerSailKey;
         internal static ConfigEntry<KeyCode> RaiseSailKey;
@@ -441,9 +442,12 @@ namespace SailTrim
             YardTurnRate = Config.Bind("5. Visuals", "YardTurnRate", 90f,
                 new ConfigDescription("How fast the mast/yard visually rotates toward the commanded angle, degrees per second.",
                     new AcceptableValueRange<float>(10f, 360f)));
-            SpillClewUp = Config.Bind("5. Visuals", "SpillClewUp", 0.4f,
-                new ConfigDescription("How far the foot of a spilled sail rides up toward the yard while tacking (0.4 = 40% of the way). The slack this gives the cloth is what lets it flog. 0 = the foot stays down.",
-                    new AcceptableValueRange<float>(0f, 0.9f)));
+            SpillStreamAngle = Config.Bind("5. Visuals", "SpillStreamAngle", 55f,
+                new ConfigDescription("How far a spilled sail's released foot swings out downwind from under the yard, in degrees from hanging straight down, in a strong wind (less in light air). It streams like a flag from the yard. 0 = the foot stays put.",
+                    new AcceptableValueRange<float>(0f, 85f)));
+            CloseHauledTautness = Config.Bind("5. Visuals", "CloseHauledTautness", 1f,
+                new ConfigDescription("How much a hard-sheeted, drawing sail tightens up: less turbulence, the cloth moving as one, a little more damping, while keeping its curve. Fades out as the sheet is eased toward 60 degrees. 0 = the prefab's own lively cloth at every trim.",
+                    new AcceptableValueRange<float>(0f, 1f)));
             LuffFlutter = Config.Bind("5. Visuals", "LuffFlutter", 1f,
                 new ConfigDescription("How strongly the sail cloth itself flutters when luffing or spilled (cloth turbulence and gust rate). The yard no longer shakes. 0 = off.",
                     new AcceptableValueRange<float>(0f, 1f)));

@@ -157,3 +157,13 @@ What the sail actually is: `Ship.m_sailCloth` is a MagicaCloth2 blown by a globa
 
 If the cloth still looks wrong, next things to try: `SerializeData.gravity`, `damping`, and
 `distanceConstraint`/`tetherConstraint` stiffness while spilled. Max tests on the Karve with a very flat sheet (~6 deg).
+
+### spill-tack, fourth pass (2026-09-17)
+
+- Max: clewing the foot straight up made the slack sail parachute, not flutter. The released foot now swings out
+  downwind on an arc from the yard (`SpillStreamAngle`, 55 deg in strong wind, radius 0.9 of the hang so the cloth has a
+  little slack), smoothly, with a slow sway only. Stream direction = 0.6 wind + 0.4 of the visible sail normal on the
+  downwind side, projected square to the hang, so a sail streaming aft in a tack clears the mast. `SpillClewUp` removed.
+- Max: hauled in hard, the sail should look tight: fair curve, little flutter. `UpdateClothFlutter` now starts from a
+  "calm" set that depends on the sheet (`taut = 1 - sheet/60`, scaled by `CloseHauledTautness`): turbulence x0.15,
+  frequency x0.5, synchronization to 1, influence x0.9, damping +0.2; luff/spill flutter blends on top of that.

@@ -79,7 +79,7 @@ namespace SailTrim
         private float _tackRate = -1f;
         private float _yardSpeed;
         private bool _clothCaptured;
-        private float _cloth0Influence, _cloth0Frequency, _cloth0Turbulence, _cloth0Sync;
+        private float _cloth0Influence, _cloth0Frequency, _cloth0Turbulence, _cloth0Sync, _cloth0Damping;
         private float _clothFx;
         /// <summary>Wind on the wrong side of the sail (e.g. in irons with the yard square): drag only, pushes downwind.</summary>
         public bool IsBackwinded { get; private set; }
@@ -311,14 +311,38 @@ namespace SailTrim
             }
             float t = Utils.Frac(Mathf.Clamp(_ship.m_sailPosition, 0f, 0.999f) * 2f);
             Vector3 foot = Vector3.Lerp(a, b, t);
-            // Clews let go: the foot is no longer hauled down and out, so it rides up toward the yard. The cloth keeps
-            // its full length, so it hangs slack and the wind does the flogging. The anchor itself moves smoothly:
-            // the cloth's foot is pinned to it, and shaking the anchor only waggles a stiff sheet.
-            _spillVis = Mathf.MoveTowards(_spillVis, IsSpilled ? 1f : 0f, dt * (IsSpilled ? 2.2f : 1.3f));
-            if (_spillVis > 0.001f && _ship.m_sailPosition > 0.05f)
+            // Clews let go: nothing holds the foot under the yard any more, so it swings out downwind on an arc from the
+            // yard, like a flag from its pole. The wind then runs along the cloth and it flutters; leaving the foot
+            // below the yard with slack in it makes a pocket that fills like a parachute instead. The anchor moves
+            // smoothly (the cloth's foot is pinned to it, so shaking it only waggles a stiff sheet).
+            _spillVis = Mathf.MoveTowards(_spillVis, IsSpilled ? 1f : 0f, dt * (IsSpilled ? 1.8f : 1.2f));
+            if (_spillVis > 0.001f && _ship.m_sailPosition > 0.05f && _ship.m_mastObject != null)
             {
-                float k = Mathf.SmoothStep(0f, 1f, _spillVis) * Mathf.Clamp01(Plugin.SpillClewUp.Value);
-                foot = Vector3.Lerp(foot, _ship.m_sailFurledPosition.position, k);
+                Vector3 top = _ship.m_sailFurledPosition.position;
+                Vector3 hang = foot - top;
+                float len = hang.magnitude;
+                if (len > 0.05f)
+                {
+                    Vector3 hangDir = hang / len;
+                    // Stream with the wind, leaning toward the side of the sail the wind is blowing out of, so a sail
+                    // streaming aft in a tack clears the mast instead of passing through it.
+                    Vector3 wind = _visWindTo;
+                    Vector3 normal = _ship.m_mastObject.transform.forward;
+                    if (Vector3.Dot(normal, wind) < 0f) normal = -normal;
+                    Vector3 stream = Vector3.ProjectOnPlane(wind * 0.6f + normal * 0.4f, hangDir);
+                    if (stream.sqrMagnitude > 1e-4f)
+                    {
+                        stream.Normalize();
+                        float k = Mathf.SmoothStep(0f, 1f, _spillVis);
+                        float tt = Time.time;
+                        // A slow sway, not a shake: the flutter itself is the cloth's job.
+                        float sway = Mathf.Sin(tt * 3.1f) * 5f + Mathf.Sin(tt * 1.3f + 1.7f) * 4f;
+                        float angle = (Plugin.SpillStreamAngle.Value * Mathf.Clamp01(_visWind + 0.35f) + sway) * k;
+                        float rad = Mathf.Clamp(angle, 0f, 85f) * Mathf.Deg2Rad;
+                        float radius = len * Mathf.Lerp(1f, 0.9f, k); // a little slack so the cloth can ripple
+                        foot = top + (hangDir * Mathf.Cos(rad) + stream * Mathf.Sin(rad)) * radius;
+                    }
+                }
             }
             _ship.m_sailBottomTransform.position = foot;
             float blend = _ship.m_sailBlendWeightCurve.Evaluate(_ship.m_sailPosition);
@@ -353,16 +377,29 @@ namespace SailTrim
             {
                 _cloth0Influence = w.influence; _cloth0Frequency = w.frequency;
                 _cloth0Turbulence = w.turbulence; _cloth0Sync = w.synchronization;
+                _cloth0Damping = cloth.SerializeData.damping != null ? cloth.SerializeData.damping.value : 0.05f;
                 _clothCaptured = true;
             }
             bool up = _ship.IsSailUp() && _ship.m_sailPosition > 0.05f;
             float want = !up ? 0f : (IsSpilled ? 1f : (IsLuffing ? 0.65f : 0f));
             _clothFx = Mathf.MoveTowards(_clothFx, want, dt * 2.5f);
             float k = Mathf.Clamp01(_clothFx * Plugin.LuffFlutter.Value);
-            w.turbulence = Mathf.Lerp(_cloth0Turbulence, 2f, k);
-            w.frequency = Mathf.Lerp(_cloth0Frequency, 2f, k);
-            w.synchronization = Mathf.Lerp(_cloth0Sync, 0.05f, k);
-            w.influence = Mathf.Lerp(_cloth0Influence, Mathf.Min(2f, _cloth0Influence * 1.35f), k);
+
+            // A drawing sail hauled in hard is a taut sail: still a fair curve, but it moves as one and barely
+            // flutters. Eased right out for a run it is the prefab's own lively cloth. Tautness follows the sheet.
+            float taut = Mathf.Clamp01(1f - SheetAngle / 60f) * Mathf.Clamp01(Plugin.CloseHauledTautness.Value);
+            float calmTurb = Mathf.Lerp(_cloth0Turbulence, _cloth0Turbulence * 0.15f, taut);
+            float calmFreq = Mathf.Lerp(_cloth0Frequency, _cloth0Frequency * 0.5f, taut);
+            float calmSync = Mathf.Lerp(_cloth0Sync, 1f, taut);
+            float calmInfl = Mathf.Lerp(_cloth0Influence, _cloth0Influence * 0.9f, taut);
+            float calmDamp = Mathf.Lerp(_cloth0Damping, Mathf.Min(1f, _cloth0Damping + 0.2f), taut);
+
+            w.turbulence = Mathf.Lerp(calmTurb, 2f, k);
+            w.frequency = Mathf.Lerp(calmFreq, 2f, k);
+            w.synchronization = Mathf.Lerp(calmSync, 0.05f, k);
+            w.influence = Mathf.Lerp(calmInfl, Mathf.Min(2f, _cloth0Influence * 1.35f), k);
+            if (cloth.SerializeData.damping != null)
+                cloth.SerializeData.damping.value = Mathf.Lerp(calmDamp, _cloth0Damping, k);
         }
 
         // Crew member takes or releases the sheet (sent to the owner; the owner mirrors it into the ZDO).
