@@ -167,3 +167,21 @@ If the cloth still looks wrong, next things to try: `SerializeData.gravity`, `da
 - Max: hauled in hard, the sail should look tight: fair curve, little flutter. `UpdateClothFlutter` now starts from a
   "calm" set that depends on the sheet (`taut = 1 - sheet/60`, scaled by `CloseHauledTautness`): turbulence x0.15,
   frequency x0.5, synchronization to 1, influence x0.9, damping +0.2; luff/spill flutter blends on top of that.
+
+### spill-tack, fifth pass (2026-09-17): physics reverted, tack is visual only
+
+Max: tacking had become nearly impossible (stuck in irons), the animation often did not play, the yard ended on the
+wrong side or snapped. He wants: tension loosens -> yard spins round to the other side -> sail tensions, fluid, with
+NO effect on sailing performance. Lesson: do not change sail physics for a visual request.
+
+- Physics: the spilled state is gone. `ComputeSailForce`, `ComputeAero`, `ApplyHullEffects`, `DriveFor` verified
+  byte-identical to `main` (1.4.0). Config `SpillSheetAngle`, `TackHaulTime`, `TackThroughSquare`,
+  `TackSquareMinSheet` removed.
+- Yard: steered as ONE number, `_yardYaw` = yaw of the sail normal from the bow in the hull plane, clamped to +-90
+  (square = 0, starboard tack negative, port positive). `delta = target - yaw` with no wrap, so the only path between
+  tacks is through square. No second "flipped" facing, no shortest-way choice, nothing to snap to. This is Max's
+  "restrict it so it cannot go the wrong way round" idea. Eased speed (`_yardYawSpeed`).
+- `UpdateTackAnimation`: triggered by `_boomSide` changing with the wind forward of 100 deg. Phase 1 loosen (0.3 s,
+  yard held), phase 2 sweep (`TackSwingTime`, rate from the measured sweep), phase 3 tension (0.9 s). `_tackAnim` 0..1
+  drives the downwind-streaming foot and the cloth flutter. `TackAnimation` (`5. Visuals`) turns it off.
+- `TrimState.Spilled` is never set now; `IsSpilled` is a constant false kept so the HUD compiles.

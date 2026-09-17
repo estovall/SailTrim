@@ -50,14 +50,11 @@ namespace SailTrim
         internal static ConfigEntry<float> StowHoldTime;
         internal static ConfigEntry<float> SailSetRate;
         internal static ConfigEntry<float> SquareRunAngle;
-        internal static ConfigEntry<float> SpillSheetAngle;
-        internal static ConfigEntry<float> TackHaulTime;
-        internal static ConfigEntry<bool> TackThroughSquare;
+        internal static ConfigEntry<bool> TackAnimation;
         internal static ConfigEntry<float> TackSwingTime;
         internal static ConfigEntry<float> SpillStreamAngle;
         internal static ConfigEntry<float> LuffFlutter;
         internal static ConfigEntry<float> CloseHauledTautness;
-        internal static ConfigEntry<float> TackSquareMinSheet;
         internal static ConfigEntry<KeyCode> LowerSailKey;
         internal static ConfigEntry<KeyCode> RaiseSailKey;
         internal static ConfigEntry<bool> MoveKeysTrimSheet;
@@ -296,20 +293,6 @@ namespace SailTrim
             SailSetRate = Config.Bind("3. Physics", "SailSetRate", 0.25f,
                 new ConfigDescription("How much sail is let out or taken in per second while a sail key is held (0.25 = furled to full in 4 s). Stowing for rowing goes twice as fast.",
                     new AcceptableValueRange<float>(0.05f, 2f)));
-            SpillSheetAngle = Config.Bind("3. Physics", "SpillSheetAngle", 40f,
-                new ConfigDescription("Let go and haul. With the sheet hauled in to this angle or less, a wind that comes ahead of the sail does not put it aback: the crew casts off its lower corners and it becomes a loose rag with no drive and no sternway push, until it can fill again. Eased out further than this the corners stay made fast and the sail goes aback as before (use that to back out of irons). 0 disables spilling.",
-                    new AcceptableValueRange<float>(0f, 90f)));
-            TackHaulTime = Config.Bind("3. Physics", "TackHaulTime", 1.5f,
-                new ConfigDescription("Seconds the crew needs to haul the new tack and sheet tight once the yard is round and the wind is on the right side, before the sail draws again. The dead patch you must carry your way through when tacking.",
-                    new AcceptableValueRange<float>(0f, 10f)));
-            TackThroughSquare = Config.Bind("3. Physics", "TackThroughSquare", true,
-                "When tacking with the sail spilled, brace the yard round through square (the long way, as a real square rig must) instead of the shortest way.");
-            TackSquareMinSheet = Config.Bind("3. Physics", "TackSquareMinSheet", 25f,
-                new ConfigDescription("Flattest sheet angle at which a tack sweeps the yard round through square. Below it the yard takes the short way, because through square would be close to a half-turn spin that no real rig could make.",
-                    new AcceptableValueRange<float>(0f, 90f)));
-            TackSwingTime = Config.Bind("3. Physics", "TackSwingTime", 1.6f,
-                new ConfigDescription("Seconds the yard takes to sweep round in a tack, whatever the sheet angle (a flatter sheet means a longer sweep at a faster rate). The sail cannot fill until the yard is home.",
-                    new AcceptableValueRange<float>(0.3f, 8f)));
             SquareRunAngle = Config.Bind("3. Physics", "SquareRunAngle", 110f,
                 new ConfigDescription("Apparent wind angle off the bow beyond which the square sail is a drag device: the yard goes square and the sail never counts as stalled.",
                     new AcceptableValueRange<float>(90f, 180f)));
@@ -442,8 +425,13 @@ namespace SailTrim
             YardTurnRate = Config.Bind("5. Visuals", "YardTurnRate", 90f,
                 new ConfigDescription("How fast the mast/yard visually rotates toward the commanded angle, degrees per second.",
                     new AcceptableValueRange<float>(10f, 360f)));
+            TackAnimation = Config.Bind("5. Visuals", "TackAnimation", true,
+                "Play the tack as a sequence when the yard changes sides: the sail's tension is let go, the yard sweeps round through square, the sail is tensioned again. Visual only; the boat sails exactly the same with it off.");
+            TackSwingTime = Config.Bind("5. Visuals", "TackSwingTime", 1.6f,
+                new ConfigDescription("Seconds the yard takes to sweep round in a tack, whatever the sheet angle.",
+                    new AcceptableValueRange<float>(0.3f, 8f)));
             SpillStreamAngle = Config.Bind("5. Visuals", "SpillStreamAngle", 55f,
-                new ConfigDescription("How far a spilled sail's released foot swings out downwind from under the yard, in degrees from hanging straight down, in a strong wind (less in light air). It streams like a flag from the yard. 0 = the foot stays put.",
+                new ConfigDescription("During the tack animation, how far the loosened sail's foot swings out downwind from under the yard, in degrees from hanging straight down, in a strong wind (less in light air). It streams like a flag from the yard. 0 = the foot stays put.",
                     new AcceptableValueRange<float>(0f, 85f)));
             CloseHauledTautness = Config.Bind("5. Visuals", "CloseHauledTautness", 1f,
                 new ConfigDescription("How much a hard-sheeted, drawing sail tightens up: less turbulence, the cloth moving as one, a little more damping, while keeping its curve. Fades out as the sheet is eased toward 60 degrees. 0 = the prefab's own lively cloth at every trim.",
