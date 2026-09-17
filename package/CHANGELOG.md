@@ -3,6 +3,7 @@
 ## 1.3.0
 
 - SailTrim tab in the game's Settings menu (main menu and pause menu): rebind the manual-trim, lower/raise sail, ease and sheet-in keys, and flip the W/S-trim and invert-sheet toggles, without editing the config file. Physics and server settings stay out of the menu.
+- Fixed: the trim HUD stayed hidden (vanilla ship UI only) after logging out to the main menu and joining again, until the game was restarted. The HUD is now rebuilt for the new session, and a HUD build failure is retried instead of being remembered all session.
 
 ## 1.2.1
 

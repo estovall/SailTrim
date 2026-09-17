@@ -31,6 +31,7 @@ namespace SailTrim
         private static bool _hintDismissed;
         private static bool _built;
         private static bool _buildFailed;
+        private static float _buildFailedAt;
         private static float _d;       // circle diameter in canvas units
         private static float _radius;  // vanilla wind icon radius in canvas units
 
@@ -52,6 +53,12 @@ namespace SailTrim
             var hud = Hud.instance;
             var player = Player.m_localPlayer;
             if (hud == null || hud.m_shipWindIndicatorRoot == null || player == null) { SetVisible(false); return; }
+
+            // The widgets live under the game's Hud, which is destroyed on logout and recreated on the next join.
+            // If our cached objects are gone or belong to an old Hud, forget them so the next boat rebuilds.
+            if (_built && (_container == null || _circle == null || _circle != hud.m_shipWindIndicatorRoot)) ResetBuild();
+            // A failed build is retried after a while rather than remembered for the whole session.
+            if (_buildFailed && Time.unscaledTime - _buildFailedAt > 15f) _buildFailed = false;
 
             bool piloting = Plugin.IsLocalPlayerPiloting(out var ship);
             if (!piloting) ship = Plugin.PassengerHud.Value ? Plugin.GetShipAboard(player) : null;
@@ -167,7 +174,17 @@ namespace SailTrim
         {
             if (!_built) return;
             if (_container != null && _container.gameObject.activeSelf != on) _container.gameObject.SetActive(on);
-            if (!on) Show(_sailRect, false);
+            if (!on && _sailRect != null) Show(_sailRect, false);
+        }
+
+        /// <summary>Drop the cached widgets (destroying any that still exist) so the next Update rebuilds them.</summary>
+        private static void ResetBuild()
+        {
+            if (_container != null) Object.Destroy(_container.gameObject);
+            if (_sailRect != null) Object.Destroy(_sailRect.gameObject);
+            _container = null; _sailRect = null; _circle = null; _canvasRoot = null;
+            _built = false;
+            _buildFailed = false;
         }
 
         // ------------------------------------------------------------------
@@ -250,6 +267,7 @@ namespace SailTrim
             catch (System.Exception e)
             {
                 _buildFailed = true;
+                _buildFailedAt = Time.unscaledTime;
                 Plugin.Log.LogError("SailTrim HUD build failed: " + e);
             }
         }
