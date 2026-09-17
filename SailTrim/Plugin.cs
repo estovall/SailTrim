@@ -51,7 +51,8 @@ namespace SailTrim
         internal static ConfigEntry<float> SailSetRate;
         internal static ConfigEntry<float> SquareRunAngle;
         internal static ConfigEntry<bool> TackAnimation;
-        internal static ConfigEntry<float> TackSwingTime;
+        internal static ConfigEntry<float> TackStartAngle;
+        internal static ConfigEntry<float> TackMaxYardRate;
         internal static ConfigEntry<float> SpillStreamAngle;
         internal static ConfigEntry<float> LuffFlutter;
         internal static ConfigEntry<float> CloseHauledTautness;
@@ -426,10 +427,13 @@ namespace SailTrim
                 new ConfigDescription("How fast the mast/yard visually rotates toward the commanded angle, degrees per second.",
                     new AcceptableValueRange<float>(10f, 360f)));
             TackAnimation = Config.Bind("5. Visuals", "TackAnimation", true,
-                "Play the tack as a sequence when the yard changes sides: the sail's tension is let go, the yard sweeps round through square, the sail is tensioned again. Visual only; the boat sails exactly the same with it off.");
-            TackSwingTime = Config.Bind("5. Visuals", "TackSwingTime", 1.6f,
-                new ConfigDescription("Seconds the yard takes to sweep round in a tack, whatever the sheet angle.",
-                    new AcceptableValueRange<float>(0.3f, 8f)));
+                "Play the tack as one continuous motion tied to the bow's swing: the sail's tension eases as the bow comes up to the wind, the yard passes through square as the bow passes through the wind, and the sail is tensioned again on the new side. Visual only; the boat sails exactly the same with it off.");
+            TackStartAngle = Config.Bind("5. Visuals", "TackStartAngle", 25f,
+                new ConfigDescription("How far off the wind (degrees of apparent wind off the bow) the tack motion begins and ends. Larger = starts sooner and the yard's sweep is spread over more of the turn.",
+                    new AcceptableValueRange<float>(8f, 60f)));
+            TackMaxYardRate = Config.Bind("5. Visuals", "TackMaxYardRate", 55f,
+                new ConfigDescription("Fastest the yard may swing during a tack, degrees per second. If you throw the bow through the wind quicker than this the yard follows at its own pace and arrives a moment later. Lower = calmer, and kinder to the cloth.",
+                    new AcceptableValueRange<float>(10f, 360f)));
             SpillStreamAngle = Config.Bind("5. Visuals", "SpillStreamAngle", 55f,
                 new ConfigDescription("During the tack animation, how far the loosened sail's foot swings out downwind from under the yard, in degrees from hanging straight down, in a strong wind (less in light air). It streams like a flag from the yard. 0 = the foot stays put.",
                     new AcceptableValueRange<float>(0f, 85f)));

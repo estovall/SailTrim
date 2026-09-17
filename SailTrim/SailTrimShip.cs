@@ -59,7 +59,7 @@ namespace SailTrim
         public float AngleOfAttack { get; private set; }
         public bool IsLuffing { get; private set; }
         /// <summary>True while the tack animation is playing (sail loosens, yard sweeps round, sail tensions). Visual only.</summary>
-        public bool IsTacking => _tackPhase != 0;
+        public bool IsTacking => _tackActive;
         /// <summary>Kept for the readout enum; the spilled state no longer exists in the physics.</summary>
         public bool IsSpilled => false;
         // The yard is steered as ONE angle: the sail normal's yaw from the bow, in the hull's own plane.
@@ -71,12 +71,10 @@ namespace SailTrim
         private bool _yardYawInit;
         private float _yardYawSpeed;
         private float _yardErrorDeg;
-        private int _animPrevSide;
-        private bool _animSideSeen;
-        private int _tackPhase;       // 0 idle, 1 loosening, 2 yard sweeping, 3 tensioning
-        private float _tackPhaseTime;
+        private bool _tackActive;     // the bow is in, or the yard is still recovering from, the tack zone
+        private float _tackZone = 1f; // 0 at head to wind .. 1 at the edge of the tack zone and beyond
         private float _tackAnim;      // 0..1 how loose the sail looks
-        private float _tackSweepRate = -1f;
+        private Vector3 _streamDir;   // smoothed direction the loose foot streams in
         private float _visWind;
         private Vector3 _visWindTo = Vector3.forward;
         private bool _clothCaptured;
@@ -324,23 +322,30 @@ namespace SailTrim
                 if (len > 0.05f)
                 {
                     Vector3 hangDir = hang / len;
-                    // Stream with the wind, leaning toward the side of the sail the wind is blowing out of, so a sail
-                    // streaming aft in a tack clears the mast instead of passing through it.
-                    Vector3 wind = _visWindTo;
-                    Vector3 normal = _ship.m_mastObject.transform.forward;
-                    if (Vector3.Dot(normal, wind) < 0f) normal = -normal;
-                    Vector3 stream = Vector3.ProjectOnPlane(wind * 0.6f + normal * 0.4f, hangDir);
-                    if (stream.sqrMagnitude > 1e-4f)
+                    // Stream with the wind. The direction is smoothed so it never jumps from one side of the mast to the
+                    // other, and the foot stays tucked closer under the yard while the wind would carry it straight
+                    // aft through the mast, swinging out properly once it has some sideways lead.
+                    Vector3 want = Vector3.ProjectOnPlane(_visWindTo, hangDir);
+                    if (want.sqrMagnitude > 1e-4f)
                     {
-                        stream.Normalize();
-                        float k = Mathf.SmoothStep(0f, 1f, _tackAnim);
-                        float tt = Time.time;
-                        // A slow sway, not a shake: the flutter itself is the cloth's job.
-                        float sway = Mathf.Sin(tt * 3.1f) * 5f + Mathf.Sin(tt * 1.3f + 1.7f) * 4f;
-                        float angle = (Plugin.SpillStreamAngle.Value * Mathf.Clamp01(_visWind + 0.35f) + sway) * k;
-                        float rad = Mathf.Clamp(angle, 0f, 85f) * Mathf.Deg2Rad;
-                        float radius = len * Mathf.Lerp(1f, 0.9f, k); // a little slack so the cloth can ripple
-                        foot = top + (hangDir * Mathf.Cos(rad) + stream * Mathf.Sin(rad)) * radius;
+                        want.Normalize();
+                        if (_streamDir.sqrMagnitude < 1e-4f) _streamDir = want;
+                        _streamDir = Vector3.RotateTowards(_streamDir, want, 45f * Mathf.Deg2Rad * dt, 0f);
+                        Vector3 stream = Vector3.ProjectOnPlane(_streamDir, hangDir);
+                        if (stream.sqrMagnitude > 1e-4f)
+                        {
+                            stream.Normalize();
+                            Vector3 hullRight = _ship.transform.right;
+                            float sideways = Mathf.Abs(Vector3.Dot(stream, hullRight)); // 0 = straight fore/aft, 1 = abeam
+                            float clear = Mathf.Lerp(0.3f, 1f, Mathf.SmoothStep(0f, 1f, sideways / 0.5f));
+                            float k = Mathf.SmoothStep(0f, 1f, _tackAnim);
+                            float tt = Time.time;
+                            float sway = Mathf.Sin(tt * 2.3f) * 4f + Mathf.Sin(tt * 1.1f + 1.7f) * 3f; // slow, not a shake
+                            float angle = (Plugin.SpillStreamAngle.Value * clear * Mathf.Clamp01(_visWind + 0.35f) + sway) * k;
+                            float rad = Mathf.Clamp(angle, 0f, 85f) * Mathf.Deg2Rad;
+                            float radius = len * Mathf.Lerp(1f, 0.92f, k); // a little slack so the cloth can ripple
+                            foot = top + (hangDir * Mathf.Cos(rad) + stream * Mathf.Sin(rad)) * radius;
+                        }
                     }
                 }
             }
@@ -1083,18 +1088,23 @@ namespace SailTrim
                 _yardYawInit = true;
             }
 
-            // While the sail is still being let go, the yard waits; then it sweeps round in TackSwingTime.
-            if (_tackPhase == 1) targetYaw = _yardYaw;
-            float delta = targetYaw - _yardYaw; // a plain difference: no wrap-around, so the path is always through square
-            if (_tackPhase == 2)
+            // Tacking: inside the tack zone the yard's target is tied to the bow's own swing. It eases toward square as
+            // the bow comes up to the wind, is square as the bow passes through it, and carries on to the new side as
+            // the boat falls off. The side comes straight from the wind's sign here (no hysteresis), and the target
+            // passes through zero, so there is no jump when the yard "changes sides": it is one continuous sweep at
+            // the pace of the turn. Visual only.
+            bool tackZone = _tackZone < 1f;
+            if (tackZone)
             {
-                if (_tackSweepRate < 0f) _tackSweepRate = Mathf.Abs(delta) / Mathf.Max(0.3f, Plugin.TackSwingTime.Value);
-                turnRate = Mathf.Max(turnRate, _tackSweepRate * 1.35f); // headroom for the ease in and out
+                float rawSide = WindFromAngle > 0f ? -1f : 1f;
+                targetYaw = rawSide * (90f - SheetAngle) * _tackZone;
             }
+            float delta = targetYaw - _yardYaw; // a plain difference: no wrap-around, so the path is always through square
+            if (_tackActive) turnRate = Mathf.Min(turnRate, Mathf.Max(10f, Plugin.TackMaxYardRate.Value)); // unhurried
 
             // Ease in and out: spin up to speed, slow down on the approach.
-            float wantSpeed = Mathf.Min(turnRate, Mathf.Abs(delta) * 4f + 3f);
-            _yardYawSpeed = Mathf.MoveTowards(_yardYawSpeed, wantSpeed, turnRate * 2.5f * dt);
+            float wantSpeed = Mathf.Min(turnRate, Mathf.Abs(delta) * 3f + 3f);
+            _yardYawSpeed = Mathf.MoveTowards(_yardYawSpeed, wantSpeed, turnRate * 2f * dt);
             _yardYaw += Mathf.Sign(delta) * Mathf.Min(Mathf.Abs(delta), _yardYawSpeed * dt);
             _yardYaw = Mathf.Clamp(_yardYaw, -90f, 90f);
             _yardErrorDeg = Mathf.Abs(targetYaw - _yardYaw);
@@ -1104,51 +1114,30 @@ namespace SailTrim
         }
 
         /// <summary>
-        /// The tack as a purely visual sequence, the same on every client: the sail's tension is let go, the yard
-        /// sweeps round through square, the sail is tensioned again. It starts when the yard changes sides with the
-        /// wind forward of the beam. It does not touch the sail force: the boat tacks exactly as it did before.
+        /// The tack as a purely visual motion, the same on every client, driven by how close the bow is to the wind
+        /// rather than by timers: the sail's tension eases as the bow comes up, it is fully let go head to wind while
+        /// the yard passes through square, and it is tensioned again once the boat has fallen off on the new side and
+        /// the yard has arrived. It does not touch the sail force.
         /// </summary>
         private void UpdateTackAnimation(Aero a, float dt)
         {
-            bool flippedNow = _animSideSeen && _boomSide != _animPrevSide;
-            _animPrevSide = _boomSide;
-            _animSideSeen = true;
-
             bool sailUp = _ship.IsSailUp() && _ship.m_sailPosition > 0.05f;
-            if (!sailUp || !Plugin.TackAnimation.Value)
-            {
-                _tackPhase = 0;
-                _tackSweepRate = -1f;
-                _tackAnim = Mathf.MoveTowards(_tackAnim, 0f, dt * 3f);
-                return;
-            }
+            float zone = Mathf.Max(5f, Plugin.TackStartAngle.Value);
+            bool inZone = sailUp && Plugin.TackAnimation.Value && a.absBeta < zone;
+            _tackZone = inZone ? Mathf.SmoothStep(0f, 1f, a.absBeta / zone) : 1f;
 
-            if (flippedNow && a.absBeta < 100f)
-            {
-                if (_tackPhase == 0) { _tackPhase = 1; _tackPhaseTime = 0f; }
-                else if (_tackPhase == 3) _tackPhase = 2; // tacked back before it finished: sweep again
-                _tackSweepRate = -1f;
-            }
+            if (inZone) _tackActive = true;
+            else if (!sailUp || !Plugin.TackAnimation.Value || _yardErrorDeg < 10f) _tackActive = false;
 
-            _tackPhaseTime += dt;
-            switch (_tackPhase)
+            // Loose in proportion to how close to the wind the bow is, and it stays loose until the yard is home.
+            float want = 0f;
+            if (sailUp && Plugin.TackAnimation.Value)
             {
-                case 1: // let go: the sail loosens, the yard has not moved yet
-                    _tackAnim = Mathf.MoveTowards(_tackAnim, 1f, dt / 0.45f);
-                    if (_tackPhaseTime >= 0.3f) { _tackPhase = 2; _tackPhaseTime = 0f; }
-                    break;
-                case 2: // haul the braces: the yard sweeps round, the sail still loose
-                    _tackAnim = Mathf.MoveTowards(_tackAnim, 1f, dt / 0.45f);
-                    if ((_tackPhaseTime > 0.15f && _yardErrorDeg < 12f) || _tackPhaseTime > 8f) { _tackPhase = 3; _tackPhaseTime = 0f; }
-                    break;
-                case 3: // haul the new tack and sheet: the sail tensions
-                    _tackAnim = Mathf.MoveTowards(_tackAnim, 0f, dt / 0.9f);
-                    if (_tackAnim <= 0f) { _tackPhase = 0; _tackSweepRate = -1f; }
-                    break;
-                default:
-                    _tackAnim = Mathf.MoveTowards(_tackAnim, 0f, dt * 2f);
-                    break;
+                want = 1f - _tackZone;
+                if (_tackActive && _yardErrorDeg > 10f) want = Mathf.Max(want, Mathf.Clamp01(_yardErrorDeg / 35f));
             }
+            float rate = want > _tackAnim ? 1f / 0.8f : 1f / 1.5f; // lets go a little faster than it is hauled tight
+            _tackAnim = Mathf.MoveTowards(_tackAnim, want, dt * rate);
         }
 
         /// <summary>Rig strain: every client tracks it for the readout; only the owner applies damage.</summary>

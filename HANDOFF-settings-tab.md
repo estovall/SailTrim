@@ -185,3 +185,16 @@ NO effect on sailing performance. Lesson: do not change sail physics for a visua
   yard held), phase 2 sweep (`TackSwingTime`, rate from the measured sweep), phase 3 tension (0.9 s). `_tackAnim` 0..1
   drives the downwind-streaming foot and the cloth flutter. `TackAnimation` (`5. Visuals`) turns it off.
 - `TrimState.Spilled` is never set now; `IsSpilled` is a constant false kept so the HUD compiles.
+
+### spill-tack, sixth pass (2026-09-17): tack motion tied to the bow's swing
+
+Max: slower, start sooner; the cloth was getting dragged through the mast.
+- The timer phases are gone. Inside `TackStartAngle` (25 deg of apparent wind off the bow) `_tackZone` =
+  smoothstep(absBeta / zone) and the yard target is `rawSide * (90 - sheet) * _tackZone`, with the side taken from the
+  sign of `WindFromAngle` (no hysteresis). The target passes through zero head to wind, so the sweep is continuous and
+  runs at the pace of the turn; `TackMaxYardRate` (55 deg/s) caps it. `TackSwingTime` removed.
+- `_tackAnim` (looseness) = 1 - `_tackZone`, held up while the yard is still more than 10 deg from home.
+- Likely cause of the cloth-through-mast: the foot's stream direction used the sail normal, whose sign flipped as the
+  yard passed square, yanking the pinned foot across the mast. Now `_streamDir` is the apparent wind, turned at most
+  45 deg/s, and the swing-out is reduced to 30% while the stream points fore-and-aft (at the mast).
+- Physics re-verified identical to `main`.
