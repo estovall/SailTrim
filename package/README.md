@@ -47,6 +47,9 @@ Gamepad: the left stick forward/back sheets in/eases; the gamepad Use button rel
 vanilla. There are no default gamepad bindings for raise/lower, so use a keyboard for those or bind
 `RaiseSailKey` / `LowerSailKey` in the config.
 
+All of these keys, and the sheet-key toggles, can also be changed in game: **Settings > SailTrim** tab (main menu or
+pause menu). Click a key to rebind it, Esc cancels, Delete clears it. Physics and server settings are not in the menu.
+
 The vanilla ship HUD gets three additions: a **sail icon** on the wind circle that rotates with your sheet
 (belly toward the side the wind fills it; colour = trim state), a **speed gauge** in knots to its left (scaled to that hull's speed: gold up to hull speed, red past it), and
 two lines of text below: the trim hint (**Trimmed**, **Sheet in**, **Ease out**, **LUFFING**, **STALLED**,

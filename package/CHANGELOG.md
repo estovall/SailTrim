@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0
+
+- SailTrim tab in the game's Settings menu (main menu and pause menu): rebind the manual-trim, lower/raise sail, ease and sheet-in keys, and flip the W/S-trim and invert-sheet toggles, without editing the config file. Physics and server settings stay out of the menu.
+
 ## 1.2.1
 
 - Fixed: with manual trim on, tapping E at the rudder let go of the helm instead of raising the sail whenever Jotunn was installed (single-player and servers alike). Jotunn re-evaluates the Use button after SailTrim swallows it; SailTrim now re-applies the swallow after Jotunn. Tap E = raise, hold E = release works again.

@@ -88,18 +88,20 @@ namespace SailTrim
                 return;
             }
 
-            Plugin.Log.LogInfo("SailTrim: settings key-row template: " + Describe(keyRowTemplate, 3));
-            Plugin.Log.LogInfo("SailTrim: settings toggle template: " + Describe(toggleTemplate.transform.parent as RectTransform ?? toggleTemplate.GetComponent<RectTransform>(), 3));
-
             // Tab button: clone the template's button, relabel, drop its serialized click handlers.
             var buttonGo = Instantiate(template.m_button.gameObject, template.m_button.transform.parent);
             buttonGo.name = TabName;
             buttonGo.transform.SetSiblingIndex(template.m_button.transform.GetSiblingIndex() + 1);
             var button = buttonGo.GetComponent<Button>();
             button.onClick = new Button.ButtonClickedEvent();
-            // Relabel only the button's own label and the "Selected" overlay label; leave any other text
-            // objects the prefab carries (gamepad hints etc.) alone.
-            Plugin.Log.LogInfo("SailTrim: settings tab button template: " + Describe(template.m_button.transform as RectTransform, 3));
+            // The button prefab is: Label, Selected/LabelSelected, and a KeyHint ("Q"/"E" tab-cycle hint) that the
+            // game shows/hides through Settings.m_tabKeyHints, which only references the original buttons. Drop the
+            // hint from the clone and relabel just the two labels.
+            for (int i = buttonGo.transform.childCount - 1; i >= 0; i--)
+            {
+                var child = buttonGo.transform.GetChild(i);
+                if (child.name != "Label" && child.name != "Selected") Destroy(child.gameObject);
+            }
             foreach (var txt in buttonGo.GetComponentsInChildren<TMP_Text>(true))
             {
                 var p = txt.transform.parent;
@@ -193,7 +195,6 @@ namespace SailTrim
             _hint = AddHeader(list, labelSource, "Click a key to rebind. Esc cancels, Delete clears.");
             _hint.fontSize = Mathf.Max(12f, labelSource.fontSize * 0.8f);
             _hint.alignment = TextAlignmentOptions.Center;
-            Plugin.Log.LogInfo("SailTrim: settings tab built: " + Describe(list, 2));
         }
 
         private TMP_Text AddHeader(RectTransform list, TMP_Text source, string text)
