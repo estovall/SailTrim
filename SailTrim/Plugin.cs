@@ -53,6 +53,7 @@ namespace SailTrim
         internal static ConfigEntry<float> SpillSheetAngle;
         internal static ConfigEntry<float> TackHaulTime;
         internal static ConfigEntry<bool> TackThroughSquare;
+        internal static ConfigEntry<float> TackSwingTime;
         internal static ConfigEntry<float> SpillFlog;
         internal static ConfigEntry<KeyCode> LowerSailKey;
         internal static ConfigEntry<KeyCode> RaiseSailKey;
@@ -299,7 +300,10 @@ namespace SailTrim
                 new ConfigDescription("Seconds the crew needs to haul the new tack and sheet tight once the yard is round and the wind is on the right side, before the sail draws again. The dead patch you must carry your way through when tacking.",
                     new AcceptableValueRange<float>(0f, 10f)));
             TackThroughSquare = Config.Bind("3. Physics", "TackThroughSquare", true,
-                "When tacking with the sail spilled, brace the yard round through square (the long way, as a real square rig must) instead of the shortest way. Sheets under 15 degrees keep the short way to avoid a half-turn spin.");
+                "When tacking with the sail spilled, brace the yard round through square (the long way, as a real square rig must) instead of the shortest way.");
+            TackSwingTime = Config.Bind("3. Physics", "TackSwingTime", 1.6f,
+                new ConfigDescription("Seconds the yard takes to sweep round in a tack, whatever the sheet angle (a flatter sheet means a longer sweep at a faster rate). The sail cannot fill until the yard is home.",
+                    new AcceptableValueRange<float>(0.3f, 8f)));
             SquareRunAngle = Config.Bind("3. Physics", "SquareRunAngle", 110f,
                 new ConfigDescription("Apparent wind angle off the bow beyond which the square sail is a drag device: the yard goes square and the sail never counts as stalled.",
                     new AcceptableValueRange<float>(90f, 180f)));

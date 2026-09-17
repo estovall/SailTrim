@@ -73,6 +73,10 @@ namespace SailTrim
         private float _throughSquareUntil = -1f;
         private float _spillVis;
         private float _visWind;
+        private Vector3 _visWindTo = Vector3.forward;
+        private int _spillPrevSide;
+        private bool _spillSideSeen;
+        private float _tackRate = -1f;
         /// <summary>Wind on the wrong side of the sail (e.g. in irons with the yard square): drag only, pushes downwind.</summary>
         public bool IsBackwinded { get; private set; }
         public bool IsStalled { get; private set; }
@@ -310,9 +314,16 @@ namespace SailTrim
                 float amt = _spillVis * Plugin.SpillFlog.Value * Mathf.Clamp01(_visWind + 0.3f);
                 Transform mt = _ship.m_mastObject.transform;
                 float tt = Time.time;
-                foot = Vector3.Lerp(foot, _ship.m_sailFurledPosition.position, 0.18f * amt);
-                foot += mt.forward * ((Mathf.Sin(tt * 13f) * 0.45f + Mathf.Sin(tt * 7.3f) * 0.3f) * amt);
-                foot += mt.right * (Mathf.Sin(tt * 9.1f) * 0.25f * amt);
+                // Scale by the sail's own drop so a drakkar's rag moves as much, for its size, as a Karve's.
+                float drop = Mathf.Max(1f, (_ship.m_sailUnfurledPosition.position - _ship.m_sailFurledPosition.position).magnitude);
+                foot = Vector3.Lerp(foot, _ship.m_sailFurledPosition.position, 0.3f * Mathf.Min(1f, amt));
+                // Nothing holds the foot down any more, so it streams away downwind like a flag...
+                Vector3 downwind = Vector3.ProjectOnPlane(_visWindTo, mt.up);
+                if (downwind.sqrMagnitude > 1e-4f) foot += downwind.normalized * (0.26f * drop * amt);
+                // ...and thrashes about that line.
+                foot += mt.forward * ((Mathf.Sin(tt * 13f) * 0.12f + Mathf.Sin(tt * 7.3f) * 0.08f) * drop * amt);
+                foot += mt.right * (Mathf.Sin(tt * 9.1f) * 0.07f * drop * amt);
+                foot += mt.up * (Mathf.Abs(Mathf.Sin(tt * 5.7f)) * 0.05f * drop * amt);
             }
             _ship.m_sailBottomTransform.position = foot;
             float blend = _ship.m_sailBlendWeightCurve.Evaluate(_ship.m_sailPosition);
@@ -971,6 +982,7 @@ namespace SailTrim
             }
 
             _visWind = a.windStrength;
+            _visWindTo = a.windTo;
             UpdateSpillState(a, dt);
             UpdateWindShadow(a, dt);
             UpdateReadout(a, dt);
@@ -986,7 +998,7 @@ namespace SailTrim
             {
                 // A spilled sail flogs harder and faster than one that is merely luffing.
                 float freq = Plugin.FlapFrequency.Value * (IsSpilled ? 1.5f : 1f);
-                float amp = Plugin.FlapAmplitude.Value * (IsSpilled ? 2.2f * Plugin.SpillFlog.Value : 1f);
+                float amp = Plugin.FlapAmplitude.Value * (IsSpilled ? 3f * Plugin.SpillFlog.Value : 1f);
                 float wobble = Mathf.Sin(Time.time * Mathf.PI * 2f * freq) * amp * Mathf.Clamp01(a.windStrength + 0.25f);
                 facing = Quaternion.AngleAxis(wobble, a.up) * facing;
             }
@@ -1002,20 +1014,43 @@ namespace SailTrim
             // Treat the yard as a line: aim for whichever sign of the normal is the shorter turn from where the
             // rig is now. Tacking then braces the yard round through square at normal sheet angles, and with the yard
             // hauled fore-and-aft it barely moves; the wind lays the canvas on the new side, aback against the mast.
-            Quaternion to = Quaternion.LookRotation(facing, a.up);
-            Quaternion toFlipped = Quaternion.LookRotation(-facing, a.up);
+            // Work in yaw about the hull's up axis so a half-turn can never tumble the rig over. The yard is a line, so
+            // there are two ways round to the same rig: one passes through fore-and-aft, the other through square.
+            Vector3 cur = Vector3.ProjectOnPlane(mast.transform.forward, a.up);
+            if (cur.sqrMagnitude < 1e-4f) cur = facing;
+            cur.Normalize();
+            float d1 = Vector3.SignedAngle(cur, facing, a.up);
+            float d2 = Vector3.SignedAngle(cur, -facing, a.up);
+            float delta;
             if (Time.time < _throughSquareUntil)
             {
-                // Tacking with the sail spilled: brace the yard round through square, as a real crew must. The sail
-                // normal keeps its fore/aft sense and swaps sides, so its path crosses the hull's fore-and-aft axis.
-                float curF = Vector3.Dot(mast.transform.forward, a.fwd);
-                float candF = Vector3.Dot(facing, a.fwd);
-                if (Mathf.Abs(curF) > 0.1f && Mathf.Sign(candF) != Mathf.Sign(curF)) to = toFlipped;
+                // Tacking with the sail spilled: brace round through square, as a real crew must. "Through square"
+                // means the sail's normal sweeps across the hull's fore-and-aft axis on its way.
+                Vector3 hullFwd = Vector3.ProjectOnPlane(_ship.transform.forward, a.up).normalized;
+                delta = SweepCrosses(cur, d1, hullFwd, a.up) ? d1 : d2;
+                if (_tackRate < 0f) _tackRate = Mathf.Abs(delta) / Mathf.Max(0.3f, Plugin.TackSwingTime.Value);
+                turnRate = Mathf.Max(turnRate, _tackRate);
             }
-            else if (Quaternion.Angle(mast.transform.rotation, toFlipped) < Quaternion.Angle(mast.transform.rotation, to)) to = toFlipped;
-            mast.transform.rotation = Quaternion.RotateTowards(mast.transform.rotation, to, turnRate * dt);
-            _yardErrorDeg = Quaternion.Angle(mast.transform.rotation, to);
-            if (_yardErrorDeg < 6f) _throughSquareUntil = -1f;
+            else delta = Mathf.Abs(d1) <= Mathf.Abs(d2) ? d1 : d2;
+
+            float step = Mathf.Sign(delta) * Mathf.Min(Mathf.Abs(delta), turnRate * dt);
+            Vector3 next = Quaternion.AngleAxis(step, a.up) * cur;
+            mast.transform.rotation = Quaternion.LookRotation(next, a.up);
+            _yardErrorDeg = Mathf.Abs(delta) - Mathf.Abs(step);
+            if (_yardErrorDeg < 6f) { _throughSquareUntil = -1f; _tackRate = -1f; }
+        }
+
+        /// <summary>Does turning from dir by delta degrees about up sweep across +axis or -axis?</summary>
+        private static bool SweepCrosses(Vector3 dir, float delta, Vector3 axis, Vector3 up)
+        {
+            float g1 = Vector3.SignedAngle(dir, axis, up);
+            float g2 = Vector3.SignedAngle(dir, -axis, up);
+            return Between(g1, delta) || Between(g2, delta);
+        }
+
+        private static bool Between(float g, float delta)
+        {
+            return delta >= 0f ? (g >= 0f && g <= delta) : (g <= 0f && g >= delta);
         }
 
         /// <summary>
@@ -1029,14 +1064,21 @@ namespace SailTrim
             float limit = Plugin.SpillSheetAngle.Value;
             bool canSpill = limit > 0f && _ship.IsSailUp() && SheetAngle <= limit && a.absBeta < 90f;
 
+            bool flippedNow = _spillSideSeen && _boomSide != _spillPrevSide;
+            _spillPrevSide = _boomSide;
+            _spillSideSeen = true;
+
             if (!IsSpilled)
             {
-                if (canSpill && a.aoa < -luff)
+                // Either the wind got onto the wrong face, or the yard changed sides outright (a quick tack can skip
+                // the narrow aback window between physics steps, especially with a very flat sheet).
+                if (canSpill && (a.aoa < -luff || flippedNow))
                 {
                     IsSpilled = true;
                     _spillSide = _boomSide;
-                    _spillFlipped = false;
+                    _spillFlipped = flippedNow;
                     _refillTimer = 0f;
+                    if (flippedNow) BeginTackSwing();
                 }
             }
             else if (!canSpill)
@@ -1049,9 +1091,7 @@ namespace SailTrim
                 {
                     _spillSide = _boomSide;
                     _spillFlipped = true;
-                    // A real yard is braced round through square. Hauled nearly fore-and-aft that would be a half
-                    // turn, so very flat sheets keep the short way.
-                    if (Plugin.TackThroughSquare.Value && SheetAngle >= 15f) _throughSquareUntil = Time.time + 4f;
+                    BeginTackSwing();
                 }
                 bool couldFill = a.aoa > luff;
                 bool yardHome = !_spillFlipped || _yardErrorDeg < 15f;
@@ -1065,6 +1105,14 @@ namespace SailTrim
 
             IsTacking = IsSpilled && _spillFlipped;
             if (IsSpilled) { IsBackwinded = false; IsLuffing = false; IsStalled = false; }
+        }
+
+        /// <summary>The yard is about to be braced round: sweep it through square, in a bounded time whatever the sheet.</summary>
+        private void BeginTackSwing()
+        {
+            if (!Plugin.TackThroughSquare.Value) return;
+            _throughSquareUntil = Time.time + 6f;
+            _tackRate = -1f; // measured on the first step of the sweep
         }
 
         /// <summary>Rig strain: every client tracks it for the readout; only the owner applies damage.</summary>

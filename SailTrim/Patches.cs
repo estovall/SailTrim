@@ -24,12 +24,12 @@ namespace SailTrim
                     Vector3 p = c.m_attachPoint != null ? c.m_attachPoint.position : c.transform.position;
                     Vector3 dv = p - mastPos; dv.y = 0f;
                     string nm = c.m_name ?? "";
-                    bool isHold = nm.IndexOf("hold", System.StringComparison.OrdinalIgnoreCase) >= 0
-                                  || nm.IndexOf("fast", System.StringComparison.OrdinalIgnoreCase) >= 0
-                                  || nm.IndexOf("mast", System.StringComparison.OrdinalIgnoreCase) >= 0;
+                    // Only the hold-fast at the mast works the sheet: benches near the mast (Karve) and the second
+                    // hold-fast at the bow (longship) are ordinary seats.
+                    bool isHold = nm.IndexOf("hold", System.StringComparison.OrdinalIgnoreCase) >= 0;
                     bool near = dv.magnitude < 2.5f;
-                    names.Add($"{nm}@{c.gameObject.name} d={dv.magnitude:0.0}{(isHold || near ? " HOOKED" : "")}");
-                    if (isHold || near) { MastChairs[c] = __instance; hooked++; }
+                    names.Add($"{nm}@{c.gameObject.name} d={dv.magnitude:0.0}{(isHold && near ? " HOOKED" : "")}");
+                    if (isHold && near) { MastChairs[c] = __instance; hooked++; }
                 }
                 Plugin.Log.LogInfo($"SailTrim: {__instance.name} seats: " + (names.Count > 0 ? string.Join(" | ", names) : "none"));
                 if (hooked == 0)

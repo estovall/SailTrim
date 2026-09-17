@@ -128,3 +128,14 @@ wind from ahead still puts the sail aback as before.
 Test: close-hauled (sheet ~25), helm down through the wind: expect luff, then "Tacking – sail spilled", yard sweeping
 through square, a dead patch, then fill on the new tack. Then in irons ease the sheet past 40: expect "Aback" and
 sternway. Watch the loose foot: if the cloth misbehaves, set `SpillFlog = 0`.
+
+### spill-tack, second pass (2026-09-17, after Max's first test)
+
+- Tack animation was intermittent: Max sails close-hauled at about 6 deg of sheet, below the old 15 deg cut-off for the
+  through-square sweep, and spill only began if a physics step caught the narrow aback window. Now spill also starts
+  when the yard changes sides outright, the sweep always goes through square, and it takes `TackSwingTime` (1.6 s)
+  whatever the sheet. The mast is turned as explicit yaw about the hull's up axis (`SweepCrosses` picks the way
+  round), so a near half-turn cannot tumble the rig.
+- Rag: foot lifted 30%, thrash scaled by the sail's drop, and the foot streams downwind (`_visWindTo`) like a flag.
+- Seats bug: benches within 2.5 m of the mast (Karve) and the bow hold-fast (`$ship_holdfast@front`, longship) were
+  hooked for crew trimming. Rule is now name contains "hold" AND within 2.5 m of the mast.

@@ -3,6 +3,7 @@
 ## Unreleased (branch spill-tack)
 
 - Let go and haul: tacking with the sheet hauled in (40 deg or less, `SpillSheetAngle`) no longer puts the sail aback. The crew casts off its lower corners, the sail flogs as a loose rag with no drive, the yard is braced round through square, and after `TackHaulTime` the sail fills on the new tack. Carry your way through the dead patch or you will stall in irons. Eased out past the limit, a wind from ahead still puts the sail aback, which is how you back out of irons.
+- Fixed: crew trimming worked from the benches near the mast on the Karve and from the longship's bow hold-fast. Only the hold-fast at the mast takes the sheet now.
 
 ## 1.4.0
 
