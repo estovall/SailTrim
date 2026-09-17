@@ -14,7 +14,7 @@ namespace SailTrim
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.3.0";
+        public const string VERSION = "1.4.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -43,7 +43,13 @@ namespace SailTrim
         internal static ConfigEntry<float> CrewTrimBonus;
         internal static ConfigEntry<bool> PassengerHud;
         internal static ConfigEntry<KeyCode> ToggleKey;
-        internal static ConfigEntry<float> ReleaseHoldTime;
+        internal static ConfigEntry<KeyCode> RowForwardKey;
+        internal static ConfigEntry<KeyCode> RowBackKey;
+        internal static ConfigEntry<bool> RowKeysToggle;
+        internal static ConfigEntry<bool> RudderSelfCenter;
+        internal static ConfigEntry<float> StowHoldTime;
+        internal static ConfigEntry<float> SailSetRate;
+        internal static ConfigEntry<float> SquareRunAngle;
         internal static ConfigEntry<KeyCode> LowerSailKey;
         internal static ConfigEntry<KeyCode> RaiseSailKey;
         internal static ConfigEntry<bool> MoveKeysTrimSheet;
@@ -181,9 +187,6 @@ namespace SailTrim
         // ---- Input state for tap/hold on the Use button ----
         private bool _wasPiloting;
         private bool _requireUseRelease;
-        private bool _useHeld;
-        private float _useHeldTime;
-        private bool _helmReleased;
 
         private void Awake()
         {
@@ -249,13 +252,21 @@ namespace SailTrim
                 "Show the ship HUD (wind circle, sail icon, speed gauge, trim state) to passengers with the mod, not just the pilot.");
             ToggleKey = Config.Bind("2. Controls", "ToggleKey", KeyCode.H,
                 "Key that switches ManualTrim on/off in game (saved to this config).");
-            ReleaseHoldTime = Config.Bind("2. Controls", "ReleaseHoldTime", 0.5f,
-                new ConfigDescription("Seconds the Use button (E) must be held to let go of the rudder. A shorter tap raises the sail one step instead.",
-                    new AcceptableValueRange<float>(0.15f, 2f)));
             LowerSailKey = Config.Bind("2. Controls", "LowerSailKey", KeyCode.Q,
-                "Key that lowers the sail one step (Full > Half > Slow > Stop > Back), i.e. what S does in vanilla.");
+                "Hold to take in sail (any amount, down to furled). The game's Use button (E) held lets sail out again.");
             RaiseSailKey = Config.Bind("2. Controls", "RaiseSailKey", KeyCode.None,
-                "Optional extra key that raises the sail one step. Tapping the game's Use button (E) always does this too.");
+                "Optional extra key: hold to let out sail. Holding the game's Use button (E) always does this too.");
+            RowForwardKey = Config.Bind("2. Controls", "RowForwardKey", KeyCode.LeftShift,
+                "Row forward (vanilla's paddling speed). Only with the sail furled: with sail set, hold it for StowHoldTime to stow the sail first.");
+            RowBackKey = Config.Bind("2. Controls", "RowBackKey", KeyCode.LeftControl,
+                "Row astern. Same rules as RowForwardKey.");
+            RowKeysToggle = Config.Bind("2. Controls", "RowKeysToggle", false,
+                "false = row only while the key is held. true = press once to start rowing, again to stop.");
+            StowHoldTime = Config.Bind("2. Controls", "StowHoldTime", 1f,
+                new ConfigDescription("Seconds a row key must be held with sail set before the sail starts coming in, so a stray press does nothing.",
+                    new AcceptableValueRange<float>(0.2f, 3f)));
+            RudderSelfCenter = Config.Bind("2. Controls", "RudderSelfCenter", false,
+                "The rudder drifts back to centre when you are not steering. Comfortable, but weather helm then needs constant attention.");
             MoveKeysTrimSheet = Config.Bind("2. Controls", "MoveKeysTrimSheet", true,
                 "Use the game's Forward/Backward bindings (W/S, or the left stick) to sheet in (W) and ease out (S) while at the rudder.");
             InvertSheetKeys = Config.Bind("2. Controls", "InvertSheetKeys", false,
@@ -274,6 +285,12 @@ namespace SailTrim
                 new ConfigDescription("Sheet angle a ship starts with before anyone has trimmed it.",
                     new AcceptableValueRange<float>(0f, 90f)));
 
+            SailSetRate = Config.Bind("3. Physics", "SailSetRate", 0.25f,
+                new ConfigDescription("How much sail is let out or taken in per second while a sail key is held (0.25 = furled to full in 4 s). Stowing for rowing goes twice as fast.",
+                    new AcceptableValueRange<float>(0.05f, 2f)));
+            SquareRunAngle = Config.Bind("3. Physics", "SquareRunAngle", 110f,
+                new ConfigDescription("Apparent wind angle off the bow beyond which the square sail is a drag device: the yard goes square and the sail never counts as stalled.",
+                    new AcceptableValueRange<float>(90f, 180f)));
             ForceMultiplier = Config.Bind("3. Physics", "ForceMultiplier", 1.6f,
                 new ConfigDescription("Overall sail force scale relative to the ship's vanilla sail force factor. At 1.6 a perfectly trimmed sail on a beam reach gives about 2.2x the vanilla push, roughly 50% more speed; a sloppy trim is close to vanilla and a stalled sail is much slower.",
                     new AcceptableValueRange<float>(0.1f, 3f)));
@@ -487,6 +504,11 @@ namespace SailTrim
                 new FieldTarget(typeof(Ship), "m_sailForceOffset"), new FieldTarget(typeof(Ship), "m_shipControlls"),
                 new FieldTarget(typeof(Ship), "m_previousCenter"), new FieldTarget(typeof(Ship), "m_waterLevelOffset"),
                 new FieldTarget(typeof(Ship), "m_disableLevel"), new FieldTarget(typeof(Ship), "m_players"),
+                new FieldTarget(typeof(Ship), "m_speed"), new FieldTarget(typeof(Ship), "m_rudderValue"), new FieldTarget(typeof(Ship), "m_rudderSpeed"),
+                new FieldTarget(typeof(Ship), "m_hasSail"), new FieldTarget(typeof(Ship), "m_sailPosition"), new FieldTarget(typeof(Ship), "m_sailWasInPosition"),
+                new FieldTarget(typeof(Ship), "m_sailBottomTransform"), new FieldTarget(typeof(Ship), "m_sailFurledPosition"), new FieldTarget(typeof(Ship), "m_sailMidfurledPosition"),
+                new FieldTarget(typeof(Ship), "m_sailUnfurledPosition"), new FieldTarget(typeof(Ship), "m_sailCloth"), new FieldTarget(typeof(Ship), "m_sailBlendWeightCurve"),
+                new FieldTarget(typeof(Ship), "m_changeSailPosEffect"),
             };
 
             bool ok = true;
@@ -544,58 +566,88 @@ namespace SailTrim
             if (!pilotingNow || !ManualTrim.Value)
             {
                 _wasPiloting = false;
-                _useHeld = false;
+                _rowHold = 0f; _rowArmed = 0; _rowWarned = false; _rowPrevHeld = 0;
                 return;
             }
+            var st = SailTrimShip.Get(ship);
+            if (st == null) return;
             if (!_wasPiloting)
             {
-                // We just took the rudder. The Use press that started control may
-                // still be held, so demand a release before counting a new press.
+                // We just took the rudder. The Use press that started control may still be held; it must
+                // not start letting sail out, so demand a release first.
                 _wasPiloting = true;
                 _requireUseRelease = true;
-                _useHeld = false;
+                _rowHold = 0f; _rowArmed = 0; _rowWarned = false; _rowPrevHeld = 0;
             }
 
             bool takeInput = player.TakeInput() && !Hud.InRadial();
-            bool held = takeInput && ZInput.GetButton("Use");
-
+            bool useHeld = takeInput && ZInput.GetButton("Use");
             if (_requireUseRelease)
             {
-                if (!held) _requireUseRelease = false;
+                if (!useHeld) _requireUseRelease = false;
+                useHeld = false;
+            }
+
+            // Sail: hold E (or RaiseSailKey) to let out, hold Q to take in; a tap moves it a little.
+            // Letting go of the helm is the game's Jump, exactly like vanilla.
+            float step = SailSetRate.Value * Time.deltaTime;
+            bool setMore = useHeld || (takeInput && RaiseSailKey.Value != KeyCode.None && ZInput.GetKey(RaiseSailKey.Value, false));
+            bool takeIn = takeInput && LowerSailKey.Value != KeyCode.None && ZInput.GetKey(LowerSailKey.Value, false);
+            if (setMore != takeIn)
+            {
+                st.PilotSetSail(setMore ? step : -step);
+                SailTrimHud.NoteSailKeyUsed();
+            }
+
+            UpdateRowKeys(st, player, takeInput, step);
+        }
+
+        // ---- Rowing keys ----
+        private float _rowHold;      // how long the current row key press has lasted
+        private int _rowArmed;       // toggle mode: the row direction to start once the sail is stowed
+        private bool _rowWarned;     // "hold to stow" shown for this press
+        private int _rowPrevHeld;    // row key held last frame (+1/-1/0)
+
+        private void UpdateRowKeys(SailTrimShip st, Player player, bool takeInput, float step)
+        {
+            int held = 0;
+            if (takeInput)
+            {
+                if (RowForwardKey.Value != KeyCode.None && ZInput.GetKey(RowForwardKey.Value, false)) held = 1;
+                else if (RowBackKey.Value != KeyCode.None && ZInput.GetKey(RowBackKey.Value, false)) held = -1;
+            }
+            bool sailSet = st.SailAmount > 0.001f;
+
+            if (held != 0)
+            {
+                _rowHold += Time.deltaTime;
+                if (sailSet)
+                {
+                    // Sail set: a short press does nothing (probably a slip); holding stows the sail first.
+                    if (_rowHold >= StowHoldTime.Value) { st.PilotSetSail(-2f * step); _rowArmed = held; }
+                    else if (!_rowWarned) { player.Message(MessageHud.MessageType.Center, "Hold to stow the sail first"); _rowWarned = true; }
+                    if (st.RowDir != 0) st.PilotSetRowing(0);
+                }
+                else if (!RowKeysToggle.Value)
+                {
+                    st.PilotSetRowing(held);                          // hold mode: row while the key is down
+                }
+                else if (_rowArmed == held)
+                {
+                    st.PilotSetRowing(held);                          // toggle mode: the stow just finished, start rowing
+                    _rowArmed = 0;
+                }
+                else if (_rowPrevHeld == 0)
+                {
+                    st.PilotSetRowing(st.RowDir == held ? 0 : held);  // toggle mode: a fresh press flips it
+                }
             }
             else
             {
-                if (held && !_useHeld)
-                {
-                    _useHeld = true;
-                    _useHeldTime = 0f;
-                    _helmReleased = false;
-                }
-
-                if (held)
-                {
-                    _useHeldTime += Time.deltaTime;
-                    if (!_helmReleased && _useHeldTime >= ReleaseHoldTime.Value)
-                    {
-                        _helmReleased = true;
-                        player.StopDoodadControl();
-                        _wasPiloting = false;
-                        return;
-                    }
-                }
-                else if (_useHeld)
-                {
-                    _useHeld = false;
-                    if (!_helmReleased) { ship.Forward(); SailTrimHud.NoteSailKeyUsed(); }
-                }
+                if (!RowKeysToggle.Value && st.RowDir != 0) st.PilotSetRowing(0);
+                _rowHold = 0f; _rowArmed = 0; _rowWarned = false;
             }
-
-            if (!takeInput) return;
-
-            if (LowerSailKey.Value != KeyCode.None && ZInput.GetKeyDown(LowerSailKey.Value, false))
-            { ship.Backward(); SailTrimHud.NoteSailKeyUsed(); }
-            if (RaiseSailKey.Value != KeyCode.None && ZInput.GetKeyDown(RaiseSailKey.Value, false))
-            { ship.Forward(); SailTrimHud.NoteSailKeyUsed(); }
+            _rowPrevHeld = held;
         }
 
         private void LateUpdate()

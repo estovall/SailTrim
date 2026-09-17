@@ -78,3 +78,26 @@ label, smaller tab font, or accept it.
   `Stop doodad controlls`) in `%USERPROFILE%\AppData\LocalLow\IronGate\Valheim\Player.log`.
 - Original bug handoff from the server-side session: home PC `Downloads\SAILTRIM-BUGFIX-HANDOFF.md` (server facts,
   connection details, the server's build setup). Not in the repo.
+
+## Update 2026-09-17: branch `square-rig` (1.4.0 candidate), built on top of `settings-tab`
+
+Max's asks, all implemented but untested in game when written:
+- Square-rig trim: new lift/drag tables in `SailTrimShip.cs`, `IdealSheet` = argmax of drive from those tables
+  (`BestSheetFor`), drag regime abaft `SquareRunAngle` (110, `3. Physics`, synced) where nothing counts as stalled.
+  Pointing (no-go) and the 0–90 sheet range deliberately unchanged.
+- Continuous reef: `SailAmount` (0..1) on `SailTrimShip`, synced via RPC `SailTrim_Sail` + ZDO `sailtrim_sail`;
+  hold E / `RaiseSailKey` lets out, hold Q takes in, at `SailSetRate` per second (`3. Physics`, synced). The vanilla
+  speed setting is driven by `PilotFixedStep` through RPC `SailTrim_Speed` (Full while any sail, Slow/Back rowing,
+  Stop). `UpdateSailSizeManual` replaces vanilla `UpdateSailSize` for the cloth. E no longer releases the helm
+  (Jump does, as vanilla); `ReleaseHoldTime` config removed.
+- Rowing: `RowForwardKey` (LeftShift), `RowBackKey` (LeftControl), `RowKeysToggle`, `StowHoldTime`; logic in
+  `Plugin.UpdateRowKeys`. Rowing refused with sail set; holding a row key ≥ StowHoldTime stows at 2x rate.
+- `RudderSelfCenter` (postfix on `ShipControlls.ApplyControlls`).
+- Settings tab: rows for the row keys, the two options, and a read-only "Game keys" list from
+  `Localization.GetBoundKeyString`.
+
+Test plan (single-player is enough): take helm, H on; hold E → sail % climbs on the HUD and the cloth follows;
+hold Q → drops; Shift with sail set → "Hold to stow" message, keep holding → sail stows then rowing starts
+(paddle animation, "Rowing" on the HUD); release → stops (hold mode). Space lets go. Then multiplayer: a second
+client should see the partial sail and the paddling. Watch `LogOutput.log` for errors from `UpdateSailSizeManual`.
+1.3.0 (settings tab + HUD-after-rejoin fix) is still on `settings-tab`, verified visually, not yet merged/published.

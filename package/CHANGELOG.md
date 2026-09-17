@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+- Square-rig trim: the force curve is now a low-aspect square sail (lift peaks near 30-35 deg and falls off gently), the yard wants roughly half the apparent wind angle instead of a jib-like 22 deg angle of attack, and abaft about 110 deg the sail is a drag device: running with the yard square is "Trimmed", never "Stalled". The trim hint is computed from the force curves themselves, so it always matches the physics. Pointing ability and the 0-90 sheet range are unchanged on purpose.
+- Reef to any amount: hold E (or RaiseSailKey) to let sail out, hold Q to take it in, from furled to full in about 4 s (`SailSetRate`). The HUD shows the sail percentage. Vanilla's Half/Full steps are gone in manual mode.
+- Rowing: Shift rows forward, Ctrl rows astern (hold, or toggle with `RowKeysToggle`). Rowing is refused while any sail is set; holding a row key for a second (`StowHoldTime`) stows the sail first, then rowing starts. Letting go of the helm is Jump, like vanilla; E no longer releases it.
+- `RudderSelfCenter` (off by default): the rudder drifts back to centre when you are not steering.
+- Settings tab: new rows for the row keys and the two options, plus a read-only list of the game's own keys (let out sail, sheet, steer, let go) as currently bound.
+
 ## 1.3.0
 
 - SailTrim tab in the game's Settings menu (main menu and pause menu): rebind the manual-trim, lower/raise sail, ease and sheet-in keys, and flip the W/S-trim and invert-sheet toggles, without editing the config file. Physics and server settings stay out of the menu.

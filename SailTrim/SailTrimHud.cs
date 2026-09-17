@@ -114,7 +114,8 @@ namespace SailTrim
             _stateText.text = st.IsMastStraining ? "Mast straining – ease out or reef" : StateLabel(st, ship);
             _stateText.color = st.IsMastStraining ? ColBad : StateColor(st, ship, sailIcon: false);
             string extra = st.GustFactor > 0.12f ? "   Gust" : (st.GustFactor < -0.12f ? "   Lull" : (st.ShadowFactor > 0.35f ? "   Lee" : ""));
-            _infoText.text = $"Sheet {st.SheetAngle:0}°   Heel {Mathf.Abs(st.HeelAngle):0}°{extra}";
+            string sail = st.SailAmount >= 0f ? $"Sail {Mathf.RoundToInt(st.SailAmount * 100f)}%   " : "";
+            _infoText.text = $"{sail}Sheet {st.SheetAngle:0}°   Heel {Mathf.Abs(st.HeelAngle):0}°{extra}";
 
             string hint = "";
             if (piloting)
@@ -123,7 +124,9 @@ namespace SailTrim
                 else if (Plugin.ControlHints.Value && !_hintDismissed && !ship.IsSailUp())
                 {
                     string use = Localization.instance != null ? Localization.instance.Localize("$KEY_Use") : "E";
-                    hint = $"Tap {use} raise sail  ·  {Plugin.LowerSailKey.Value} lower sail" + (char)10 + $"Hold {use} let go";
+                    string jump = Localization.instance != null ? Localization.instance.Localize("$KEY_Jump") : "Space";
+                    hint = $"Hold {use} let out sail  ·  hold {Plugin.LowerSailKey.Value} take in" + (char)10
+                         + $"{Plugin.RowForwardKey.Value} row  ·  {jump} let go";
                 }
             }
             else if (Plugin.CrewCanTrim.Value)
@@ -142,6 +145,7 @@ namespace SailTrim
 
         private static string StateLabel(SailTrimShip st, Ship ship)
         {
+            if (st.IsRowing) return ship.GetSpeedSetting() == Ship.Speed.Back ? "Rowing astern" : "Rowing";
             if (!ship.IsSailUp()) return "Sail furled";
             switch (st.State)
             {

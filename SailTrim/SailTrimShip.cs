@@ -9,32 +9,37 @@ namespace SailTrim
     /// Conventions
     ///   SheetAngle     0 = yard hauled fully in (along the hull), 90 = fully eased (square across the hull).
     ///   WindFromAngle  signed angle off the bow that the (apparent) wind comes FROM; + = starboard, - = port.
-    ///   AngleOfAttack  angle between the wind and the sail plane. <= LuffAngle luffs, 15-30 is the sweet
-    ///                  spot, > StallAngle is stalled.
+    ///   AngleOfAttack  angle between the wind and the sail plane. <= LuffAngle luffs; forward of the beam
+    ///                  > StallAngle is stalled; abaft SquareRunAngle the sail is a drag device and never stalls.
+    ///   SailAmount     0 = furled, 1 = full sail, any value between (manual mode replaces vanilla's Half/Full).
     /// </summary>
     public class SailTrimShip : MonoBehaviour
     {
         public const string RpcName = "SailTrim_Sheet";
         public const string RpcModeName = "SailTrim_Mode";
         public const string RpcSheetHandName = "SailTrim_SheetHand";
+        public const string RpcSailName = "SailTrim_Sail";
+        public const string RpcSpeedName = "SailTrim_Speed";
         public static readonly int ZdoSheetHandHash = "sailtrim_sheethand".GetStableHashCode();
         public static readonly int ZdoSheetHash = "sailtrim_sheet".GetStableHashCode();
         public static readonly int ZdoModeHash = "sailtrim_manual".GetStableHashCode();
+        public static readonly int ZdoSailHash = "sailtrim_sail".GetStableHashCode();
 
         private const float SendInterval = 0.1f;
 
         // Lift/drag coefficient tables versus angle of attack (degrees). Linear interpolation.
-        // Roughly a soft sail: lift peaks around 20 deg, collapses past 45, drag climbs toward a flat plate at 90.
+        // A low-aspect square sail: lift builds slowly, peaks around 30-35 deg and falls off gently, so it likes
+        // bigger angles of attack than a jib and works as a drag device with the yard square downwind.
         private static readonly float[] LiftKeys =
         {
-            0f, 0f, 5f, 0.3f, 10f, 0.75f, 15f, 1.05f, 20f, 1.2f, 25f, 1.15f, 30f, 1.0f,
-            40f, 0.7f, 45f, 0.6f, 60f, 0.45f, 75f, 0.28f, 90f, 0.05f
+            0f, 0f, 5f, 0.2f, 10f, 0.45f, 15f, 0.7f, 20f, 0.9f, 25f, 1.05f, 30f, 1.15f, 35f, 1.15f,
+            40f, 1.1f, 45f, 1.0f, 50f, 0.9f, 60f, 0.7f, 75f, 0.4f, 90f, 0.1f
         };
         private static readonly float[] DragKeys =
         {
-            0f, 0.05f, 15f, 0.12f, 30f, 0.3f, 45f, 0.62f, 60f, 0.9f, 75f, 1.08f, 90f, 1.15f
+            0f, 0.08f, 15f, 0.15f, 30f, 0.32f, 45f, 0.62f, 60f, 0.9f, 75f, 1.08f, 90f, 1.15f
         };
-        private const float LiftNorm = 1.2f; // peak of LiftKeys, so ideal trim ~= 1.0 of the vanilla force scale
+        private const float LiftNorm = 1.15f; // peak of LiftKeys, so ideal trim ~= 1.0 of the vanilla force scale
 
         private Ship _ship;
         private ZNetView _nview;
@@ -56,11 +61,23 @@ namespace SailTrim
         /// <summary>Wind on the wrong side of the sail (e.g. in irons with the yard square): drag only, pushes downwind.</summary>
         public bool IsBackwinded { get; private set; }
         public bool IsStalled { get; private set; }
-        public bool IsSweetSpot => !IsLuffing && AngleOfAttack >= 15f && AngleOfAttack <= 30f;
+        public bool IsSweetSpot => State == TrimState.Trimmed;
         /// <summary>Current gust (+) / lull (-) as a fraction of wind strength, for the readout.</summary>
         public float GustFactor { get; private set; }
-        /// <summary>Best achievable sheet angle for the current wind angle (about 22 deg AoA, clamped to the sheet range).</summary>
+        /// <summary>Sheet angle that gives the most drive for the current wind angle, found from the force curves themselves.</summary>
         public float IdealSheet { get; private set; } = 45f;
+        /// <summary>How much sail is set in manual mode: 0 furled .. 1 full. Negative until initialised from the ship.</summary>
+        public float SailAmount { get; private set; } = -1f;
+        /// <summary>Pilot's rowing request in manual mode: +1 forward, -1 astern, 0 none.</summary>
+        public int RowDir { get; private set; }
+        /// <summary>True while the ship's speed setting is one of the rowing ones.</summary>
+        public bool IsRowing => _ship != null && (_ship.m_speed == Ship.Speed.Slow || _ship.m_speed == Ship.Speed.Back);
+        private float _lastSentSail = float.NaN;
+        private float _lastSailSendTime;
+        private float _lastSailChangeTime = -10f;
+        private bool _sailWasMoving;
+        private int _lastSentSpeed = -1;
+        private float _lastSpeedSendTime;
 
         public enum TrimState { Trimmed, UnderTrimmed, OverTrimmed, Luffing, Stalled, Backwinded, NoseDiving }
         /// <summary>Readout state, computed from wave-smoothed wind angle and AoA with hysteresis so it does not flicker.</summary>
@@ -133,9 +150,12 @@ namespace SailTrim
             _nview.Register<float>(RpcName, RPC_Sheet);
             _nview.Register<bool>(RpcModeName, RPC_Mode);
             _nview.Register<long, bool>(RpcSheetHandName, RPC_SheetHand);
+            _nview.Register<float>(RpcSailName, RPC_Sail);
+            _nview.Register<int>(RpcSpeedName, RPC_Speed);
             SheetHand = _nview.GetZDO().GetLong(ZdoSheetHandHash, 0L);
             SheetAngle = Mathf.Clamp(_nview.GetZDO().GetFloat(ZdoSheetHash, Plugin.DefaultSheetAngle.Value), 0f, 90f);
             ManualMode = _nview.GetZDO().GetBool(ZdoModeHash, true);
+            SailAmount = _nview.GetZDO().GetFloat(ZdoSailHash, -1f);
             _initialised = true;
             if (_ship.m_floatCollider != null && _body != null)
                 Plugin.Log.LogInfo($"SailTrim: {_ship.name} float collider {_ship.m_floatCollider.size}, mass {_body.mass:0}, sailForceFactor {_ship.m_sailForceFactor}, sailForceOffset {_ship.m_sailForceOffset}");
@@ -166,6 +186,121 @@ namespace SailTrim
             ManualMode = manual;
             if (_nview != null && _nview.IsValid() && _nview.IsOwner())
                 _nview.GetZDO().Set(ZdoModeHash, ManualMode);
+        }
+
+        // Pilot -> owner: how much sail is set. The owner mirrors it into the ZDO for everyone else.
+        private void RPC_Sail(long sender, float value)
+        {
+            SailAmount = Mathf.Clamp01(value);
+            if (_nview != null && _nview.IsValid() && _nview.IsOwner())
+                _nview.GetZDO().Set(ZdoSailHash, SailAmount);
+        }
+
+        // Pilot -> owner: the vanilla speed setting to use (Full while any sail is set, Slow/Back rowing, Stop).
+        // Vanilla only offers step-up/step-down RPCs; the owner writes m_speed to the ZDO itself every step.
+        private void RPC_Speed(long sender, int speed)
+        {
+            if (_nview == null || !_nview.IsValid() || !_nview.IsOwner()) return;
+            if (speed < (int)Ship.Speed.Stop || speed > (int)Ship.Speed.Full) return;
+            _ship.m_speed = (Ship.Speed)speed;
+        }
+
+        // ------------------------------------------------------------------
+        // Sail amount and rowing (manual mode; pilot's client)
+        // ------------------------------------------------------------------
+        /// <summary>Sail size to feed the force model: the manual amount once known, else whatever vanilla says.</summary>
+        internal float ManualSailSize(float vanillaSize)
+        {
+            return SailAmount >= 0f ? SailAmount : vanillaSize;
+        }
+
+        /// <summary>First time the pilot drives a ship in manual mode, take the sail amount from the vanilla setting.</summary>
+        private void EnsureSailInitialised()
+        {
+            if (SailAmount >= 0f || _ship == null) return;
+            SailAmount = _ship.m_speed == Ship.Speed.Full ? 1f : (_ship.m_speed == Ship.Speed.Half ? 0.5f : 0f);
+            RowDir = _ship.m_speed == Ship.Speed.Slow ? 1 : (_ship.m_speed == Ship.Speed.Back ? -1 : 0);
+        }
+
+        /// <summary>Pilot lets out (+) or takes in (-) sail by a fraction of full sail.</summary>
+        internal void PilotSetSail(float delta)
+        {
+            EnsureSailInitialised();
+            float next = Mathf.Clamp01(SailAmount + delta);
+            if (Mathf.Approximately(next, SailAmount)) return;
+            SailAmount = next;
+            _lastSailChangeTime = Time.time;
+            if (SailAmount > 0.001f) RowDir = 0; // setting sail ends rowing
+            MaybeSendSail(force: false);
+        }
+
+        /// <summary>Pilot asks to row: +1 forward, -1 astern, 0 stop. Refused while any sail is set.</summary>
+        internal void PilotSetRowing(int dir)
+        {
+            EnsureSailInitialised();
+            if (dir != 0 && SailAmount > 0.001f) dir = 0;
+            RowDir = dir;
+        }
+
+        /// <summary>Every physics step on the pilot's client: keep the vanilla speed setting in line with sail and rowing.</summary>
+        internal void PilotFixedStep()
+        {
+            if (_nview == null || !_nview.IsValid()) return;
+            EnsureSailInitialised();
+            Ship.Speed want = SailAmount > 0.001f ? Ship.Speed.Full
+                : (RowDir > 0 ? Ship.Speed.Slow : (RowDir < 0 ? Ship.Speed.Back : Ship.Speed.Stop));
+            if (_ship.m_speed == want) { _lastSentSpeed = -1; return; }
+            int w = (int)want;
+            if (w == _lastSentSpeed && Time.time - _lastSpeedSendTime < 0.5f) return; // owner has not applied it yet; retry slowly
+            _lastSentSpeed = w;
+            _lastSpeedSendTime = Time.time;
+            _nview.InvokeRPC(RpcSpeedName, w);
+        }
+
+        private void MaybeSendSail(bool force)
+        {
+            if (_nview == null || !_nview.IsValid()) return;
+            bool changed = float.IsNaN(_lastSentSail) || Mathf.Abs(_lastSentSail - SailAmount) > 0.002f;
+            if (!changed) return;
+            if (!force && Time.time - _lastSailSendTime < SendInterval) return;
+            _lastSailSendTime = Time.time;
+            _lastSentSail = SailAmount;
+            _nview.InvokeRPC(RpcSailName, SailAmount);
+        }
+
+        /// <summary>
+        /// Manual-mode replacement for Ship.UpdateSailSize: the cloth follows SailAmount instead of Half/Full.
+        /// Same furled/mid/unfurled interpolation and cloth blend as vanilla; the sail-change sound plays when the
+        /// pilot stops adjusting rather than on every tiny move.
+        /// </summary>
+        internal void UpdateSailSizeManual(float dt)
+        {
+            if (_ship == null || !_ship.m_hasSail) return;
+            if (SailAmount < 0f) { _ship.UpdateSailSize(dt); return; }
+            float target = _ship.m_speed == Ship.Speed.Full || _ship.m_speed == Ship.Speed.Half ? SailAmount : 0f;
+            _ship.m_sailPosition = Mathf.MoveTowards(_ship.m_sailPosition, target, dt);
+            Vector3 a = _ship.m_sailFurledPosition.position;
+            Vector3 b = _ship.m_sailMidfurledPosition.position;
+            if (_ship.m_sailPosition >= 0.5f)
+            {
+                a = _ship.m_sailMidfurledPosition.position;
+                b = _ship.m_sailUnfurledPosition.position;
+            }
+            float t = Utils.Frac(Mathf.Clamp(_ship.m_sailPosition, 0f, 0.999f) * 2f);
+            _ship.m_sailBottomTransform.position = Vector3.Lerp(a, b, t);
+            float blend = _ship.m_sailBlendWeightCurve.Evaluate(_ship.m_sailPosition);
+            _ship.m_sailCloth.SerializeData.blendWeight = blend;
+            _ship.m_sailCloth.SetParameterChange();
+
+            bool moving = Time.time - _lastSailChangeTime < 0.3f || !Mathf.Approximately(_ship.m_sailPosition, target);
+            if (_sailWasMoving && !moving && _ship.m_changeSailPosEffect != null)
+            {
+                var lp = Player.m_localPlayer;
+                ZDOID who = lp != null && _ship.m_shipControlls != null && lp.GetPlayerID() == _ship.m_shipControlls.GetUser() ? lp.GetZDOID() : ZDOID.None;
+                _ship.m_changeSailPosEffect.Create(_ship.transform.position, Quaternion.identity, null, 1f, -1, who);
+            }
+            _sailWasMoving = moving;
+            _ship.m_sailWasInPosition = !moving;
         }
 
         // Crew member takes or releases the sheet (sent to the owner; the owner mirrors it into the ZDO).
@@ -286,10 +421,17 @@ namespace SailTrim
                 _nview.GetZDO().Set(ZdoSheetHash, SheetAngle);
                 _nview.GetZDO().Set(ZdoModeHash, ManualMode);
                 _nview.GetZDO().Set(ZdoSheetHandHash, SheetHand);
+                if (SailAmount >= 0f) _nview.GetZDO().Set(ZdoSailHash, SailAmount);
             }
             else
             {
                 var zdo = _nview.GetZDO();
+                // Sail amount: the pilot is the source of truth for a moment after changing it, everyone else follows.
+                if (!IsLocalPilot() || Time.time - _lastSailChangeTime > 0.6f)
+                {
+                    float synced = zdo.GetFloat(ZdoSailHash, -1f);
+                    if (synced >= 0f) SailAmount = Mathf.Clamp01(synced);
+                }
                 long hand = zdo.GetLong(ZdoSheetHandHash, SheetHand);
                 var lp = Player.m_localPlayer;
                 // Keep our optimistic claim for a moment until the owner confirms it.
@@ -320,6 +462,7 @@ namespace SailTrim
             public Vector3 windTo;        // apparent wind direction the air moves toward (horizontal, unit)
             public float windStrength;    // vanilla-style 0.25..1 factor scaled by apparent speed
             public float trueFromDot;     // dot(true wind FROM direction, bow): vanilla's no-go input
+            public float absBeta;         // apparent wind angle off the bow, 0 (ahead) .. 180 (astern)
             public Vector3 yardDir;       // unit vector along the yard, toward its leeward tip
             public Vector3 leewardNormal; // sail normal pointing away from the wind side
             public float aoa;             // effective angle of attack, -90..90
@@ -386,8 +529,39 @@ namespace SailTrim
 
             float raw = absBeta - SheetAngle;
             a.aoa = raw <= 90f ? raw : 180f - raw;
+            a.absBeta = absBeta;
             a.valid = true;
             return a;
+        }
+
+        /// <summary>
+        /// Forward drive per unit force for a sail at sheet angle s with the apparent wind absBeta off the bow,
+        /// from the same lift/drag tables the physics uses (no-go and heel effects aside). Lift is perpendicular
+        /// to the wind (forward component sin beta), drag is along it (forward component -cos beta).
+        /// </summary>
+        private static float DriveFor(float absBeta, float s)
+        {
+            float raw = absBeta - s;
+            if (raw < -Plugin.LuffAngle.Value) return -1f; // aback
+            float aoa = raw <= 90f ? raw : 180f - raw;
+            float cl, cd;
+            if (aoa <= Plugin.LuffAngle.Value) { cl = 0f; cd = 0.05f; }
+            else { cl = Sample(LiftKeys, aoa) * Plugin.LiftScale.Value; cd = Sample(DragKeys, aoa) * Plugin.DragScale.Value; }
+            float b = absBeta * Mathf.Deg2Rad;
+            return cl * Mathf.Sin(b) - cd * Mathf.Cos(b);
+        }
+
+        /// <summary>Sheet angle with the most drive for this wind angle, scanned in 2 deg steps over the sheet range.</summary>
+        private static float BestSheetFor(float absBeta)
+        {
+            float best = 0f, bestDrive = float.NegativeInfinity;
+            float max = Plugin.MaxSheetAngle.Value;
+            for (float s = 0f; s <= max + 0.01f; s += 2f)
+            {
+                float d = DriveFor(absBeta, Mathf.Min(s, max));
+                if (d > bestDrive + 1e-4f) { bestDrive = d; best = Mathf.Min(s, max); }
+            }
+            return best;
         }
 
         /// <summary>
@@ -458,7 +632,8 @@ namespace SailTrim
                 float aoa = a.aoa;
                 IsBackwinded = aoa < -Plugin.LuffAngle.Value;
                 IsLuffing = !IsBackwinded && aoa <= Plugin.LuffAngle.Value;
-                IsStalled = !IsLuffing && !IsBackwinded && aoa > Plugin.StallAngle.Value;
+                // Abaft SquareRunAngle a square sail is a drag device: the yard goes square and nothing "stalls".
+                IsStalled = !IsLuffing && !IsBackwinded && aoa > Plugin.StallAngle.Value && a.absBeta < Plugin.SquareRunAngle.Value;
 
                 float cl, cd;
                 if (IsLuffing) { cl = 0f; cd = 0.05f; }
@@ -859,7 +1034,7 @@ namespace SailTrim
             SmoothAoA = Mathf.Lerp(SmoothAoA, a.aoa, k);
 
             float absBeta = Mathf.Abs(SmoothWindFromAngle);
-            IdealSheet = Mathf.Clamp(absBeta - 22f, 0f, Plugin.MaxSheetAngle.Value);
+            IdealSheet = BestSheetFor(absBeta);
             float diff = SheetAngle - IdealSheet;
 
             // HUD vectors (boat frame: x = starboard, y = bow).
@@ -877,8 +1052,9 @@ namespace SailTrim
             {
                 bool wasTrimmed = State == TrimState.Trimmed;
                 float band = wasTrimmed ? 11f : 6f;
+                bool dragRegime = absBeta >= Plugin.SquareRunAngle.Value;
                 if (Mathf.Abs(diff) <= band) next = TrimState.Trimmed;
-                else if (diff < 0f) next = SmoothAoA > Plugin.StallAngle.Value ? TrimState.Stalled : TrimState.OverTrimmed;
+                else if (diff < 0f) next = !dragRegime && SmoothAoA > Plugin.StallAngle.Value ? TrimState.Stalled : TrimState.OverTrimmed;
                 else next = TrimState.UnderTrimmed;
             }
             State = next;

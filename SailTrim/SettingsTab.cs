@@ -181,16 +181,26 @@ namespace SailTrim
             TMP_Text labelSource = toggleTemplate.GetComponentInChildren<TMP_Text>(true);
             if (labelSource == null) labelSource = keyRowTemplate.GetComponentInChildren<TMP_Text>(true);
 
-            AddHeader(list, labelSource, "Keys");
+            AddHeader(list, labelSource, "SailTrim keys");
             AddKey(list, keyRowTemplate, "Manual trim on/off", Plugin.ToggleKey);
-            AddKey(list, keyRowTemplate, "Lower sail one step", Plugin.LowerSailKey);
-            AddKey(list, keyRowTemplate, "Raise sail one step (tap E also)", Plugin.RaiseSailKey);
-            AddKey(list, keyRowTemplate, "Ease sheet out", Plugin.EaseKey);
-            AddKey(list, keyRowTemplate, "Sheet in", Plugin.SheetInKey);
+            AddKey(list, keyRowTemplate, "Take in sail (hold)", Plugin.LowerSailKey);
+            AddKey(list, keyRowTemplate, "Let out sail (hold; E also)", Plugin.RaiseSailKey);
+            AddKey(list, keyRowTemplate, "Row forward", Plugin.RowForwardKey);
+            AddKey(list, keyRowTemplate, "Row astern", Plugin.RowBackKey);
+            AddKey(list, keyRowTemplate, "Ease sheet out (extra)", Plugin.EaseKey);
+            AddKey(list, keyRowTemplate, "Sheet in (extra)", Plugin.SheetInKey);
 
-            AddHeader(list, labelSource, "Sheet keys");
+            AddHeader(list, labelSource, "Game keys (change under Keyboard & Mouse)");
+            AddInfoKey(list, keyRowTemplate, "Let out sail (hold)", BoundKey("Use", "E"));
+            AddInfoKey(list, keyRowTemplate, "Sheet in / ease out", BoundKey("Forward", "W") + " / " + BoundKey("Backward", "S"));
+            AddInfoKey(list, keyRowTemplate, "Steer", BoundKey("Left", "A") + " / " + BoundKey("Right", "D"));
+            AddInfoKey(list, keyRowTemplate, "Let go of the helm", BoundKey("Jump", "Space"));
+
+            AddHeader(list, labelSource, "Options");
             AddToggle(list, toggleTemplate, "W/S trim the sheet at the helm", Plugin.MoveKeysTrimSheet);
             AddToggle(list, toggleTemplate, "Invert sheet keys", Plugin.InvertSheetKeys);
+            AddToggle(list, toggleTemplate, "Row keys toggle (off = hold to row)", Plugin.RowKeysToggle);
+            AddToggle(list, toggleTemplate, "Rudder self-centres", Plugin.RudderSelfCenter);
 
             _hint = AddHeader(list, labelSource, "Click a key to rebind. Esc cancels, Delete clears.");
             _hint.fontSize = Mathf.Max(12f, labelSource.fontSize * 0.8f);
@@ -262,6 +272,60 @@ namespace SailTrim
             var row = new KeyRow { Entry = entry, Pending = entry.Value, ValueText = valueText, Button = button };
             button.onClick.AddListener(() => BeginCapture(row));
             _keys.Add(row);
+        }
+
+        /// <summary>The player's current binding for one of the game's own buttons, as the game would print it.</summary>
+        private static string BoundKey(string binding, string fallback)
+        {
+            try
+            {
+                string s = Localization.instance != null ? Localization.instance.GetBoundKeyString(binding, true) : "";
+                return string.IsNullOrEmpty(s) ? fallback : s;
+            }
+            catch { return fallback; }
+        }
+
+        /// <summary>A key row that only displays a value (for the game's own bindings); not clickable.</summary>
+        private void AddInfoKey(RectTransform list, RectTransform template, string label, string value)
+        {
+            var go = Instantiate(template.gameObject, list);
+            go.name = "Info_" + label;
+            go.SetActive(true);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f); rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(20f, 32f);
+            var le = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>();
+            le.preferredWidth = 20f; le.preferredHeight = 32f;
+
+            var button = go.GetComponentInChildren<Button>(true);
+            var valueText = button != null ? button.GetComponentInChildren<TMP_Text>(true) : null;
+            if (button == null || valueText == null) { Destroy(go); return; }
+            button.gameObject.SetActive(true);
+            button.onClick = new Button.ButtonClickedEvent();
+            button.interactable = false;
+            var brt = button.GetComponent<RectTransform>();
+            brt.anchorMin = brt.anchorMax = new Vector2(0f, 0.5f); brt.pivot = new Vector2(0f, 0.5f);
+            brt.anchoredPosition = Vector2.zero;
+            brt.sizeDelta = new Vector2(140f, 32f);
+            var vrt = valueText.GetComponent<RectTransform>();
+            vrt.anchorMin = Vector2.zero; vrt.anchorMax = Vector2.one; vrt.offsetMin = new Vector2(4f, 2f); vrt.offsetMax = new Vector2(-4f, -2f);
+            valueText.alignment = TextAlignmentOptions.Center;
+            valueText.text = value;
+
+            foreach (var t in go.GetComponentsInChildren<TMP_Text>(true))
+            {
+                if (t == valueText || t.transform.parent != go.transform) continue;
+                t.gameObject.SetActive(true);
+                var lrt = t.GetComponent<RectTransform>();
+                lrt.anchorMin = lrt.anchorMax = new Vector2(0f, 0.5f); lrt.pivot = new Vector2(1f, 0.5f);
+                lrt.anchoredPosition = new Vector2(-10f, 0f);
+                lrt.sizeDelta = new Vector2(320f, 32f);
+                t.text = label;
+                t.alignment = TextAlignmentOptions.MidlineRight;
+                t.enableAutoSizing = false;
+                break;
+            }
         }
 
         private void AddToggle(RectTransform list, Toggle template, string label, ConfigEntry<bool> entry)

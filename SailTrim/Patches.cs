@@ -74,7 +74,20 @@ namespace SailTrim
             // Rudder only: zero z so vanilla never sees a Forward/Backward press.
             ship.ApplyControlls(new Vector3(moveDir.x, 0f, 0f));
             st.PilotTrimInput(moveDir.z, Time.fixedDeltaTime);
+            // Sail amount and rowing decide the vanilla speed setting (Full / Slow / Back / Stop).
+            st.PilotFixedStep();
             return false;
+        }
+
+        // Optional: the rudder drifts back to centre when the pilot is not steering (both trim modes).
+        [HarmonyPatch(typeof(ShipControlls), nameof(ShipControlls.ApplyControlls))]
+        [HarmonyPostfix]
+        private static void ShipControlls_ApplyControlls_Post(ShipControlls __instance, Vector3 moveDir)
+        {
+            if (!Plugin.Enabled.Value || !Plugin.RudderSelfCenter.Value) return;
+            var ship = __instance.m_ship;
+            if (ship == null || Mathf.Abs(moveDir.x) > 0.1f) return;
+            ship.m_rudderValue = Mathf.MoveTowards(ship.m_rudderValue, 0f, ship.m_rudderSpeed * 1.5f * Time.fixedDeltaTime);
         }
 
         // Sail force from the manual sheet angle instead of vanilla auto-trim.
@@ -85,7 +98,8 @@ namespace SailTrim
             if (!Plugin.Enabled.Value) return true;
             var st = SailTrimShip.Get(__instance);
             if (st == null || !st.ManualMode) return true;
-            __result = st.ComputeSailForce(sailSize, dt);
+            // Vanilla passes 1 (Full) or 0.5 (Half); in manual mode the sail is set to any amount.
+            __result = st.ComputeSailForce(st.ManualSailSize(sailSize), dt);
             return false;
         }
 
@@ -98,7 +112,7 @@ namespace SailTrim
             if (!Plugin.Enabled.Value) return true;
             var st = SailTrimShip.Get(__instance);
             if (st == null || !st.ManualMode) return true;
-            __instance.UpdateSailSize(dt);
+            st.UpdateSailSizeManual(dt);
             st.UpdateYard(dt);
             return false;
         }

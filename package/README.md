@@ -34,18 +34,19 @@ drawn at vanilla's angle.
 
 | Input | Action |
 | --- | --- |
-| Tap **E** | Raise sail one step (Stop > Slow > Half > Full) — what W did in vanilla |
-| Hold **E** ~0.5 s | Let go of the rudder (vanilla E). A tap never releases. |
-| **Q** | Lower sail one step (Full > Half > Slow > Stop > Back / rowing) — what S did in vanilla |
+| Hold **E** | Let out sail, any amount up to full (a tap adds a little) |
+| Hold **Q** | Take in sail, any amount down to furled |
+| Hold **Shift** / **Ctrl** | Row forward / astern. Only with the sail furled: with sail set, hold about a second to stow it first. `RowKeysToggle` makes them press-once toggles |
+| **Space** | Let go of the rudder (the game's Jump, exactly like vanilla). E never releases it. |
 | Hold **W** | Sheet in: the yard swings toward the centreline (pull the rope toward you) |
 | Hold **S** | Ease the sheet out: the yard swings away from the centreline |
 | **A / D** | Rudder, unchanged |
 | **H** | Switch *you* between vanilla sailing (the default) and manual trim; saved to your config |
 | **Hold fast** on the mast (passenger) | Take the sheet and trim with W/S while someone else steers |
 
-Gamepad: the left stick forward/back sheets in/eases; the gamepad Use button releases the helm exactly like
-vanilla. There are no default gamepad bindings for raise/lower, so use a keyboard for those or bind
-`RaiseSailKey` / `LowerSailKey` in the config.
+Gamepad: the left stick forward/back sheets in/eases, the gamepad Use button lets out sail and the gamepad Jump lets
+go of the helm. There are no default gamepad bindings for taking in sail or rowing, so use a keyboard for those or bind
+`LowerSailKey`, `RowForwardKey` and `RowBackKey` in the config.
 
 All of these keys, and the sheet-key toggles, can also be changed in game: **Settings > SailTrim** tab (main menu or
 pause menu). Click a key to rebind it, Esc cancels, Delete clears it. Physics and server settings are not in the menu.
@@ -58,8 +59,8 @@ vanilla wind icon. The hint is averaged over about 1.5 s (`ReadoutSmoothing`) wi
 wave rocking does not make it flicker; trim for what it says on average, not for every wave. Turn the overlay
 off with `ShowHud = false`.
 
-When you take the helm with the sail furled, a gold line under the HUD reminds you that tap-E raises,
-Q lowers and hold-E lets go. It disappears once you have used the keys.
+When you take the helm with the sail furled, a gold line under the HUD reminds you that holding E lets out sail,
+holding Q takes it in, Shift rows and Space lets go. It disappears once you have used the keys.
 
 ### Sailing as a crew
 
@@ -80,9 +81,16 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 ## How to sail it
 
 * **Sheet angle** 0 = yard hauled fully in along the hull, 90 = fully eased square across the hull.
-* **AoA** = angle between the wind and the sail. Aim for about **15–30°**. Roughly: sheet angle ≈ wind angle
-  off the bow minus 20°. Beam wind (90°) wants the sheet near 70°, running (180°) wants it fully eased,
-  close-hauled (45°) wants it near 25°.
+* It is a **square sail**, so it likes a big angle of attack: the yard wants to sit at roughly **half the
+  apparent wind angle**. Close-hauled (wind 60° off the bow) the yard goes to about 30°, on a beam reach
+  about 45–60°, and from a broad reach onward it is simply square (90°). The HUD's **Trimmed** hint is
+  computed from the actual force curve for the current wind, so trim to the hint rather than to a rule.
+* Downwind of about 110° the sail is a drag device: running with the yard square is the right trim, not a
+  stall. Forward of that, hauling in well past the hint stalls it.
+* **Sail amount**: hold E to let sail out and Q to take it in, any amount from furled to full. Less sail means
+  less drive, less heel and a drier bow; reef before the mast strains or the bow buries.
+* **Rowing** (Shift / Ctrl) only works with the sail furled; holding a row key with sail set stows the sail
+  first (about a second, so a slip does nothing).
 * The yard follows the sheet even with the sail furled, so you can pre-trim before hoisting.
 * Eased too far: the sail **luffs** (yard wobbles, almost no drive). Sheet in.
 * Wind on the wrong face, for example in irons with the yard square: the sail is **aback** and pushes you
@@ -92,7 +100,7 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 * A perfectly trimmed sail is about 50% faster than vanilla's auto-trim on a reach and much faster upwind;
   10° off the ideal sheet costs about 15% of the push, a sloppy trim is roughly vanilla speed, and a
   stalled sail is much slower. Heel scales with the sail's
-  side force, so it grows with wind strength and is halved with the sail at Half; a furled sail or rowing
+  side force, so it grows with wind strength and shrinks as you take in sail; a furled sail or rowing
   adds no heel at all.
 * The no-go zone is vanilla's: lift dies within about 37° of the true wind, exactly where the vanilla
   wind indicator turns red.
@@ -144,6 +152,11 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 | `RaiseSailKey` | None | Extra raise key (tap E always works) |
 | `MoveKeysTrimSheet` | true | W/S (game Forward/Backward) sheet in / ease out |
 | `InvertSheetKeys` | false | Swap so W eases and S sheets in |
+| `RowForwardKey` / `RowBackKey` | LeftShift / LeftControl | Row forward / astern (sail must be furled) |
+| `RowKeysToggle` | false | Row keys toggle instead of hold |
+| `StowHoldTime` | 1 | Seconds a row key must be held with sail set before it stows the sail |
+| `RudderSelfCenter` | false | Rudder drifts back to centre when not steering |
+| `SailSetRate` | 0.25 | Sail let out / taken in per second while a key is held (server-synced) |
 | `EaseKey`, `SheetInKey` | None | Extra keys for ease / sheet in |
 | `SheetRate` | 25 | Degrees per second the yard moves while a key is held |
 | `ForceMultiplier` | 1.6 | Overall sail power vs. the ship's vanilla factor |
