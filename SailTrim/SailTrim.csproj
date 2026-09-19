@@ -35,6 +35,10 @@
       <HintPath>$(ManagedDir)\assembly_utils.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Splatform">
+      <HintPath>$(ManagedDir)\Splatform.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="assembly_guiutils">
       <HintPath>$(ManagedDir)\assembly_guiutils.dll</HintPath>
       <Private>false</Private>

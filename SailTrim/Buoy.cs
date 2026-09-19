@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace SailTrim
@@ -16,6 +17,48 @@ namespace SailTrim
     {
         internal const string PrefabName = "SailTrim_Buoy";
         internal static readonly int AnchorHash = "SailTrim_Anchor".GetStableHashCode();
+        internal static readonly int ColorHash = "SailTrim_Color".GetStableHashCode();
+
+        /// <summary>The colours a buoy can wear (pennant and hoop, and its map pin). Interact cycles through them.</summary>
+        internal static readonly string[] ColorNames = { "Red", "Green", "Yellow", "White", "Blue", "Orange", "Black" };
+        internal static readonly Color[] Colors =
+        {
+            new Color(0.75f, 0.12f, 0.1f), new Color(0.12f, 0.55f, 0.2f), new Color(0.95f, 0.8f, 0.15f), new Color(0.92f, 0.9f, 0.85f),
+            new Color(0.15f, 0.3f, 0.8f), new Color(0.95f, 0.45f, 0.1f), new Color(0.08f, 0.08f, 0.08f),
+        };
+        internal static readonly Color[] PinColors =
+        {
+            new Color(1f, 0.25f, 0.2f), new Color(0.3f, 0.95f, 0.35f), new Color(1f, 0.9f, 0.2f), Color.white,
+            new Color(0.35f, 0.55f, 1f), new Color(1f, 0.6f, 0.15f), new Color(0.25f, 0.25f, 0.25f),
+        };
+
+        private static Sprite _pinSprite;
+
+        /// <summary>A buoy seen from above: a filled disc with a dark rim, white so the pin's colour tints it.</summary>
+        internal static Sprite PinSprite()
+        {
+            if (_pinSprite != null) return _pinSprite;
+            const int n = 48;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+            var px = new Color[n * n];
+            float c0 = n * 0.5f, rOut = n * 0.46f, rRim = n * 0.36f;
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float dx = x + 0.5f - c0, dy = y + 0.5f - c0;
+                    float r = Mathf.Sqrt(dx * dx + dy * dy);
+                    float a = Mathf.Clamp01(rOut - r);
+                    float inner = Mathf.Clamp01(rRim - r);
+                    // Dark rim, white centre.
+                    float v = Mathf.Lerp(0.15f, 1f, inner);
+                    px[y * n + x] = new Color(v, v, v, a);
+                }
+            tex.SetPixels(px);
+            tex.Apply();
+            tex.filterMode = FilterMode.Bilinear;
+            _pinSprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
+            return _pinSprite;
+        }
 
         private static GameObject _prefab;
         private static bool _materialsApplied, _effectsApplied;
@@ -208,27 +251,109 @@ namespace SailTrim
         }
     }
 
-    /// <summary>The placed buoy: floats on the owner's client, holds its anchor, lights up at night everywhere.</summary>
-    internal class BuoyPiece : MonoBehaviour
+    /// <summary>The placed buoy: floats on the owner's client, holds its anchor, lights up at night everywhere, wears its colour, and keeps a pin on the map.</summary>
+    internal class BuoyPiece : MonoBehaviour, Hoverable, Interactable
     {
         private ZNetView _nview;
         private Rigidbody _body;
         private Light _light;
         private WaterVolume _water;
         private float _lightTimer;
+        private int _shownColor = -1;
+        private Renderer[] _dyed;
+        private static MaterialPropertyBlock _block;
+        private Minimap.PinData _pin;
+
+        /// <summary>Every loaded buoy's map pin and its colour, for the minimap patch to tint (the game paints every pin white each frame).</summary>
+        internal static readonly Dictionary<Minimap.PinData, Color> Pins = new Dictionary<Minimap.PinData, Color>();
 
         private void Awake()
         {
             _nview = GetComponent<ZNetView>();
             _body = GetComponent<Rigidbody>();
             _light = GetComponentInChildren<Light>(true);
+            var dyed = new List<Renderer>();
+            foreach (var n in new[] { "pennant", "hoopTop" })
+            {
+                var t = transform.Find(n);
+                if (t != null) dyed.Add(t.GetComponent<Renderer>());
+            }
+            _dyed = dyed.ToArray();
+        }
+
+        private void OnDestroy()
+        {
+            RemovePin();
+        }
+
+        private int ColorIndex
+        {
+            get
+            {
+                var z = _nview != null && _nview.IsValid() ? _nview.GetZDO() : null;
+                int i = z != null ? z.GetInt(Buoy.ColorHash, 0) : 0;
+                return Mathf.Clamp(i, 0, Buoy.Colors.Length - 1);
+            }
+        }
+
+        private void ApplyColor(int index)
+        {
+            if (index == _shownColor) return;
+            _shownColor = index;
+            if (_block == null) _block = new MaterialPropertyBlock();
+            _block.SetColor("_Color", Buoy.Colors[index]);
+            foreach (var r in _dyed) if (r != null) r.SetPropertyBlock(_block);
+            if (_pin != null) Pins[_pin] = Buoy.PinColors[index];
+        }
+
+        // ---- map pin ----
+        private void UpdatePin()
+        {
+            var map = Minimap.instance;
+            if (map == null) return;
+            if (!Plugin.BuoyPins.Value || _nview == null || !_nview.IsValid()) { RemovePin(); return; }
+            if (_pin == null)
+            {
+                _pin = map.AddPin(transform.position, Minimap.PinType.Icon3, "", false, false);
+                _pin.m_icon = Buoy.PinSprite();
+                Pins[_pin] = Buoy.PinColors[ColorIndex];
+            }
+            _pin.m_pos = transform.position;
+        }
+
+        private void RemovePin()
+        {
+            if (_pin == null) return;
+            Pins.Remove(_pin);
+            if (Minimap.instance != null) Minimap.instance.RemovePin(_pin);
+            _pin = null;
+        }
+
+        // ---- hover / interact: the colour ----
+        public string GetHoverName() => "Buoy";
+        public float GetHoverOffset() => 0f;
+        public string GetHoverText() => Localization.instance.Localize("Buoy (" + Buoy.ColorNames[ColorIndex] + ")\n[<color=yellow><b>$KEY_Use</b></color>] Change colour");
+        public bool UseItem(Humanoid user, ItemDrop.ItemData item) => false;
+
+        public bool Interact(Humanoid user, bool hold, bool alt)
+        {
+            if (hold || _nview == null || !_nview.IsValid()) return false;
+            int next = (ColorIndex + 1) % Buoy.Colors.Length;
+            _nview.ClaimOwnership();
+            _nview.GetZDO().Set(Buoy.ColorHash, next);
+            ApplyColor(next);
+            user.Message(MessageHud.MessageType.TopLeft, "Buoy: " + Buoy.ColorNames[next]);
+            return true;
         }
 
         private void Update()
         {
+            ApplyColor(ColorIndex);
             _lightTimer -= Time.deltaTime;
-            if (_lightTimer > 0f || _light == null) return;
+            if (_lightTimer > 0f) return;
             _lightTimer = 1f;
+            UpdatePin();
+            if (_light == null) return;
             bool on = Plugin.BuoyLight.Value && EnvMan.instance != null && EnvMan.IsNight();
             if (_light.enabled != on) _light.enabled = on;
             if (Buoy.LanternMaterial != null) Buoy.LanternMaterial.color = on ? Buoy.LanternLit : Buoy.LanternDim;

@@ -156,7 +156,9 @@ Build a **Buoy** from the hammer's Misc tab: 6 wood and 2 resin, no workbench. A
 like a boat. It floats on the waves, holds the spot it was set at, and its lantern burns at night. It stays in the world
 as far out as the game keeps distant objects (several zones), so a mark shows from far down a channel. Line them
 up for a channel or a race course; a boat that hits one shoves it aside for a moment and it works its way
-back. `BuoyEnabled` and `BuoyLight` are in the config.
+back. Press E at a buoy to change its colour: red and green for a channel, yellow for a race mark, and so on.
+Every buoy that is loaded shows on the map as a small disc in its colour. `BuoyEnabled`, `BuoyLight` and
+`BuoyPins` are in the config.
 
 ## Config highlights (`BepInEx\config\com.maxst.sailtrim.cfg`)
 

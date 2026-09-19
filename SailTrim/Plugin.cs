@@ -125,6 +125,7 @@ namespace SailTrim
         internal static ConfigEntry<float> MoorRepairPerMinute;
         internal static ConfigEntry<bool> BuoyEnabled;
         internal static ConfigEntry<bool> BuoyLight;
+        internal static ConfigEntry<bool> BuoyPins;
 
         // ---- Config: visuals ----
         internal static ConfigEntry<float> YardTurnRate;
@@ -478,6 +479,7 @@ namespace SailTrim
             BuoyEnabled = Config.Bind("9. Buoy", "BuoyEnabled", true,
                 "Adds the Buoy build piece (hammer, Misc; 6 wood, 2 resin, no workbench). Placed on open water like a boat, it floats and holds its spot: channel markers, race marks.");
             BuoyLight = Config.Bind("9. Buoy", "BuoyLight", true, "The buoy's lantern burns at night.");
+            BuoyPins = Config.Bind("9. Buoy", "BuoyPins", true, "Every loaded buoy shows on the map as a small disc in its colour (press E at a buoy to change it).");
 
             // Gameplay-affecting settings the server owns when LockConfig is on.
             ServerSyncedEntries.Clear();
@@ -515,6 +517,7 @@ namespace SailTrim
                 new MethodTarget(typeof(Settings), "Awake", Type.EmptyTypes),
                 new MethodTarget(typeof(Ship), "Start", Type.EmptyTypes),
                 new MethodTarget(typeof(ZNetScene), "Awake", Type.EmptyTypes),
+                new MethodTarget(typeof(Minimap), "UpdatePins", Type.EmptyTypes),
                 new MethodTarget(typeof(ObjectDB), "Awake", Type.EmptyTypes),
                 new MethodTarget(typeof(ObjectDB), nameof(ObjectDB.CopyOtherDB), new[] { typeof(ObjectDB) }),
                 new MethodTarget(typeof(Ship), "GetSailForce", new[] { typeof(float), typeof(float) }),

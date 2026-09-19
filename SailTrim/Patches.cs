@@ -85,6 +85,16 @@ namespace SailTrim
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: buoy setup failed: " + e); }
         }
 
+        // The game paints every pin white each frame; the buoys' pins take their buoy's colour after that.
+        [HarmonyPatch(typeof(Minimap), "UpdatePins")]
+        [HarmonyPostfix]
+        private static void Minimap_UpdatePins()
+        {
+            if (BuoyPiece.Pins.Count == 0) return;
+            foreach (var kv in BuoyPiece.Pins)
+                if (kv.Key.m_iconElement != null) kv.Key.m_iconElement.color = kv.Value;
+        }
+
         // A moored boat holds its spot on its owner's client, whatever else is on or off.
         [HarmonyPatch(typeof(Ship), nameof(Ship.CustomFixedUpdate))]
         [HarmonyPostfix]
