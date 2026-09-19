@@ -99,25 +99,43 @@ namespace SailTrim
             p.transform.localPosition = pos;
             p.transform.localScale = size;
             p.layer = parent.layer;
-            p.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var mr = p.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = mat;
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            if (mat != null && mesh != null)
+            {
+                p.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var mr = p.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = mat;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            }
             if (collider) p.AddComponent<BoxCollider>();
         }
 
         private static Mesh CubeMesh()
         {
-            var tmp = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            var mesh = tmp.GetComponent<MeshFilter>().sharedMesh;
-            Object.Destroy(tmp);
-            return mesh;
+            try
+            {
+                var tmp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                var mesh = tmp.GetComponent<MeshFilter>().sharedMesh;
+                Object.Destroy(tmp);
+                return mesh;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>A material on a shader the build has, or null where there is no rendering at all (a dedicated server).</summary>
+        internal static Material MaterialOrNull(params string[] shaders)
+        {
+            foreach (var n in shaders)
+            {
+                var sh = Shader.Find(n);
+                if (sh != null) return new Material(sh);
+            }
+            return null;
         }
 
         private static Material FallbackMaterial()
         {
-            var shader = Shader.Find("Standard");
-            var m = new Material(shader != null ? shader : Shader.Find("Sprites/Default"));
+            var m = MaterialOrNull("Standard", "Sprites/Default");
+            if (m == null) return null;
             m.color = new Color(0.72f, 0.48f, 0.22f);
             if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0.8f);
             if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", 0.55f);

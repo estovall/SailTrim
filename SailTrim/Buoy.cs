@@ -150,9 +150,12 @@ namespace SailTrim
             p.transform.localPosition = pos;
             p.transform.localScale = size;
             p.layer = parent.layer;
-            p.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var mr = p.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = mat;
+            if (mat != null && mesh != null)
+            {
+                p.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var mr = p.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = mat;
+            }
             if (collider)
             {
                 var c = p.AddComponent<CapsuleCollider>();
@@ -162,10 +165,14 @@ namespace SailTrim
 
         private static Mesh Primitive(PrimitiveType type)
         {
-            var tmp = GameObject.CreatePrimitive(type);
-            var mesh = tmp.GetComponent<MeshFilter>().sharedMesh;
-            Object.Destroy(tmp);
-            return mesh;
+            try
+            {
+                var tmp = GameObject.CreatePrimitive(type);
+                var mesh = tmp.GetComponent<MeshFilter>().sharedMesh;
+                Object.Destroy(tmp);
+                return mesh;
+            }
+            catch { return null; }
         }
 
         internal static Material LanternMaterial;
@@ -173,16 +180,15 @@ namespace SailTrim
 
         private static Material Unlit(Color color)
         {
-            var shader = Shader.Find("Sprites/Default");
-            var m = new Material(shader != null ? shader : Shader.Find("Standard"));
-            m.color = color;
+            var m = Cleat.MaterialOrNull("Sprites/Default", "Standard");
+            if (m != null) m.color = color;
             return m;
         }
 
         private static Material Fallback(Color color, float gloss)
         {
-            var shader = Shader.Find("Standard");
-            var m = new Material(shader != null ? shader : Shader.Find("Sprites/Default"));
+            var m = Cleat.MaterialOrNull("Standard", "Sprites/Default");
+            if (m == null) return null;
             m.color = color;
             if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", gloss);
             return m;
@@ -231,7 +237,8 @@ namespace SailTrim
                     foreach (var n in new[] { "float", "staff" })
                     {
                         var t = _prefab.transform.Find(n);
-                        if (t != null) t.GetComponent<MeshRenderer>().sharedMaterial = wood;
+                        var mr2 = t != null ? t.GetComponent<MeshRenderer>() : null;
+                        if (mr2 != null) mr2.sharedMaterial = wood;
                     }
                     _materialsApplied = true;
                 }
