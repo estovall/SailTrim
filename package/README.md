@@ -155,7 +155,8 @@ by itself. If the boat sinks, or the cleat is broken, the other side lets go too
 | --- | --- | --- |
 | `Enabled` | true | Off = vanilla sailing for everyone (client-side kill switch) |
 | `ShowHud` / `ReadoutSmoothing` | true / 1.5 | Overlay on/off, hint averaging |
-| `ControlHints` | true | Raise/lower key reminder when you take the helm with the sail furled |
+| `ShowControls` | true | The sailing keys, as bound, beside the ship HUD whenever you hold the helm in manual trim |
+| `ControlHints` | true | Raise/lower key reminder when you take the helm with the sail furled (only when `ShowControls` is off) |
 | `CameraTilt` | 1 | How much the camera rolls with the heeling ship: 1 = vanilla, 0 = camera stays level |
 | `HullSpeedScale` | 1.6 | Hull speed = 2.43·√(length m) kn × this: raft 10, Karve 12, longship 16, drakkar 18 |
 | `HullSpeedDrag` / `OverSpeedPitchBoost` | 3 / 2 | Extra drag and bow-burying past hull speed |

@@ -28,6 +28,7 @@ namespace SailTrim
         private static TMP_Text _stateText;
         private static TMP_Text _infoText;
         private static TMP_Text _hintText;
+        private static TMP_Text _controlsText;
         private static bool _hintDismissed;
         private static bool _built;
         private static bool _buildFailed;
@@ -111,8 +112,10 @@ namespace SailTrim
                 _stateText.color = ColIdle;
                 _infoText.text = "";
                 _hintText.text = "";
+                _controlsText.text = "";
                 return;
             }
+            _controlsText.text = piloting && Plugin.ShowControls.Value ? ControlsList() : "";
             _stateText.text = st.IsMastStraining ? "Mast straining – ease out or reef" : StateLabel(st, ship);
             _stateText.color = st.IsMastStraining ? ColBad : StateColor(st, ship, sailIcon: false);
             string extra = st.GustFactor > 0.12f ? "   Gust" : (st.GustFactor < -0.12f ? "   Lull" : (st.ShadowFactor > 0.35f ? "   Lee" : ""));
@@ -123,7 +126,7 @@ namespace SailTrim
             if (piloting)
             {
                 if (st.SheetHand != 0L) hint = "A crew member is on the sheet with you";
-                else if (Plugin.ControlHints.Value && !_hintDismissed && !ship.IsSailUp())
+                else if (Plugin.ControlHints.Value && !Plugin.ShowControls.Value && !_hintDismissed && !ship.IsSailUp())
                 {
                     string use = Localization.instance != null ? Localization.instance.Localize("$KEY_Use") : "E";
                     string jump = Localization.instance != null ? Localization.instance.Localize("$KEY_Jump") : "Space";
@@ -138,6 +141,62 @@ namespace SailTrim
                 else hint = "Someone has the sheet";
             }
             _hintText.text = hint;
+        }
+
+        private static string _controlsCache; private static float _controlsCacheAt = -10f;
+
+        /// <summary>The sailing keys, as bound right now, one per line; rebuilt every few seconds in case of a rebind.</summary>
+        private static string ControlsList()
+        {
+            if (_controlsCache != null && Time.unscaledTime - _controlsCacheAt < 3f) return _controlsCache;
+            _controlsCacheAt = Time.unscaledTime;
+            string use = BoundKey("Use", "E"), jump = BoundKey("Jump", "Space");
+            string fwd = BoundKey("Forward", "W"), back = BoundKey("Backward", "S"), left = BoundKey("Left", "A"), right = BoundKey("Right", "D");
+            string sheetIn = Plugin.InvertSheetKeys.Value ? back : fwd, ease = Plugin.InvertSheetKeys.Value ? fwd : back;
+            if (!Plugin.MoveKeysTrimSheet.Value) { sheetIn = Key(Plugin.SheetInKey.Value); ease = Key(Plugin.EaseKey.Value); }
+            string raise = Plugin.RaiseSailKey.Value != KeyCode.None && Plugin.RaiseSailKey.Value != KeyCode.E ? Key(Plugin.RaiseSailKey.Value) : use;
+            const string k = "<color=#F2C46B>", e = "</color>";
+            string nl = ((char)10).ToString();
+            var sb = new System.Text.StringBuilder();
+            sb.Append(k).Append("Hold ").Append(raise).Append(e).Append("  let out sail").Append(nl);
+            sb.Append(k).Append("Hold ").Append(Key(Plugin.LowerSailKey.Value)).Append(e).Append("  take in sail").Append(nl);
+            sb.Append(k).Append(sheetIn).Append(" / ").Append(ease).Append(e).Append("  sheet in / ease out").Append(nl);
+            sb.Append(k).Append(left).Append(" / ").Append(right).Append(e).Append("  steer").Append(nl);
+            sb.Append(k).Append(Key(Plugin.RowForwardKey.Value)).Append(" / ").Append(Key(Plugin.RowBackKey.Value)).Append(e)
+              .Append(Plugin.RowKeysToggle.Value ? "  row ahead / astern (press)" : "  row ahead / astern (hold)").Append(nl);
+            sb.Append(k).Append(jump).Append(e).Append("  let go of the helm").Append(nl);
+            sb.Append(k).Append(Key(Plugin.ToggleKey.Value)).Append(e).Append("  vanilla sailing");
+            _controlsCache = sb.ToString();
+            return _controlsCache;
+        }
+
+        private static string BoundKey(string binding, string fallback)
+        {
+            try
+            {
+                string s = Localization.instance != null ? Localization.instance.GetBoundKeyString(binding, true) : "";
+                return string.IsNullOrEmpty(s) ? fallback : s;
+            }
+            catch { return fallback; }
+        }
+
+        private static string Key(KeyCode kc)
+        {
+            switch (kc)
+            {
+                case KeyCode.None: return "-";
+                case KeyCode.LeftShift: return "Shift";
+                case KeyCode.RightShift: return "R Shift";
+                case KeyCode.LeftControl: return "Ctrl";
+                case KeyCode.RightControl: return "R Ctrl";
+                case KeyCode.LeftAlt: return "Alt";
+                case KeyCode.RightAlt: return "R Alt";
+                case KeyCode.Space: return "Space";
+            }
+            string s = kc.ToString();
+            if (s.StartsWith("Alpha")) return s.Substring(5);
+            if (s.StartsWith("Keypad")) return "Num " + s.Substring(6);
+            return s;
         }
 
         private static void Show(RectTransform rt, bool on)
@@ -269,6 +328,15 @@ namespace SailTrim
                 _hintText.color = ColGold;
                 _hintText.textWrappingMode = TextWrappingModes.Normal;
                 _hintText.alignment = TextAlignmentOptions.Top;
+
+                // The key list, right of the circle (the speed gauge has the left), top-aligned with it.
+                float cw = d * 2.3f, ch = d * 1.6f;
+                _controlsText = MakeText("Controls", _container, fontSource, d * 0.115f, new Vector2(d * 0.62f + cw * 0.5f, d * 0.55f - ch * 0.5f), new Vector2(cw, ch));
+                _controlsText.color = ColText;
+                _controlsText.alignment = TextAlignmentOptions.TopLeft;
+                _controlsText.textWrappingMode = TextWrappingModes.NoWrap;
+                _controlsText.richText = true;
+                _controlsText.lineSpacing = 8f;
 
                 _built = true;
             }

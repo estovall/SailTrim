@@ -2,6 +2,7 @@
 
 ## 1.6.0
 
+- The sailing keys stay on screen beside the ship HUD while you are at the helm in manual trim, as currently bound (`ShowControls`, on; also a toggle in Settings > SailTrim). The one-time key hint under the HUD steps aside when the list is on.
 - The Cleat: a build piece under the hammer's Misc tab, one bronze, placed on your dock (or anywhere). Interact with it when a boat is within 10 m (`CleatRange`) to tie the boat up; a rope with a little sag runs from the cleat to the hull. A moored boat holds its spot and heading the way an empty boat does in vanilla, whether or not anyone is aboard, and a creature or a wave cannot shove it away (`MooringHold`). Interact again to untie, or take the helm: a second at the rudder (`CastOffDelay`) casts the boat off by itself. If the boat sinks or the cleat is broken, the other side lets go by itself.
 
 ## 1.5.0

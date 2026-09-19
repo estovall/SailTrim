@@ -221,6 +221,7 @@ namespace SailTrim
             AddToggle(list, toggleTemplate, "Invert sheet keys", Plugin.InvertSheetKeys);
             AddToggle(list, toggleTemplate, "Row keys toggle (off = hold to row)", Plugin.RowKeysToggle);
             AddToggle(list, toggleTemplate, "Rudder self-centres", Plugin.RudderSelfCenter);
+            AddToggle(list, toggleTemplate, "Show the sailing keys beside the ship HUD", Plugin.ShowControls);
 
             _hint = AddHeader(list, labelSource, "Click a key to rebind. Esc cancels, Delete clears.");
             _hint.fontSize = Mathf.Max(12f, labelSource.fontSize * 0.8f);

@@ -30,6 +30,7 @@ namespace SailTrim
         internal static ConfigEntry<bool> Enabled;
         internal static ConfigEntry<bool> ShowHud;
         internal static ConfigEntry<bool> ControlHints;
+        internal static ConfigEntry<bool> ShowControls;
         internal static ConfigEntry<float> CameraTilt;
         internal static ConfigEntry<float> HullSpeedScale;
         internal static ConfigEntry<float> HullSpeedDrag;
@@ -236,6 +237,8 @@ namespace SailTrim
                 "Show the trim overlay on the ship HUD: sail icon on the wind circle, speed gauge, state and heel text.");
             ControlHints = Config.Bind("1. General", "ControlHints", true,
                 "Show the raise/lower key hint under the ship HUD when you take the helm with the sail furled. It disappears once you have used the keys (until the next game start). false = never show it.");
+            ShowControls = Config.Bind("1. General", "ShowControls", true,
+                "Keep the list of sailing keys on screen beside the ship HUD while you are at the helm in manual trim, so nobody has to remember them mid-sail. Also in Settings > SailTrim.");
             CameraTilt = Config.Bind("1. General", "CameraTilt", 1f,
                 new ConfigDescription("How much the camera rolls with the ship when it heels. 1 = the game's own behaviour (the vanilla 'ship camera tilt' setting still applies), 0.5 = half as much, 0 = the camera stays level however far the boat heels.",
                     new AcceptableValueRange<float>(0f, 1f)));
