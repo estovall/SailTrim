@@ -147,7 +147,15 @@ tie the boat up: a rope runs from the cleat to the hull, and the boat holds its 
 empty boat does in vanilla, with or without people aboard. Creatures and waves cannot shove it away. Press E at the
 cleat again to untie, or just take the helm: after a second at the rudder (`CastOffDelay`) the boat casts off
 by itself. If the boat sinks, or the cleat is broken, the other side lets go too. `CleatRange`, `CleatCost`,
-`CastOffDelay` and `MooringHold` are in the config.
+`CastOffDelay` and `MooringHold` are in the config. A tied-up boat also mends itself a few percent a minute
+(`MoorRepairPerMinute`).
+
+## The buoy (1.6.0)
+
+Build a **Buoy** from the hammer's Misc tab: 6 wood and 2 resin, no workbench. Aim at open water and place it
+like a boat. It floats on the waves, holds the spot it was set at, and its lantern burns at night. Line them
+up for a channel or a race course; a boat that hits one shoves it aside for a moment and it works its way
+back. `BuoyEnabled` and `BuoyLight` are in the config.
 
 ## Config highlights (`BepInEx\config\com.maxst.sailtrim.cfg`)
 

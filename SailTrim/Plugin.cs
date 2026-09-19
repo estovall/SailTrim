@@ -122,6 +122,9 @@ namespace SailTrim
         internal static ConfigEntry<int> CleatCost;
         internal static ConfigEntry<float> MooringHold;
         internal static ConfigEntry<float> CastOffDelay;
+        internal static ConfigEntry<float> MoorRepairPerMinute;
+        internal static ConfigEntry<bool> BuoyEnabled;
+        internal static ConfigEntry<bool> BuoyLight;
 
         // ---- Config: visuals ----
         internal static ConfigEntry<float> YardTurnRate;
@@ -470,6 +473,11 @@ namespace SailTrim
                 new ConfigDescription("Seconds at the helm of a tied-up boat before it casts off by itself.", new AcceptableValueRange<float>(0f, 10f)));
             MooringHold = Config.Bind("8. Mooring", "MooringHold", 1f,
                 new ConfigDescription("How firmly a moored boat is pulled back to where it was tied (heading too). 0 = only the vanilla empty-boat damping.", new AcceptableValueRange<float>(0f, 5f)));
+            MoorRepairPerMinute = Config.Bind("8. Mooring", "MoorRepairPerMinute", 5f,
+                new ConfigDescription("A tied-up boat mends itself: this percent of its full health per minute (the dock knocks it about between tides). 0 = off.", new AcceptableValueRange<float>(0f, 100f)));
+            BuoyEnabled = Config.Bind("9. Buoy", "BuoyEnabled", true,
+                "Adds the Buoy build piece (hammer, Misc; 6 wood, 2 resin, no workbench). Placed on open water like a boat, it floats and holds its spot: channel markers, race marks.");
+            BuoyLight = Config.Bind("9. Buoy", "BuoyLight", true, "The buoy's lantern burns at night.");
 
             // Gameplay-affecting settings the server owns when LockConfig is on.
             ServerSyncedEntries.Clear();

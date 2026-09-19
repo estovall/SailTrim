@@ -61,6 +61,8 @@ namespace SailTrim
         {
             try { Cleat.OnZNetScene(__instance); }
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: cleat registration failed: " + e); }
+            try { Buoy.OnZNetScene(__instance, Cleat.EnsureRoot()); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: buoy registration failed: " + e); }
         }
 
         [HarmonyPatch(typeof(ObjectDB), "Awake")]
@@ -69,6 +71,8 @@ namespace SailTrim
         {
             try { Cleat.OnObjectDb(__instance); }
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: cleat setup failed: " + e); }
+            try { Buoy.OnObjectDb(__instance, Cleat.EnsureRoot()); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: buoy setup failed: " + e); }
         }
 
         [HarmonyPatch(typeof(ObjectDB), nameof(ObjectDB.CopyOtherDB))]
@@ -77,6 +81,8 @@ namespace SailTrim
         {
             try { Cleat.OnObjectDb(__instance); }
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: cleat setup failed: " + e); }
+            try { Buoy.OnObjectDb(__instance, Cleat.EnsureRoot()); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: buoy setup failed: " + e); }
         }
 
         // A moored boat holds its spot on its owner's client, whatever else is on or off.

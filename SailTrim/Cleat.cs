@@ -26,13 +26,23 @@ namespace SailTrim
 
         internal static GameObject Prefab => _prefab;
 
-        /// <summary>The prefab, built once and kept in an inactive root that survives scene changes.</summary>
+        /// <summary>An inactive root that survives scene changes: prefabs built under it never run their Awake.</summary>
+        internal static Transform EnsureRoot()
+        {
+            if (_root == null)
+            {
+                _root = new GameObject("SailTrim_Prefabs");
+                _root.SetActive(false);
+                Object.DontDestroyOnLoad(_root);
+            }
+            return _root.transform;
+        }
+
+        /// <summary>The prefab, built once and kept in the inactive root.</summary>
         internal static void EnsurePrefab()
         {
             if (_prefab != null) return;
-            _root = new GameObject("SailTrim_Prefabs");
-            _root.SetActive(false);
-            Object.DontDestroyOnLoad(_root);
+            EnsureRoot();
 
             int pieceLayer = LayerMask.NameToLayer("piece");
             var go = new GameObject(PrefabName);
@@ -399,6 +409,8 @@ namespace SailTrim
         private static readonly int YawHash = "SailTrim_MoorYaw".GetStableHashCode();
 
         private static readonly Dictionary<Ship, float> _checkAt = new Dictionary<Ship, float>();
+        private static readonly Dictionary<Ship, float> _repairAt = new Dictionary<Ship, float>();
+        private const float RepairStep = 5f;
         private static float _messageTime;
 
         internal static void OnShipStart(Ship ship)
@@ -452,6 +464,23 @@ namespace SailTrim
             }
             var body = ship.m_body;
             if (body == null) return;
+            // Tied up, the crew sees to the hull: a few percent of its health back every minute, in small steps.
+            if (Plugin.MoorRepairPerMinute.Value > 0f && (!_repairAt.TryGetValue(ship, out float rAt) || Time.time > rAt))
+            {
+                _repairAt[ship] = Time.time + RepairStep;
+                var wnt = ship.GetComponent<WearNTear>();
+                if (wnt != null)
+                {
+                    float max = wnt.m_health;
+                    float h = zdo.GetFloat(ZDOVars.s_health, max);
+                    if (h < max)
+                    {
+                        h = Mathf.Min(max, h + max * Plugin.MoorRepairPerMinute.Value * 0.01f * (RepairStep / 60f));
+                        zdo.Set(ZDOVars.s_health, h);
+                        nv.InvokeRPC(ZNetView.Everybody, "RPC_HealthChanged", h);
+                    }
+                }
+            }
             ship.m_speed = Ship.Speed.Stop;
             ship.m_rudderValue = 0f;
             float hold = Plugin.MooringHold.Value;
