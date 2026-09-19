@@ -1,7 +1,8 @@
 # SailTrim for Valheim
 
-Manual sail trimming for Valheim 1.0. No new items or models. Everyone on the server installs the same
-`SailTrim.dll`; the sheet angle is synced through the ship so other players see the yard swing.
+Manual sail trimming for Valheim 1.0, plus a bronze cleat to tie boats up at the dock. Everyone on the server
+installs the same `SailTrim.dll`; the sheet angle and the mooring are synced through the ship so other players
+see the yard swing and the boat stay put.
 
 Built against Valheim **1.0.12** (Unity 6000.0.75f1) with BepInEx 5.4.x.
 
@@ -139,6 +140,15 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
   stern with the sail up gives a "GYBE!" roll kick and hull damage (5% of max health at full sail in strong
   wind with the sheet fully eased), softened by half sail, light wind, or sheeting in first.
 
+## The cleat (1.6.0)
+
+Build a **Cleat** from the hammer's Misc tab (one bronze). Stand at it with a boat within 10 m and press E to
+tie the boat up: a rope runs from the cleat to the hull, and the boat holds its spot and heading the way an
+empty boat does in vanilla, with or without people aboard. Creatures and waves cannot shove it away. Sail and
+oars do nothing while it is tied (the game tells you); the rudder still turns. Press E at the cleat again to
+untie. If the boat sinks, or the cleat is broken, the other side lets go by itself. `CleatRange`, `CleatCost`
+and `MooringHold` are in the config.
+
 ## Config highlights (`BepInEx\config\com.maxst.sailtrim.cfg`)
 
 | Key | Default | Meaning |
@@ -216,7 +226,11 @@ with an error in `BepInEx\LogOutput.log` if a game update changed a signature.
   re-implements tap = raise, hold = release.
 * `Ship.GetSailForce` — lift/drag model from sheet angle vs. apparent wind.
 * `Ship.UpdateSail` — yard follows the sheet angle (one bounded angle, always through square); the cloth's own wind settings make it luff, tauten and flog.
-* `Ship.CustomFixedUpdate` (postfix) — heel couple on the ship owner.
+* `Ship.CustomFixedUpdate` (postfix) — heel couple on the ship owner; a second postfix holds a moored boat.
+* `ZNetScene.Awake`, `ObjectDB.Awake` / `CopyOtherDB` — the cleat prefab (built from primitives with the bronze
+  material, no asset bundle) into the world's prefab list and the hammer's piece table. `SailTrim_Moor` RPC to
+  the boat's owner; `SailTrim_Boat` in the cleat's ZDO, `SailTrim_Cleat` / `SailTrim_MoorPos` / `SailTrim_MoorYaw`
+  in the boat's.
 * `Ship.Start` / `Ship.UpdateControlls` — `SailTrim_Sheet` / `SailTrim_Mode` RPCs (pilot → ship owner) plus
   `sailtrim_sheet` (float) and `sailtrim_manual` (bool) in the ZDO (owner → everyone), mirroring how vanilla
   syncs the rudder.

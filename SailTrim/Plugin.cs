@@ -14,7 +14,7 @@ namespace SailTrim
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.5.0";
+        public const string VERSION = "1.6.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -114,6 +114,12 @@ namespace SailTrim
         internal static ConfigEntry<float> WindShadowRange;
         internal static ConfigEntry<float> DownwindRolling;
         internal static ConfigEntry<float> RollPeriod;
+
+        // ---- Config: mooring ----
+        internal static ConfigEntry<bool> CleatEnabled;
+        internal static ConfigEntry<float> CleatRange;
+        internal static ConfigEntry<int> CleatCost;
+        internal static ConfigEntry<float> MooringHold;
 
         // ---- Config: visuals ----
         internal static ConfigEntry<float> YardTurnRate;
@@ -450,6 +456,15 @@ namespace SailTrim
                 new ConfigDescription("Flap oscillation rate in Hz while luffing.",
                     new AcceptableValueRange<float>(0.5f, 12f)));
 
+            CleatEnabled = Config.Bind("8. Mooring", "CleatEnabled", true,
+                "Adds the Cleat build piece (hammer, Misc). Interact with it to tie up a boat within CleatRange: the boat holds its spot and heading, crew aboard or not, until untied.");
+            CleatRange = Config.Bind("8. Mooring", "CleatRange", 10f,
+                new ConfigDescription("How far from the cleat a boat can be to tie it up, metres.", new AcceptableValueRange<float>(2f, 30f)));
+            CleatCost = Config.Bind("8. Mooring", "CleatCost", 1,
+                new ConfigDescription("Bronze per cleat.", new AcceptableValueRange<int>(1, 20)));
+            MooringHold = Config.Bind("8. Mooring", "MooringHold", 1f,
+                new ConfigDescription("How firmly a moored boat is pulled back to where it was tied (heading too). 0 = only the vanilla empty-boat damping.", new AcceptableValueRange<float>(0f, 5f)));
+
             // Gameplay-affecting settings the server owns when LockConfig is on.
             ServerSyncedEntries.Clear();
             foreach (var kv in Config)
@@ -485,6 +500,9 @@ namespace SailTrim
                 new MethodTarget(typeof(Ship), "Awake", Type.EmptyTypes),
                 new MethodTarget(typeof(Settings), "Awake", Type.EmptyTypes),
                 new MethodTarget(typeof(Ship), "Start", Type.EmptyTypes),
+                new MethodTarget(typeof(ZNetScene), "Awake", Type.EmptyTypes),
+                new MethodTarget(typeof(ObjectDB), "Awake", Type.EmptyTypes),
+                new MethodTarget(typeof(ObjectDB), nameof(ObjectDB.CopyOtherDB), new[] { typeof(ObjectDB) }),
                 new MethodTarget(typeof(Ship), "GetSailForce", new[] { typeof(float), typeof(float) }),
                 new MethodTarget(typeof(Ship), "UpdateSail", new[] { typeof(float) }),
                 new MethodTarget(typeof(Ship), "UpdateSailSize", new[] { typeof(float) }),
@@ -531,7 +549,8 @@ namespace SailTrim
                 new FieldTarget(typeof(Ship), "m_hasSail"), new FieldTarget(typeof(Ship), "m_sailPosition"), new FieldTarget(typeof(Ship), "m_sailWasInPosition"),
                 new FieldTarget(typeof(Ship), "m_sailBottomTransform"), new FieldTarget(typeof(Ship), "m_sailFurledPosition"), new FieldTarget(typeof(Ship), "m_sailMidfurledPosition"),
                 new FieldTarget(typeof(Ship), "m_sailUnfurledPosition"), new FieldTarget(typeof(Ship), "m_sailCloth"), new FieldTarget(typeof(Ship), "m_sailBlendWeightCurve"),
-                new FieldTarget(typeof(Ship), "m_changeSailPosEffect"),
+                new FieldTarget(typeof(Ship), "m_changeSailPosEffect"), new FieldTarget(typeof(Ship), "m_floatCollider"),
+                new FieldTarget(typeof(ZNetScene), "m_prefabs"), new FieldTarget(typeof(ZNetScene), "m_namedPrefabs"),
             };
 
             bool ok = true;

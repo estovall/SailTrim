@@ -210,6 +210,15 @@ namespace SailTrim
                 _nview.GetZDO().Set(ZdoModeHash, ManualMode);
         }
 
+        /// <summary>Owner: the boat was just tied up. Sail furled and rowing stopped for everyone.</summary>
+        internal void OnMoored()
+        {
+            SailAmount = 0f;
+            RowDir = 0;
+            if (_nview != null && _nview.IsValid() && _nview.IsOwner())
+                _nview.GetZDO().Set(ZdoSailHash, SailAmount);
+        }
+
         // Pilot -> owner: how much sail is set. The owner mirrors it into the ZDO for everyone else.
         private void RPC_Sail(long sender, float value)
         {

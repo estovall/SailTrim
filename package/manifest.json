@@ -1,7 +1,7 @@
 {
     "name": "SailTrim",
-    "description": "Manual sail trimming for Valheim 1.0: sheet in and out, real heel, gusts, hull speed, a trim HUD on the ship wheel. Vanilla by default, H at the helm to opt in. Optional server-side version check and config sync.",
-    "version_number": "1.5.0",
+    "description": "Manual sail trimming for Valheim 1.0: sheet in and out, real heel, gusts, hull speed, a trim HUD on the ship wheel. Vanilla by default, H at the helm to opt in. A bronze cleat to tie boats up at the dock. Optional server-side version check and config sync.",
+    "version_number": "1.6.0",
     "website_url": "https://github.com/estovall/SailTrim",
     "dependencies": [
         "denikson-BepInExPack_Valheim-5.4.2350"

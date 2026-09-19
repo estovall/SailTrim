@@ -51,6 +51,41 @@ namespace SailTrim
         private static void Ship_Start(Ship __instance)
         {
             SailTrimShip.Get(__instance)?.OnShipStart();
+            Mooring.OnShipStart(__instance);
+        }
+
+        // ---- The cleat: prefab into the world's prefab list and the hammer ----
+        [HarmonyPatch(typeof(ZNetScene), "Awake")]
+        [HarmonyPostfix]
+        private static void ZNetScene_Awake(ZNetScene __instance)
+        {
+            try { Cleat.OnZNetScene(__instance); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: cleat registration failed: " + e); }
+        }
+
+        [HarmonyPatch(typeof(ObjectDB), "Awake")]
+        [HarmonyPostfix]
+        private static void ObjectDB_Awake(ObjectDB __instance)
+        {
+            try { Cleat.OnObjectDb(__instance); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: cleat setup failed: " + e); }
+        }
+
+        [HarmonyPatch(typeof(ObjectDB), nameof(ObjectDB.CopyOtherDB))]
+        [HarmonyPostfix]
+        private static void ObjectDB_CopyOtherDB(ObjectDB __instance)
+        {
+            try { Cleat.OnObjectDb(__instance); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: cleat setup failed: " + e); }
+        }
+
+        // A moored boat holds its spot on its owner's client, whatever else is on or off.
+        [HarmonyPatch(typeof(Ship), nameof(Ship.CustomFixedUpdate))]
+        [HarmonyPostfix]
+        private static void Ship_CustomFixedUpdate_Mooring(Ship __instance, float fixedDeltaTime)
+        {
+            if (__instance.m_nview == null || !__instance.m_nview.IsValid() || !__instance.m_nview.IsOwner()) return;
+            Mooring.FixedStep(__instance, fixedDeltaTime);
         }
 
         // Pilot input. Vanilla: W/S step the sail, A/D steer. Ours: A/D steer, W/S ease/sheet in.
@@ -63,6 +98,22 @@ namespace SailTrim
             var st = SailTrimShip.Get(ship);
             if (st == null) return true;
 
+            // Tied to a cleat: the rudder still turns, sail and oars do nothing until it is untied.
+            if (Mooring.IsMoored(ship))
+            {
+                if (Mathf.Abs(moveDir.z) > 0.1f) Mooring.PilotBlocked();
+                if (!Plugin.ManualTrim.Value)
+                {
+                    ship.ApplyControlls(new Vector3(moveDir.x, 0f, 0f));
+                    return false;
+                }
+                st.PilotSetMode(true);
+                st.PilotSetRowing(0);
+                if (st.SailAmount > 0.001f) st.PilotSetSail(-1f);
+                ship.ApplyControlls(new Vector3(moveDir.x, 0f, 0f));
+                st.PilotFixedStep();
+                return false;
+            }
             // Tell the ship whether this pilot wants manual trim. Opted out = vanilla controls and physics.
             st.PilotSetMode(Plugin.ManualTrim.Value);
             if (!Plugin.ManualTrim.Value) return true;

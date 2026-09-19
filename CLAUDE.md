@@ -4,7 +4,7 @@ Drop this file into the mod's project folder as `CLAUDE.md` (or paste it as the 
 
 ## Goal
 
-A BepInEx plugin for Valheim 1.0 that adds sail trimming as a real part of sailing. No new items, prefabs, or models. Everyone on the private server installs it (client-side mod, sheet angle synced through the ship's ZDO so other players see the yard move).
+A BepInEx plugin for Valheim 1.0 that adds sail trimming as a real part of sailing. Originally no new items, prefabs, or models; since 1.6.0 (2026-09-19, at Max's request) there is one build piece, the Cleat, built at runtime from primitives with the game's bronze material (still no asset bundle; see `Cleat.cs`). Everyone on the private server installs it (client-side mod, sheet angle synced through the ship's ZDO so other players see the yard move).
 
 ## Controls (on the rudder)
 
