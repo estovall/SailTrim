@@ -89,7 +89,6 @@ namespace SailTrim
             box.center = new Vector3(0f, 0.15f, 0f);
             box.size = new Vector3(0.9f, 0.3f, 0.2f);
 
-            if (!Models.Headless) BuildVisual(go.transform);
 
             _prefab = go;
             Plugin.Log.LogInfo("SailTrim: cleat prefab built.");
@@ -101,6 +100,7 @@ namespace SailTrim
         /// </summary>
         private static void BuildVisual(Transform parent)
         {
+            if (Models.Headless || parent.Find("visual") != null || Models.StandardTemplate == null) return;
             var visual = new GameObject("visual");
             visual.transform.SetParent(parent, false);
             visual.layer = parent.gameObject.layer;
@@ -128,12 +128,15 @@ namespace SailTrim
             EnsurePrefab();
             Plugin.Log.LogInfo($"SailTrim: ObjectDB with {db.m_items.Count} items, hammer {(db.GetItemPrefab("Hammer") != null ? "found" : "missing")}, graphics {SystemInfo.graphicsDeviceType}");
             Models.MaybeRenderCandidatePreviews(db);
+            // The model needs a material of the game's (see Models.StandardTemplate): built once a world's ObjectDB is up.
+            Models.FindStandardTemplate(db);
+            BuildVisual(_prefab.transform);
             var piece = _prefab.GetComponent<Piece>();
             var bronze = db.GetItemPrefab("Bronze");
             var drop = bronze != null ? bronze.GetComponent<ItemDrop>() : null;
             if (drop != null)
                 piece.m_resources = new[] { new Piece.Requirement { m_resItem = drop, m_amount = Mathf.Max(1, Plugin.CleatCost.Value), m_recover = true } };
-            if (_icon == null)
+            if (_icon == null && _prefab.transform.Find("visual") != null)
             {
                 var visual = _prefab.transform.Find("visual");
                 _icon = visual != null ? Models.RenderIcon(visual.gameObject, "icon_cleat", 256, 150f, 32f) : null;
@@ -484,6 +487,7 @@ namespace SailTrim
             else
             {
                 _ropeMaterial = Models.Standard(Models.NoiseTexture(new Color(0.5f, 0.4f, 0.27f), 0.4f, 11, 0.8f), 0f, 0.05f);
+                if (_ropeMaterial == null) { var sh = Shader.Find("Sprites/Default"); if (sh != null) _ropeMaterial = new Material(sh) { color = new Color(0.45f, 0.36f, 0.24f) }; }
                 Plugin.Log.LogInfo("SailTrim: no rope material found in the game; using a plain one");
             }
             return _ropeMaterial;

@@ -39,7 +39,7 @@ namespace SailTrim
         internal static readonly Color LanternDim = new Color(0.35f, 0.26f, 0.14f), LanternLit = new Color(1f, 0.82f, 0.45f);
 
         // Heights on the model, metres above the waterline (the buoy's origin).
-        private const float BarrelHeight = 0.95f, BarrelDraft = 0.42f, StaffTop = 2.5f, BarY = 2.4f, LanternHeight = 0.42f, BannerHeight = 1.25f;
+        private const float BarrelHeight = 0.95f, BarrelDraft = 0.42f, StaffTop = 2.5f, BarY = 2.4f, LanternHeight = 0.52f, BannerHeight = 1.25f;
 
         private static Sprite _pinSprite, _icon;
         private static GameObject _prefab;
@@ -319,7 +319,7 @@ namespace SailTrim
             // The main menu's ObjectDB has no items or pieces: the model is built from the game's parts once a
             // world's ObjectDB is up (it has the hammer), never from fallbacks in the menu.
             bool full = db.GetItemPrefab("Hammer") != null;
-            if (full) BuildVisual(db);
+            if (full) { Models.FindStandardTemplate(db); BuildVisual(db); }
             var piece = _prefab.GetComponent<Piece>();
             var wood = db.GetItemPrefab("Wood"); var resin = db.GetItemPrefab("Resin");
             var wd = wood != null ? wood.GetComponent<ItemDrop>() : null;

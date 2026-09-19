@@ -201,15 +201,44 @@ namespace SailTrim
         }
 
         /// <summary>A lit material on the Standard shader (null without one), for the procedural parts.</summary>
+        /// <summary>
+        /// A material of the game's that uses the Standard shader and renders (the lantern item's). The Standard
+        /// shader looked up by name renders magenta in this build: only the variants the game's own materials use
+        /// are in it. Set once a world's ObjectDB is up.
+        /// </summary>
+        internal static Material StandardTemplate;
+
+        internal static void FindStandardTemplate(ObjectDB db)
+        {
+            if (StandardTemplate != null || db == null) return;
+            foreach (var name in new[] { "Lantern", "piece_hoodedlantern", "piece_snowlantern" })
+            {
+                var p = Find(db, name);
+                if (p == null) continue;
+                foreach (var r in p.GetComponentsInChildren<MeshRenderer>(true))
+                    if (r.sharedMaterial != null && r.sharedMaterial.shader != null && r.sharedMaterial.shader.name == "Standard")
+                    { StandardTemplate = r.sharedMaterial; return; }
+            }
+        }
+
+        /// <summary>A lit Standard material from the game's template (null before a world's ObjectDB is up).</summary>
         internal static Material Standard(Texture2D tex, float metallic, float smoothness)
         {
-            var sh = Shader.Find("Standard");
-            if (sh == null) return null;
-            var m = new Material(sh);
-            m.mainTexture = tex;
-            m.color = Color.white;
+            if (StandardTemplate == null) return null;
+            var m = new Material(StandardTemplate) { name = "SailTrim_Standard" };
+            foreach (var p in m.GetTexturePropertyNames())
+                if (p != "_MainTex") m.SetTexture(p, null);
+            m.SetTexture("_MainTex", tex);
+            m.mainTextureScale = Vector2.one;
+            m.mainTextureOffset = Vector2.zero;
+            if (m.HasProperty("_Color")) m.SetColor("_Color", Color.white);
             if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", metallic);
             if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", smoothness);
+            if (m.HasProperty("_GlossMapScale")) m.SetFloat("_GlossMapScale", smoothness);
+            if (m.HasProperty("_EmissionColor")) m.SetColor("_EmissionColor", Color.black);
+            m.DisableKeyword("_EMISSION");
+            m.DisableKeyword("_NORMALMAP");
+            m.DisableKeyword("_METALLICGLOSSMAP");
             return m;
         }
 
