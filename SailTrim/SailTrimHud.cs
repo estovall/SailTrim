@@ -329,11 +329,13 @@ namespace SailTrim
                 _hintText.textWrappingMode = TextWrappingModes.Normal;
                 _hintText.alignment = TextAlignmentOptions.Top;
 
-                // The key list, right of the circle (the speed gauge has the left), top-aligned with it.
+                // The key list, left of the speed gauge and right-aligned against it: the game puts the wind circle
+                // against the right edge of the screen, and a list on that side ran off it.
                 float cw = d * 2.3f, ch = d * 1.6f;
-                _controlsText = MakeText("Controls", _container, fontSource, d * 0.115f, new Vector2(d * 0.62f + cw * 0.5f, d * 0.55f - ch * 0.5f), new Vector2(cw, ch));
+                float gaugeLeft = -d * 0.5f - gd * 0.65f - gd * 0.5f;
+                _controlsText = MakeText("Controls", _container, fontSource, d * 0.115f, new Vector2(gaugeLeft - d * 0.1f - cw * 0.5f, d * 0.55f - ch * 0.5f), new Vector2(cw, ch));
                 _controlsText.color = ColText;
-                _controlsText.alignment = TextAlignmentOptions.TopLeft;
+                _controlsText.alignment = TextAlignmentOptions.TopRight;
                 _controlsText.textWrappingMode = TextWrappingModes.NoWrap;
                 _controlsText.richText = true;
                 _controlsText.lineSpacing = 8f;

@@ -1,0 +1,494 @@
+using System.Collections.Generic;
+using System.IO;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace SailTrim
+{
+    /// <summary>
+    /// Model helpers for the cleat and the buoy: copying the visible parts of the game's own prefabs (so the pieces
+    /// wear real game art), procedural meshes and textures, and rendering a piece's icon from its model.
+    /// Nothing here runs on a dedicated server: without a graphics device the pieces are colliders only.
+    /// </summary>
+    internal static class Models
+    {
+        internal static bool Headless => SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null;
+
+        internal static string CacheDir
+        {
+            get
+            {
+                string d = Path.Combine(BepInEx.Paths.BepInExRootPath, "cache", "SailTrim");
+                try { Directory.CreateDirectory(d); } catch { }
+                return d;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Finding the game's prefabs
+        // ------------------------------------------------------------------
+        /// <summary>A game prefab by name: the world's list when a world is up, else items and every tool's piece table (the main menu has those).</summary>
+        internal static GameObject Find(ObjectDB db, string name)
+        {
+            var scene = ZNetScene.instance;
+            if (scene != null)
+            {
+                var p = scene.GetPrefab(name);
+                if (p != null) return p;
+            }
+            if (db == null) return null;
+            var item = db.GetItemPrefab(name);
+            if (item != null) return item;
+            foreach (var it in db.m_items)
+            {
+                if (it == null) continue;
+                var drop = it.GetComponent<ItemDrop>();
+                var table = drop != null && drop.m_itemData != null && drop.m_itemData.m_shared != null ? drop.m_itemData.m_shared.m_buildPieces : null;
+                if (table == null) continue;
+                foreach (var p in table.m_pieces)
+                    if (p != null && p.name == name) return p;
+            }
+            return null;
+        }
+
+        internal static GameObject FindFirst(ObjectDB db, out string found, params string[] names)
+        {
+            foreach (var n in names)
+            {
+                var p = Find(db, n);
+                if (p != null) { found = n; return p; }
+            }
+            found = null;
+            return null;
+        }
+
+        // ------------------------------------------------------------------
+        // Copying a prefab's visible parts
+        // ------------------------------------------------------------------
+        /// <summary>
+        /// A new child of parent holding copies of src's visible meshes (the undamaged, most detailed ones), placed
+        /// as they are in src, with src's materials. bounds is the copy's extent in the child's own space.
+        /// </summary>
+        internal static GameObject CopyVisual(GameObject src, Transform parent, string name, out Bounds bounds)
+        {
+            var part = new GameObject(name);
+            part.transform.SetParent(parent, false);
+            part.layer = parent.gameObject.layer;
+            bounds = new Bounds();
+            bool any = false;
+            foreach (var r in VisibleRenderers(src))
+            {
+                Mesh mesh = null;
+                if (r is MeshRenderer)
+                {
+                    var mf = r.GetComponent<MeshFilter>();
+                    mesh = mf != null ? mf.sharedMesh : null;
+                }
+                else if (r is SkinnedMeshRenderer smr) mesh = smr.sharedMesh;
+                if (mesh == null) continue;
+                Matrix4x4 m = src.transform.worldToLocalMatrix * r.transform.localToWorldMatrix;
+                var go = new GameObject(r.gameObject.name);
+                go.layer = part.layer;
+                go.transform.SetParent(part.transform, false);
+                go.transform.localPosition = m.GetColumn(3);
+                go.transform.localRotation = m.rotation;
+                go.transform.localScale = m.lossyScale;
+                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var mr = go.AddComponent<MeshRenderer>();
+                mr.sharedMaterials = r.sharedMaterials;
+                mr.shadowCastingMode = ShadowCastingMode.On;
+                var b = mesh.bounds;
+                for (int i = 0; i < 8; i++)
+                {
+                    Vector3 c = b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                    Vector3 w = m.MultiplyPoint3x4(c);
+                    if (!any) { bounds = new Bounds(w, Vector3.zero); any = true; }
+                    else bounds.Encapsulate(w);
+                }
+            }
+            if (!any) { Object.Destroy(part); return null; }
+            return part;
+        }
+
+        private static List<Renderer> VisibleRenderers(GameObject src)
+        {
+            var result = new List<Renderer>();
+            Transform root = src.transform;
+            var wnt = src.GetComponent<WearNTear>();
+            if (wnt != null && wnt.m_new != null) root = wnt.m_new.transform;
+            var lod = src.GetComponentInChildren<LODGroup>(true);
+            if (lod != null)
+            {
+                var lods = lod.GetLODs();
+                if (lods.Length > 0)
+                    foreach (var r in lods[0].renderers)
+                        if (Usable(r, src.transform) && (root == src.transform || r.transform.IsChildOf(root))) result.Add(r);
+            }
+            if (result.Count == 0)
+                foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+                    if (Usable(r, src.transform) && !IsAlternate(r.transform, src.transform)) result.Add(r);
+            return result;
+        }
+
+        private static bool Usable(Renderer r, Transform top)
+        {
+            if (r == null || !r.enabled) return false;
+            if (!(r is MeshRenderer) && !(r is SkinnedMeshRenderer)) return false;
+            for (var t = r.transform; t != null && t != top; t = t.parent)
+                if (!t.gameObject.activeSelf) return false;
+            return true;
+        }
+
+        private static bool IsAlternate(Transform t, Transform top)
+        {
+            for (; t != null && t != top; t = t.parent)
+            {
+                string n = t.name.ToLowerInvariant();
+                if (n.Contains("lod1") || n.Contains("lod2") || n.Contains("lod3") || n.Contains("broken") || n.Contains("worn") || n.Contains("destruction") || n.Contains("fragment"))
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Scale and turn part (rot, then uniform scale), and put the point of its bounds at anchor (fractions 0..1 per axis) on target.</summary>
+        internal static void Place(GameObject part, Bounds b, Vector3 anchor, Vector3 target, float scale, Quaternion rot)
+        {
+            Vector3 a = b.min + Vector3.Scale(b.size, anchor);
+            part.transform.localRotation = rot;
+            part.transform.localScale = Vector3.one * scale;
+            part.transform.localPosition = target - rot * (a * scale);
+        }
+
+        /// <summary>Same with a separate scale per axis (of the part's own space).</summary>
+        internal static void Place(GameObject part, Bounds b, Vector3 anchor, Vector3 target, Vector3 scale, Quaternion rot)
+        {
+            Vector3 a = b.min + Vector3.Scale(b.size, anchor);
+            part.transform.localRotation = rot;
+            part.transform.localScale = scale;
+            part.transform.localPosition = target - rot * Vector3.Scale(a, scale);
+        }
+
+        // ------------------------------------------------------------------
+        // Procedural textures and materials
+        // ------------------------------------------------------------------
+        /// <summary>A tileable texture: base colour with value noise (grain along y when streaks is above 0).</summary>
+        internal static Texture2D NoiseTexture(Color baseColor, float amount, int seed, float streaks = 0f, int size = 64)
+        {
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, true);
+            var rnd = new System.Random(seed);
+            int g = 8;
+            var grid = new float[g * g];
+            for (int i = 0; i < grid.Length; i++) grid[i] = (float)rnd.NextDouble();
+            var px = new Color[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float fx = x / (float)size * g, fy = y / (float)size * g;
+                    int x0 = (int)fx, y0 = (int)fy; float tx = fx - x0, ty = fy - y0;
+                    float a = grid[(y0 % g) * g + x0 % g], b = grid[(y0 % g) * g + (x0 + 1) % g];
+                    float c = grid[((y0 + 1) % g) * g + x0 % g], d = grid[((y0 + 1) % g) * g + (x0 + 1) % g];
+                    float n = Mathf.Lerp(Mathf.Lerp(a, b, tx), Mathf.Lerp(c, d, tx), ty);
+                    float fine = (float)rnd.NextDouble();
+                    float s = streaks > 0f ? Mathf.Sin((x + n * 6f) * 0.9f) * 0.5f + 0.5f : 0.5f;
+                    float v = 1f + amount * ((n - 0.5f) * 1.2f + (fine - 0.5f) * 0.5f + (s - 0.5f) * streaks);
+                    px[y * size + x] = new Color(baseColor.r * v, baseColor.g * v, baseColor.b * v, 1f);
+                }
+            tex.SetPixels(px);
+            tex.Apply(true);
+            tex.wrapMode = TextureWrapMode.Repeat;
+            tex.filterMode = FilterMode.Bilinear;
+            return tex;
+        }
+
+        /// <summary>A lit material on the Standard shader (null without one), for the procedural parts.</summary>
+        internal static Material Standard(Texture2D tex, float metallic, float smoothness)
+        {
+            var sh = Shader.Find("Standard");
+            if (sh == null) return null;
+            var m = new Material(sh);
+            m.mainTexture = tex;
+            m.color = Color.white;
+            if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", metallic);
+            if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", smoothness);
+            return m;
+        }
+
+        /// <summary>A copy of a game material wearing another main texture (its other maps are dropped, since they belong to the old one).</summary>
+        internal static Material Retextured(Material src, Texture2D tex)
+        {
+            var m = new Material(src);
+            foreach (var p in m.GetTexturePropertyNames())
+            {
+                if (p == "_MainTex") m.SetTexture(p, tex);
+                else if (p == "_BumpMap" || p == "_MetallicGlossMap" || p == "_MetalTex" || p == "_EmissionMap" || p == "_StyleTex" || p == "_NoiseTex")
+                    m.SetTexture(p, null);
+            }
+            if (m.HasProperty("_Color")) m.SetColor("_Color", Color.white);
+            return m;
+        }
+
+        // ------------------------------------------------------------------
+        // Procedural meshes
+        // ------------------------------------------------------------------
+        internal class MeshBuilder
+        {
+            private readonly List<Vector3> _v = new List<Vector3>();
+            private readonly List<Vector3> _n = new List<Vector3>();
+            private readonly List<Vector2> _uv = new List<Vector2>();
+            private readonly List<int> _t = new List<int>();
+
+            /// <summary>A box with its own faces (flat shading), UVs in metres so a tiling texture keeps its scale.</summary>
+            internal void Box(Vector3 center, Vector3 size)
+            {
+                Vector3 h = size * 0.5f;
+                for (int axis = 0; axis < 3; axis++)
+                    for (int sgn = -1; sgn <= 1; sgn += 2)
+                    {
+                        Vector3 n = Vector3.zero; n[axis] = sgn;
+                        Vector3 u = Vector3.zero, v = Vector3.zero;
+                        u[(axis + 1) % 3] = 1f; v[(axis + 2) % 3] = 1f;
+                        if (sgn < 0) { var tmp = u; u = v; v = tmp; }
+                        int b0 = _v.Count;
+                        for (int k = 0; k < 4; k++)
+                        {
+                            float su = (k == 1 || k == 2) ? 1f : -1f, sv = (k >= 2) ? 1f : -1f;
+                            Vector3 p = center + Vector3.Scale(n + u * su + v * sv, h);
+                            _v.Add(p); _n.Add(n);
+                            _uv.Add(new Vector2(Vector3.Dot(p, u) * 2f, Vector3.Dot(p, v) * 2f));
+                        }
+                        _t.Add(b0); _t.Add(b0 + 2); _t.Add(b0 + 1);
+                        _t.Add(b0); _t.Add(b0 + 3); _t.Add(b0 + 2);
+                    }
+            }
+
+            /// <summary>A round tube from a to b, its radius along the way given by radius(t), t from 0 to 1; the ends closed to a point.</summary>
+            internal void Tube(Vector3 a, Vector3 b, System.Func<float, float> radius, int sides = 16, int rings = 12, bool capA = true, bool capB = true)
+            {
+                Vector3 axis = (b - a).normalized;
+                Vector3 side = Vector3.Cross(axis, Mathf.Abs(axis.y) < 0.9f ? Vector3.up : Vector3.right).normalized;
+                Vector3 up = Vector3.Cross(side, axis);
+                float len = Vector3.Distance(a, b);
+                int b0 = _v.Count;
+                for (int i = 0; i <= rings; i++)
+                {
+                    float t = i / (float)rings;
+                    float r = radius(t);
+                    float dr = (radius(Mathf.Min(1f, t + 0.01f)) - radius(Mathf.Max(0f, t - 0.01f))) / (0.02f * len);
+                    Vector3 c = Vector3.Lerp(a, b, t);
+                    for (int s = 0; s <= sides; s++)
+                    {
+                        float ang = s / (float)sides * Mathf.PI * 2f;
+                        Vector3 dir = side * Mathf.Cos(ang) + up * Mathf.Sin(ang);
+                        _v.Add(c + dir * r);
+                        _n.Add((dir - axis * dr).normalized);
+                        _uv.Add(new Vector2(s / (float)sides * 2f * Mathf.PI * Mathf.Max(0.02f, r) * 2f, t * len * 2f));
+                    }
+                }
+                int row = sides + 1;
+                for (int i = 0; i < rings; i++)
+                    for (int s = 0; s < sides; s++)
+                    {
+                        int p0 = b0 + i * row + s, p1 = p0 + 1, p2 = p0 + row, p3 = p2 + 1;
+                        _t.Add(p0); _t.Add(p2); _t.Add(p1);
+                        _t.Add(p1); _t.Add(p2); _t.Add(p3);
+                    }
+                if (capA) Cap(a - axis * 0.001f, -axis, b0, row, sides, true);
+                if (capB) Cap(b + axis * 0.001f, axis, b0 + rings * row, row, sides, false);
+            }
+
+            private void Cap(Vector3 c, Vector3 n, int ringStart, int row, int sides, bool flip)
+            {
+                int ci = _v.Count;
+                _v.Add(c); _n.Add(n); _uv.Add(Vector2.zero);
+                for (int s = 0; s < sides; s++)
+                {
+                    int p0 = ringStart + s, p1 = p0 + 1;
+                    if (flip) { _t.Add(ci); _t.Add(p1); _t.Add(p0); }
+                    else { _t.Add(ci); _t.Add(p0); _t.Add(p1); }
+                }
+            }
+
+            internal Mesh Build(string name)
+            {
+                var m = new Mesh { name = name };
+                m.SetVertices(_v); m.SetNormals(_n); m.SetUVs(0, _uv); m.SetTriangles(_t, 0);
+                m.RecalculateBounds();
+                m.RecalculateTangents();
+                return m;
+            }
+        }
+
+        internal static GameObject MeshPart(Transform parent, string name, Mesh mesh, Material mat)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.layer = parent.gameObject.layer;
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            return go;
+        }
+
+        // ------------------------------------------------------------------
+        // Icons
+        // ------------------------------------------------------------------
+        /// <summary>
+        /// The visual child rendered on its own against a clear background, three-quarter view from above, as a
+        /// sprite; the image is also written to BepInEx\cache\SailTrim\{file}.png. Null on failure.
+        /// </summary>
+        internal static Sprite RenderIcon(GameObject visual, string file, int size = 256, float yaw = 145f, float pitch = 22f)
+        {
+            if (Headless || visual == null) return null;
+            int layer = FreeLayer();
+            GameObject copy = null, camGo = null, lightGo = null;
+            RenderTexture rt = null;
+            var fog = RenderSettings.fog; var ambMode = RenderSettings.ambientMode; var amb = RenderSettings.ambientLight; var ambI = RenderSettings.ambientIntensity;
+            try
+            {
+                copy = Object.Instantiate(visual);
+                copy.name = "SailTrim_IconModel";
+                copy.transform.SetParent(null, false);
+                copy.transform.position = new Vector3(0f, 6000f, 0f);
+                copy.transform.rotation = Quaternion.identity;
+                copy.transform.localScale = Vector3.one;
+                copy.SetActive(true);
+                var bounds = new Bounds(); bool any = false;
+                foreach (var r in copy.GetComponentsInChildren<Renderer>(true))
+                {
+                    r.gameObject.layer = layer;
+                    if (!(r is MeshRenderer)) { r.enabled = false; continue; }
+                    if (!any) { bounds = r.bounds; any = true; } else bounds.Encapsulate(r.bounds);
+                }
+                foreach (var l in copy.GetComponentsInChildren<Light>(true)) l.enabled = false;
+                if (!any) return null;
+
+                camGo = new GameObject("SailTrim_IconCamera");
+                var cam = camGo.AddComponent<Camera>();
+                cam.enabled = false;
+                cam.cullingMask = 1 << layer;
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.renderingPath = RenderingPath.Forward;
+                cam.allowHDR = false;
+                cam.allowMSAA = true;
+                cam.orthographic = true;
+                Quaternion view = Quaternion.Euler(pitch, yaw, 0f);
+                float radius = bounds.extents.magnitude;
+                cam.transform.rotation = view;
+                cam.transform.position = bounds.center - view * Vector3.forward * (radius * 4f);
+                cam.nearClipPlane = 0.01f;
+                cam.farClipPlane = radius * 8f;
+                cam.orthographicSize = radius * 1.02f;
+
+                lightGo = new GameObject("SailTrim_IconLight");
+                var light = lightGo.AddComponent<Light>();
+                light.type = LightType.Directional;
+                light.cullingMask = 1 << layer;
+                light.intensity = 1.25f;
+                light.color = new Color(1f, 0.96f, 0.9f);
+                light.shadows = LightShadows.None;
+                lightGo.transform.rotation = Quaternion.Euler(45f, yaw - 40f, 0f);
+                RenderSettings.fog = false;
+                RenderSettings.ambientMode = AmbientMode.Flat;
+                RenderSettings.ambientLight = new Color(0.5f, 0.5f, 0.52f);
+                RenderSettings.ambientIntensity = 1f;
+
+                rt = new RenderTexture(size, size, 24, RenderTextureFormat.ARGB32) { antiAliasing = 8 };
+                cam.targetTexture = rt;
+                var black = Grab(cam, rt, Color.black, size);
+                var white = Grab(cam, rt, Color.white, size);
+                cam.targetTexture = null;
+
+                // Alpha from how much the background shows through; colour unmultiplied from the black render.
+                var px = new Color[size * size];
+                var pb = black.GetPixels(); var pw = white.GetPixels();
+                for (int i = 0; i < px.Length; i++)
+                {
+                    float a = 1f - Mathf.Max(pw[i].r - pb[i].r, Mathf.Max(pw[i].g - pb[i].g, pw[i].b - pb[i].b));
+                    a = Mathf.Clamp01(a);
+                    px[i] = a > 0.004f ? new Color(Mathf.Clamp01(pb[i].r / a), Mathf.Clamp01(pb[i].g / a), Mathf.Clamp01(pb[i].b / a), a) : new Color(0f, 0f, 0f, 0f);
+                }
+                Object.Destroy(black); Object.Destroy(white);
+                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+                tex.SetPixels(px);
+                tex.Apply();
+                try { File.WriteAllBytes(Path.Combine(CacheDir, file + ".png"), ImageConversion.EncodeToPNG(tex)); }
+                catch (System.Exception e) { Plugin.Log.LogWarning("SailTrim: could not save " + file + ".png: " + e.Message); }
+                return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            }
+            catch (System.Exception e)
+            {
+                Plugin.Log.LogWarning("SailTrim: icon render failed for " + file + ": " + e.Message);
+                return null;
+            }
+            finally
+            {
+                RenderSettings.fog = fog; RenderSettings.ambientMode = ambMode; RenderSettings.ambientLight = amb; RenderSettings.ambientIntensity = ambI;
+                if (copy != null) Object.Destroy(copy);
+                if (camGo != null) Object.Destroy(camGo);
+                if (lightGo != null) Object.Destroy(lightGo);
+                if (rt != null) { rt.Release(); Object.Destroy(rt); }
+            }
+        }
+
+        private static Texture2D Grab(Camera cam, RenderTexture rt, Color bg, int size)
+        {
+            cam.backgroundColor = bg;
+            cam.Render();
+            var prev = RenderTexture.active;
+            RenderTexture.active = rt;
+            var t = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            t.ReadPixels(new Rect(0, 0, size, size), 0, 0, false);
+            t.Apply();
+            RenderTexture.active = prev;
+            return t;
+        }
+
+        private static int FreeLayer()
+        {
+            // An unnamed layer nobody draws; 31 is left alone (another of Max's mods renders on it).
+            for (int l = 30; l >= 8; l--)
+                if (string.IsNullOrEmpty(LayerMask.LayerToName(l))) return l;
+            return 30;
+        }
+
+        // ------------------------------------------------------------------
+        // Previews of candidate game models (only when BepInEx\cache\SailTrim\preview.request exists)
+        // ------------------------------------------------------------------
+        private static bool _previewsDone;
+
+        internal static void MaybeRenderCandidatePreviews(ObjectDB db)
+        {
+            if (_previewsDone || Headless || db == null || db.GetItemPrefab("Hammer") == null) return;
+            string req = Path.Combine(CacheDir, "preview.request");
+            if (!File.Exists(req)) return;
+            _previewsDone = true;
+            var names = new List<string>();
+            try { foreach (var line in File.ReadAllLines(req)) if (!string.IsNullOrWhiteSpace(line)) names.Add(line.Trim()); } catch { }
+            var holder = new GameObject("SailTrim_PreviewHolder");
+            holder.SetActive(false);
+            var log = new List<string>();
+            foreach (var n in names)
+            {
+                var src = Find(db, n);
+                if (src == null) { log.Add(n + ": not found"); continue; }
+                var part = CopyVisual(src, holder.transform, n, out var b);
+                if (part == null) { log.Add(n + ": no visible meshes"); continue; }
+                log.Add($"{n}: bounds centre {b.center} size {b.size}, {part.transform.childCount} meshes: " + string.Join(", ", ChildNames(part)));
+                RenderIcon(part, "candidate_" + n, 256);
+            }
+            Object.Destroy(holder);
+            try { File.WriteAllLines(Path.Combine(CacheDir, "candidates.txt"), log.ToArray()); } catch { }
+            Plugin.Log.LogInfo("SailTrim: rendered " + names.Count + " candidate previews to " + CacheDir);
+        }
+
+        private static IEnumerable<string> ChildNames(GameObject part)
+        {
+            foreach (Transform c in part.transform)
+            {
+                var mf = c.GetComponent<MeshFilter>(); var mr = c.GetComponent<MeshRenderer>();
+                string mats = mr != null ? string.Join("/", System.Array.ConvertAll(mr.sharedMaterials, m => m != null ? m.name + "(" + (m.shader != null ? m.shader.name : "?") + ")" : "null")) : "";
+                yield return c.name + "[" + (mf != null && mf.sharedMesh != null ? mf.sharedMesh.name : "?") + "|" + mats + "]";
+            }
+        }
+    }
+}

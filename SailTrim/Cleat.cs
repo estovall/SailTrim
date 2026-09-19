@@ -14,15 +14,19 @@ namespace SailTrim
     /// spot it was tied at (SailTrim_Cleat, SailTrim_MoorPos, SailTrim_MoorYaw), written by the boat's owner on
     /// the SailTrim_Moor RPC. Either side that finds the other gone lets go.
     ///
-    /// No assets: the model is three bronze blocks, the rope a LineRenderer.
+    /// No asset bundle: the model is a procedural mesh, the rope a simulated line.
     /// </summary>
     internal static class Cleat
     {
         internal const string PrefabName = "SailTrim_Cleat";
         internal const string BoatKey = "SailTrim_Boat";
 
+        /// <summary>Where the rope is made fast: the middle of the horn, in the cleat's own space.</summary>
+        internal static readonly Vector3 RopePoint = new Vector3(0f, 0.25f, 0f);
+
         private static GameObject _root, _prefab;
-        private static bool _bronzeApplied, _effectsApplied;
+        private static bool _effectsApplied;
+        private static Sprite _icon;
 
         internal static GameObject Prefab => _prefab;
 
@@ -55,7 +59,7 @@ namespace SailTrim
 
             var piece = go.AddComponent<Piece>();
             piece.m_name = "Cleat";
-            piece.m_description = "Tie a boat up so it stays put, crew aboard or not.";
+            piece.m_description = "A bronze horn cleat for the dock. Tie up a boat within reach and it stays put, crew aboard or not.";
             piece.m_category = Piece.PieceCategory.Misc;
             piece.m_groundPiece = false;
             piece.m_allowedInDungeons = false;
@@ -63,10 +67,13 @@ namespace SailTrim
             piece.m_canRotate = true;
             piece.m_noInWater = false;
             piece.m_randomInitBuildRotation = false;
+            // On top of a plank or a floor only: not on the side of a beam, and not sunk into anything.
+            piece.m_notOnTiltingSurface = true;
+            piece.m_noClipping = true;
 
             var wnt = go.AddComponent<WearNTear>();
-            wnt.m_health = 300f;
-            wnt.m_materialType = WearNTear.MaterialType.Wood; // support rules of a dock fitting: sits on wood
+            wnt.m_health = 400f;
+            wnt.m_materialType = WearNTear.MaterialType.Iron;
             wnt.m_burnable = false;
             wnt.m_noRoofWear = true;
             wnt.m_noSupportWear = true;
@@ -74,102 +81,67 @@ namespace SailTrim
 
             go.AddComponent<CleatPiece>();
 
-            Mesh cube = CubeMesh();
-            Material mat = FallbackMaterial();
-            // A cleat: a foot plate, a short post, and the horn bar across the top.
-            Part(go, "foot", new Vector3(0f, 0.02f, 0f), new Vector3(0.28f, 0.04f, 0.14f), cube, mat, true);
-            Part(go, "post", new Vector3(0f, 0.085f, 0f), new Vector3(0.07f, 0.09f, 0.07f), cube, mat, false);
-            Part(go, "bar", new Vector3(0f, 0.15f, 0f), new Vector3(0.42f, 0.05f, 0.06f), cube, mat, true);
-            Part(go, "hornL", new Vector3(-0.19f, 0.135f, 0f), new Vector3(0.04f, 0.08f, 0.05f), cube, mat, false);
-            Part(go, "hornR", new Vector3(0.19f, 0.135f, 0f), new Vector3(0.04f, 0.08f, 0.05f), cube, mat, false);
+            // One box around the whole cleat for hovering, hitting and the placement checks.
+            var col = new GameObject("collider");
+            col.transform.SetParent(go.transform, false);
+            col.layer = pieceLayer;
+            var box = col.AddComponent<BoxCollider>();
+            box.center = new Vector3(0f, 0.15f, 0f);
+            box.size = new Vector3(0.9f, 0.3f, 0.2f);
 
-            var snap = new GameObject("_snappoint");
-            snap.transform.SetParent(go.transform, false);
-            snap.tag = "snappoint";
-            snap.layer = pieceLayer;
+            if (!Models.Headless) BuildVisual(go.transform);
 
             _prefab = go;
             Plugin.Log.LogInfo("SailTrim: cleat prefab built.");
         }
 
-        private static void Part(GameObject parent, string name, Vector3 pos, Vector3 size, Mesh mesh, Material mat, bool collider)
+        /// <summary>
+        /// A horn cleat, 0.9 m across: a foot plate on the planks, two splayed legs, and the horn, thickest in the
+        /// middle and tapering to rounded tips. Cast bronze with a little tarnish.
+        /// </summary>
+        private static void BuildVisual(Transform parent)
         {
-            var p = new GameObject(name);
-            p.transform.SetParent(parent.transform, false);
-            p.transform.localPosition = pos;
-            p.transform.localScale = size;
-            p.layer = parent.layer;
-            if (mat != null && mesh != null)
+            var visual = new GameObject("visual");
+            visual.transform.SetParent(parent, false);
+            visual.layer = parent.gameObject.layer;
+            var mb = new Models.MeshBuilder();
+            mb.Box(new Vector3(0f, 0.022f, 0f), new Vector3(0.56f, 0.044f, 0.17f));
+            mb.Box(new Vector3(0f, 0.05f, 0f), new Vector3(0.46f, 0.02f, 0.13f));
+            foreach (float sx in new[] { -1f, 1f })
+                mb.Tube(new Vector3(sx * 0.17f, 0.04f, 0f), new Vector3(sx * 0.13f, 0.23f, 0f), t => Mathf.Lerp(0.052f, 0.036f, t), 14, 4, false, false);
+            mb.Tube(new Vector3(-0.45f, 0.245f, 0f), new Vector3(0.45f, 0.245f, 0f), t =>
             {
-                p.AddComponent<MeshFilter>().sharedMesh = mesh;
-                var mr = p.AddComponent<MeshRenderer>();
-                mr.sharedMaterial = mat;
-                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
-            }
-            if (collider) p.AddComponent<BoxCollider>();
+                float u = Mathf.Abs(t * 2f - 1f);
+                float r = 0.05f * (1f - 0.5f * u * u);
+                // Round the tips off over the last few centimetres.
+                float tip = Mathf.Clamp01((1f - u) / 0.05f);
+                return r * Mathf.Sqrt(tip);
+            }, 18, 24, false, false);
+            var mat = Models.Standard(Models.NoiseTexture(new Color(0.72f, 0.46f, 0.22f), 0.35f, 7), 0.85f, 0.5f);
+            Models.MeshPart(visual.transform, "cleat", mb.Build("SailTrim_Cleat"), mat);
         }
 
-        private static Mesh CubeMesh()
-        {
-            try
-            {
-                var tmp = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                var mesh = tmp.GetComponent<MeshFilter>().sharedMesh;
-                Object.Destroy(tmp);
-                return mesh;
-            }
-            catch { return null; }
-        }
-
-        /// <summary>A material on a shader the build has, or null where there is no rendering at all (a dedicated server).</summary>
-        internal static Material MaterialOrNull(params string[] shaders)
-        {
-            foreach (var n in shaders)
-            {
-                var sh = Shader.Find(n);
-                if (sh != null) return new Material(sh);
-            }
-            return null;
-        }
-
-        private static Material FallbackMaterial()
-        {
-            var m = MaterialOrNull("Standard", "Sprites/Default");
-            if (m == null) return null;
-            m.color = new Color(0.72f, 0.48f, 0.22f);
-            if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0.8f);
-            if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", 0.55f);
-            return m;
-        }
-
-        /// <summary>ObjectDB is up (menu or game): cost, icon and the bronze look, and the piece into the hammer.</summary>
+        /// <summary>ObjectDB is up (menu or game): cost, icon, and the piece into the hammer.</summary>
         internal static void OnObjectDb(ObjectDB db)
         {
             if (!Plugin.CleatEnabled.Value || db == null) return;
             EnsurePrefab();
+            Plugin.Log.LogInfo($"SailTrim: ObjectDB with {db.m_items.Count} items, hammer {(db.GetItemPrefab("Hammer") != null ? "found" : "missing")}, graphics {SystemInfo.graphicsDeviceType}");
+            Models.MaybeRenderCandidatePreviews(db);
             var piece = _prefab.GetComponent<Piece>();
             var bronze = db.GetItemPrefab("Bronze");
-            if (bronze != null)
+            var drop = bronze != null ? bronze.GetComponent<ItemDrop>() : null;
+            if (drop != null)
+                piece.m_resources = new[] { new Piece.Requirement { m_resItem = drop, m_amount = Mathf.Max(1, Plugin.CleatCost.Value), m_recover = true } };
+            if (_icon == null)
             {
-                var drop = bronze.GetComponent<ItemDrop>();
-                if (drop != null)
-                {
-                    piece.m_resources = new[] { new Piece.Requirement { m_resItem = drop, m_amount = Mathf.Max(1, Plugin.CleatCost.Value), m_recover = true } };
-                    if (piece.m_icon == null) piece.m_icon = drop.m_itemData.GetIcon();
-                }
-                if (!_bronzeApplied)
-                {
-                    var mr = bronze.GetComponentInChildren<MeshRenderer>(true);
-                    if (mr != null && mr.sharedMaterial != null)
-                    {
-                        foreach (var r in _prefab.GetComponentsInChildren<MeshRenderer>(true)) r.sharedMaterial = mr.sharedMaterial;
-                        _bronzeApplied = true;
-                    }
-                }
+                var visual = _prefab.transform.Find("visual");
+                _icon = visual != null ? Models.RenderIcon(visual.gameObject, "icon_cleat", 256, 150f, 32f) : null;
             }
+            piece.m_icon = _icon != null ? _icon : (drop != null ? drop.m_itemData.GetIcon() : piece.m_icon);
             var hammer = db.GetItemPrefab("Hammer");
             var table = hammer != null ? hammer.GetComponent<ItemDrop>()?.m_itemData.m_shared.m_buildPieces : null;
-            if (table == null) { Plugin.Log.LogWarning("SailTrim: no hammer piece table; the cleat cannot be built."); return; }
+            if (table == null) return; // the main menu: the pieces go in when a world's ObjectDB is up
             if (!table.m_pieces.Contains(_prefab)) table.m_pieces.Add(_prefab);
         }
 
@@ -183,11 +155,11 @@ namespace SailTrim
             if (!scene.m_namedPrefabs.ContainsKey(hash)) scene.m_namedPrefabs.Add(hash, _prefab);
             if (!_effectsApplied)
             {
-                // Placement, hit and break effects of a wooden chest: the sounds and puffs the player expects.
-                var chest = scene.GetPrefab("piece_chest_wood");
-                if (chest != null)
+                // Placement, hit and break effects of an iron piece where there is one, else a wooden chest's.
+                var src = scene.GetPrefab("iron_grate") ?? scene.GetPrefab("piece_chest_wood");
+                if (src != null)
                 {
-                    var cp = chest.GetComponent<Piece>(); var cw = chest.GetComponent<WearNTear>();
+                    var cp = src.GetComponent<Piece>(); var cw = src.GetComponent<WearNTear>();
                     var piece = _prefab.GetComponent<Piece>(); var wnt = _prefab.GetComponent<WearNTear>();
                     if (cp != null) piece.m_placeEffect = cp.m_placeEffect;
                     if (cw != null) { wnt.m_hitEffect = cw.m_hitEffect; wnt.m_destroyedEffect = cw.m_destroyedEffect; }
@@ -201,10 +173,7 @@ namespace SailTrim
     internal class CleatPiece : MonoBehaviour, Hoverable, Interactable
     {
         private ZNetView _nview;
-        private LineRenderer _rope;
-        private float _checkTimer;
-        private static Material _ropeMaterial;
-        private const int RopePoints = 18;
+        private float _checkTimer, _tieTime;
 
         private void Awake()
         {
@@ -216,7 +185,7 @@ namespace SailTrim
             get { var z = _nview != null && _nview.IsValid() ? _nview.GetZDO() : null; return z != null ? z.GetZDOID(Cleat.BoatKey) : ZDOID.None; }
         }
 
-        private Vector3 Top => transform.position + transform.up * 0.16f;
+        private Vector3 Top => transform.TransformPoint(Cleat.RopePoint);
 
         // ------------------------------------------------------------------
         public string GetHoverName() => "Cleat";
@@ -312,78 +281,212 @@ namespace SailTrim
                     }
                 }
             }
-            var ship = ShipOf(boat);
+        }
+
+        private void LateUpdate()
+        {
+            if (_nview == null || !_nview.IsValid() || Models.Headless) return;
+            var boat = Boat;
+            var ship = boat.IsNone() ? null : ShipOf(boat);
             if (ship == null) { HideRope(); return; }
             DrawRope(ship);
         }
 
-        private float _tieTime;
+        // ------------------------------------------------------------------
+        // The rope: a chain of points under gravity with fixed ends, kept at its length and pushed out of anything
+        // solid (the dock, the hull, the ground), drawn as a line. The ship end is made fast at the point of the
+        // hull nearest the cleat, found again every half second and carried with the ship in between.
+        // ------------------------------------------------------------------
+        private const int RopePoints = 20;
+        private const float RopeRadius = 0.025f;
+        private LineRenderer _rope;
+        private Vector3[] _pts, _prev;
+        private SphereCollider _probe;
+        private readonly Collider[] _hits = new Collider[16];
+        private static int _ropeMask;
+        private static Material _ropeMaterial;
+        private Ship _anchorShip;
+        private Vector3 _anchorLocal;
+        private float _anchorTimer;
 
         private void DrawRope(Ship ship)
         {
-            if (_rope == null)
-            {
-                var go = new GameObject("SailTrim_Rope");
-                go.transform.SetParent(transform, false);
-                _rope = go.AddComponent<LineRenderer>();
-                _rope.useWorldSpace = true;
-                _rope.positionCount = RopePoints;
-                _rope.widthMultiplier = 0.035f;
-                _rope.numCapVertices = 2;
-                _rope.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                _rope.receiveShadows = false;
-                _rope.alignment = LineAlignment.View;
-                _rope.textureMode = LineTextureMode.Stretch;
-                _rope.sharedMaterial = RopeMaterial(ship);
-            }
+            if (_rope == null) BuildRope();
             Vector3 a = Top;
-            Vector3 b = HullPoint(ship, a);
-            float len = Vector3.Distance(a, b);
-            float sag = Mathf.Clamp(len * 0.09f, 0.05f, 0.7f);
-            for (int i = 0; i < RopePoints; i++)
-            {
-                float t = i / (float)(RopePoints - 1);
-                Vector3 p = Vector3.Lerp(a, b, t);
-                p.y -= sag * 4f * t * (1f - t);
-                _rope.SetPosition(i, p);
-            }
+            Vector3 b = ShipEnd(ship, a);
+            var cam = Camera.main;
+            bool near = cam == null || Vector3.Distance(cam.transform.position, a) < 70f;
+            if (near) Simulate(a, b);
+            else Hang(a, b);
+            _rope.SetPositions(_pts);
             if (!_rope.enabled) _rope.enabled = true;
+        }
+
+        private void BuildRope()
+        {
+            var go = new GameObject("SailTrim_Rope");
+            go.transform.SetParent(transform, false);
+            _rope = go.AddComponent<LineRenderer>();
+            _rope.useWorldSpace = true;
+            _rope.positionCount = RopePoints;
+            _rope.widthMultiplier = RopeRadius * 2f;
+            _rope.numCapVertices = 3;
+            _rope.numCornerVertices = 2;
+            _rope.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            _rope.receiveShadows = true;
+            _rope.generateLightingData = true;
+            _rope.alignment = LineAlignment.View;
+            _rope.textureMode = LineTextureMode.Tile;
+            _rope.sharedMaterial = RopeMaterial();
+            var probeGo = new GameObject("SailTrim_RopeProbe");
+            probeGo.transform.SetParent(transform, false);
+            probeGo.layer = 2; // Ignore Raycast
+            _probe = probeGo.AddComponent<SphereCollider>();
+            _probe.radius = RopeRadius;
+            _probe.isTrigger = true;
+            if (_ropeMask == 0) _ropeMask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece", "terrain", "vehicle");
         }
 
         private void HideRope()
         {
             if (_rope != null && _rope.enabled) _rope.enabled = false;
+            _pts = null;
         }
 
-        /// <summary>Where the rope meets the boat: the nearest point of the hull's float box, lifted to the gunwale.</summary>
-        private static Vector3 HullPoint(Ship ship, Vector3 from)
+        /// <summary>The ship end of the rope: the hull point nearest the cleat, kept in the ship's own space.</summary>
+        private Vector3 ShipEnd(Ship ship, Vector3 from)
         {
-            var box = ship.m_floatCollider;
-            if (box != null)
+            _anchorTimer -= Time.deltaTime;
+            if (_anchorShip != ship || _anchorTimer <= 0f)
             {
-                Vector3 p = box.ClosestPoint(from);
-                return p + Vector3.up * 0.55f;
+                _anchorTimer = 0.5f;
+                _anchorShip = ship;
+                Vector3 best = ship.transform.position + Vector3.up * 0.8f; float bestD = float.MaxValue;
+                foreach (var c in ship.GetComponentsInChildren<Collider>())
+                {
+                    if (!HullCollider(ship, c)) continue;
+                    Vector3 p = c.ClosestPoint(from);
+                    float d = (p - from).sqrMagnitude;
+                    if (d < bestD) { bestD = d; best = p; }
+                }
+                // A hand's breadth off the planking, so the rope lies against the hull rather than in it.
+                Vector3 outward = from - best; outward.y = 0f;
+                if (outward.sqrMagnitude > 1e-4f) best += outward.normalized * 0.03f;
+                _anchorLocal = ship.transform.InverseTransformPoint(best);
             }
-            return ship.transform.position + Vector3.up * 0.8f;
+            return ship.transform.TransformPoint(_anchorLocal);
         }
 
-        private static Material RopeMaterial(Ship ship)
+        private static bool HullCollider(Ship ship, Collider c)
+        {
+            if (c == null || !c.enabled || c.isTrigger) return false;
+            if (ship.m_mastObject != null && c.transform.IsChildOf(ship.m_mastObject.transform)) return false;
+            if (c is MeshCollider mc) return mc.convex;
+            return c is BoxCollider || c is SphereCollider || c is CapsuleCollider;
+        }
+
+        private void Hang(Vector3 a, Vector3 b)
+        {
+            EnsurePoints(a, b, true);
+        }
+
+        private void EnsurePoints(Vector3 a, Vector3 b, bool reset)
+        {
+            if (_pts == null) { _pts = new Vector3[RopePoints]; _prev = new Vector3[RopePoints]; reset = true; }
+            if (!reset && (_pts[0] - a).sqrMagnitude < 9f && (_pts[RopePoints - 1] - b).sqrMagnitude < 9f) return;
+            float len = Vector3.Distance(a, b);
+            float sag = Mathf.Clamp(len * 0.08f, 0.04f, 0.6f);
+            for (int i = 0; i < RopePoints; i++)
+            {
+                float t = i / (float)(RopePoints - 1);
+                Vector3 p = Vector3.Lerp(a, b, t);
+                p.y -= sag * 4f * t * (1f - t);
+                _pts[i] = p; _prev[i] = p;
+            }
+        }
+
+        private void Simulate(Vector3 a, Vector3 b)
+        {
+            EnsurePoints(a, b, false);
+            int n = RopePoints;
+            float straight = Vector3.Distance(a, b);
+            float seg = (straight * 1.03f + 0.1f) / (n - 1); // a little sag, never slack enough to drag in the water
+            float dt = Mathf.Clamp(Time.deltaTime, 0.001f, 0.05f);
+            Vector3 g = Physics.gravity * (dt * dt);
+            for (int i = 1; i < n - 1; i++)
+            {
+                Vector3 cur = _pts[i];
+                Vector3 vel = (cur - _prev[i]) * 0.9f;
+                _prev[i] = cur;
+                _pts[i] = cur + vel + g;
+            }
+            _pts[0] = a; _pts[n - 1] = b;
+            for (int iter = 0; iter < 14; iter++)
+            {
+                for (int i = 0; i < n - 1; i++)
+                {
+                    Vector3 d = _pts[i + 1] - _pts[i];
+                    float len = d.magnitude;
+                    if (len < 1e-5f) continue;
+                    float w0 = i == 0 ? 0f : 1f, w1 = i + 1 == n - 1 ? 0f : 1f;
+                    float wsum = w0 + w1;
+                    if (wsum <= 0f) continue;
+                    Vector3 corr = d * ((len - seg) / len / wsum);
+                    _pts[i] += corr * w0;
+                    _pts[i + 1] -= corr * w1;
+                }
+                if (iter % 3 == 2 || iter == 13) Collide();
+            }
+        }
+
+        /// <summary>Every inner point out of whatever solid it sits in (not the cleat itself, which the rope is tied round).</summary>
+        private void Collide()
+        {
+            for (int i = 1; i < RopePoints - 1; i++)
+            {
+                Vector3 p = _pts[i];
+                int count = Physics.OverlapSphereNonAlloc(p, RopeRadius, _hits, _ropeMask, QueryTriggerInteraction.Ignore);
+                for (int k = 0; k < count; k++)
+                {
+                    var c = _hits[k];
+                    if (c == null || c.transform.IsChildOf(transform)) continue;
+                    if (Physics.ComputePenetration(_probe, p, Quaternion.identity, c, c.transform.position, c.transform.rotation, out Vector3 dir, out float dist))
+                        p += dir * (dist + 0.002f);
+                }
+                _pts[i] = p;
+            }
+        }
+
+        private static Material RopeMaterial()
         {
             if (_ropeMaterial != null) return _ropeMaterial;
-            // The boat's own rope material, if it has one; else a plain brown.
-            foreach (var r in ship.GetComponentsInChildren<Renderer>(true))
+            // The cart's rope, or any ship's; else a plain hemp-coloured one.
+            Material src = null;
+            var scene = ZNetScene.instance;
+            if (scene != null)
+                foreach (var name in new[] { "Cart", "Karve", "VikingShip", "Raft" })
+                {
+                    var prefab = scene.GetPrefab(name);
+                    if (prefab == null) continue;
+                    foreach (var r in prefab.GetComponentsInChildren<Renderer>(true))
+                    {
+                        foreach (var m in r.sharedMaterials)
+                            if (m != null && (m.name ?? "").ToLowerInvariant().Contains("rope")) { src = m; break; }
+                        if (src != null) break;
+                    }
+                    if (src != null) break;
+                }
+            if (src != null)
             {
-                var m = r.sharedMaterial;
-                if (m == null) continue;
-                string n = (m.name ?? "").ToLowerInvariant();
-                if (n.Contains("rope")) { _ropeMaterial = m; return m; }
+                _ropeMaterial = new Material(src);
+                Plugin.Log.LogInfo("SailTrim: rope material " + src.name + " (" + (src.shader != null ? src.shader.name : "?") + ")");
             }
-            var shader = Shader.Find("Standard");
-            var mat = new Material(shader != null ? shader : Shader.Find("Sprites/Default"));
-            mat.color = new Color(0.45f, 0.35f, 0.22f);
-            if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.1f);
-            _ropeMaterial = mat;
-            return mat;
+            else
+            {
+                _ropeMaterial = Models.Standard(Models.NoiseTexture(new Color(0.5f, 0.4f, 0.27f), 0.4f, 11, 0.8f), 0f, 0.05f);
+                Plugin.Log.LogInfo("SailTrim: no rope material found in the game; using a plain one");
+            }
+            return _ropeMaterial;
         }
 
         // ------------------------------------------------------------------
@@ -402,6 +505,7 @@ namespace SailTrim
             return piece != null && !string.IsNullOrEmpty(piece.m_name) ? piece.m_name : "boat";
         }
 
+        /// <summary>The boat whose hull comes nearest the cleat, within CleatRange.</summary>
         private Ship NearestShip(out float dist)
         {
             Ship best = null; dist = Plugin.CleatRange.Value;
@@ -409,13 +513,14 @@ namespace SailTrim
             foreach (var ship in Object.FindObjectsByType<Ship>(FindObjectsSortMode.None))
             {
                 if (ship == null || ship.m_nview == null || !ship.m_nview.IsValid()) continue;
-                var box = ship.m_floatCollider;
-                float d = box != null ? Vector3.Distance(box.ClosestPoint(from), from) : Vector3.Distance(ship.transform.position, from);
+                float d = float.MaxValue;
+                foreach (var c in ship.GetComponentsInChildren<Collider>())
+                    if (HullCollider(ship, c)) d = Mathf.Min(d, Vector3.Distance(c.ClosestPoint(from), from));
+                if (d == float.MaxValue) d = Vector3.Distance(ship.transform.position, from);
                 if (d < dist) { dist = d; best = ship; }
             }
             return best;
         }
-
     }
 
     /// <summary>The boat's side of a mooring: the RPC, the ZDO keys and the hold applied on the owner every physics step.</summary>

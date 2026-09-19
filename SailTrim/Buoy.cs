@@ -4,14 +4,15 @@ using UnityEngine;
 namespace SailTrim
 {
     /// <summary>
-    /// The buoy: a build piece for open water, no workbench needed. A tarred wooden float with a staff, a red
-    /// pennant and a small lantern that burns at night. It is placed on the water like a boat, floats on the
-    /// waves, and holds the spot it was set at, so a line of them marks a channel or a race course. A boat that
-    /// hits one nudges it aside for a moment; it works its way back.
+    /// The buoy: a build piece for open water, no workbench needed. A tarred barrel riding the water with a staff,
+    /// a banner in the buoy's colour on a crossbar, and a lantern on top that burns at night. It is placed on the
+    /// water like a boat, floats on the waves, and holds the spot it was set at, so a line of them marks a channel
+    /// or a race course. A boat that hits one nudges it aside for a moment; it works its way back.
     ///
-    /// Built from primitives with the game's own wood material, like the cleat (no asset bundle). The float is
-    /// a rigidbody the owner steers every physics step: its height follows the water, its horizontal speed is
-    /// bled off and it is pulled back to its anchor (SailTrim_Anchor in the ZDO, set when placed).
+    /// The model is put together from the game's own barrel, pole, banner and lantern meshes and materials (the
+    /// banner's cloth re-dyed), so there is no asset bundle; any part the game does not have falls back to a
+    /// plain shape. The float is a rigidbody the owner steers every physics step: its height follows the water,
+    /// its horizontal speed is bled off and it is pulled back to its anchor (SailTrim_Anchor in the ZDO).
     /// </summary>
     internal static class Buoy
     {
@@ -19,12 +20,12 @@ namespace SailTrim
         internal static readonly int AnchorHash = "SailTrim_Anchor".GetStableHashCode();
         internal static readonly int ColorHash = "SailTrim_Color".GetStableHashCode();
 
-        /// <summary>The colours a buoy can wear (pennant and hoop, and its map pin). Interact cycles through them.</summary>
+        /// <summary>The colours a buoy can wear (its banner, and its map pin). Interact cycles through them.</summary>
         internal static readonly string[] ColorNames = { "Red", "Green", "Yellow", "White", "Blue", "Orange", "Black" };
         internal static readonly Color[] Colors =
         {
-            new Color(0.75f, 0.12f, 0.1f), new Color(0.12f, 0.55f, 0.2f), new Color(0.95f, 0.8f, 0.15f), new Color(0.92f, 0.9f, 0.85f),
-            new Color(0.15f, 0.3f, 0.8f), new Color(0.95f, 0.45f, 0.1f), new Color(0.08f, 0.08f, 0.08f),
+            new Color(0.72f, 0.1f, 0.08f), new Color(0.1f, 0.5f, 0.18f), new Color(0.92f, 0.76f, 0.14f), new Color(0.9f, 0.88f, 0.82f),
+            new Color(0.12f, 0.26f, 0.72f), new Color(0.92f, 0.42f, 0.08f), new Color(0.07f, 0.07f, 0.07f),
         };
         internal static readonly Color[] PinColors =
         {
@@ -32,7 +33,19 @@ namespace SailTrim
             new Color(0.35f, 0.55f, 1f), new Color(1f, 0.6f, 0.15f), new Color(0.25f, 0.25f, 0.25f),
         };
 
-        private static Sprite _pinSprite;
+        /// <summary>One banner material per colour; the buoy swaps its banner between them.</summary>
+        internal static Material[] FlagMaterials;
+        internal static Material LanternMaterial;
+        internal static readonly Color LanternDim = new Color(0.35f, 0.26f, 0.14f), LanternLit = new Color(1f, 0.82f, 0.45f);
+
+        // Heights on the model, metres above the waterline (the buoy's origin).
+        private const float BarrelHeight = 0.95f, BarrelDraft = 0.42f, StaffTop = 2.45f, BarY = 2.25f, LanternHeight = 0.38f;
+
+        private static Sprite _pinSprite, _icon;
+        private static GameObject _prefab;
+        private static bool _effectsApplied, _visualBuilt;
+
+        internal static GameObject Prefab => _prefab;
 
         /// <summary>A buoy seen from above: a filled disc with a dark rim, white so the pin's colour tints it.</summary>
         internal static Sprite PinSprite()
@@ -49,7 +62,6 @@ namespace SailTrim
                     float r = Mathf.Sqrt(dx * dx + dy * dy);
                     float a = Mathf.Clamp01(rOut - r);
                     float inner = Mathf.Clamp01(rRim - r);
-                    // Dark rim, white centre.
                     float v = Mathf.Lerp(0.15f, 1f, inner);
                     px[y * n + x] = new Color(v, v, v, a);
                 }
@@ -59,11 +71,6 @@ namespace SailTrim
             _pinSprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
             return _pinSprite;
         }
-
-        private static GameObject _prefab;
-        private static bool _materialsApplied, _effectsApplied;
-
-        internal static GameObject Prefab => _prefab;
 
         internal static void EnsurePrefab(Transform root)
         {
@@ -96,7 +103,7 @@ namespace SailTrim
 
             var piece = go.AddComponent<Piece>();
             piece.m_name = "Buoy";
-            piece.m_description = "A tarred float with a staff and pennant. Set it on the water and it stays there: a channel marker, a race mark. The lantern burns at night.";
+            piece.m_description = "A tarred barrel with a staff, a banner and a lantern. Set it on the water and it stays there: a channel marker, a race mark. Press E at it to change the banner's colour.";
             piece.m_category = Piece.PieceCategory.Misc;
             piece.m_waterPiece = true;
             piece.m_groundPiece = false;
@@ -117,25 +124,27 @@ namespace SailTrim
 
             go.AddComponent<BuoyPiece>();
 
-            Mesh cube = Primitive(PrimitiveType.Cube), cyl = Primitive(PrimitiveType.Cylinder);
-            Material wood = Fallback(new Color(0.36f, 0.26f, 0.16f), 0.05f), cloth = Fallback(new Color(0.62f, 0.12f, 0.1f), 0.02f);
-            // The float: a squat barrel, its waterline at the buoy's origin. Cylinder primitives are 2 units tall.
-            Part(go, "float", new Vector3(0f, 0.12f, 0f), new Vector3(0.7f, 0.22f, 0.7f), cyl, wood, true);
-            Part(go, "hoopTop", new Vector3(0f, 0.3f, 0f), new Vector3(0.72f, 0.02f, 0.72f), cyl, cloth, false);
-            Part(go, "staff", new Vector3(0f, 1.05f, 0f), new Vector3(0.08f, 0.45f, 0.08f), cyl, wood, true);
-            Part(go, "pennant", new Vector3(0f, 1.62f, 0.26f), new Vector3(0.02f, 0.26f, 0.5f), cube, cloth, false);
-            // The lantern glass is unlit, so at night it is a bright point from as far as the buoy exists.
-            LanternMaterial = Unlit(LanternDim);
-            Part(go, "lantern", new Vector3(0f, 1.98f, 0f), new Vector3(0.12f, 0.12f, 0.12f), cube, LanternMaterial, false);
+            // Colliders: the barrel, and the staff up to the banner.
+            var colGo = new GameObject("collider");
+            colGo.transform.SetParent(go.transform, false);
+            colGo.layer = pieceLayer;
+            var cap = colGo.AddComponent<CapsuleCollider>();
+            cap.direction = 1;
+            cap.radius = 0.32f;
+            cap.height = BarrelHeight;
+            cap.center = new Vector3(0f, BarrelHeight * 0.5f - BarrelDraft, 0f);
+            var staff = colGo.AddComponent<BoxCollider>();
+            staff.center = new Vector3(0f, (BarrelHeight - BarrelDraft + StaffTop) * 0.5f, 0f);
+            staff.size = new Vector3(0.12f, StaffTop - (BarrelHeight - BarrelDraft), 0.12f);
 
             var lightGo = new GameObject("light");
             lightGo.transform.SetParent(go.transform, false);
-            lightGo.transform.localPosition = new Vector3(0f, 2.05f, 0f);
+            lightGo.transform.localPosition = new Vector3(0f, StaffTop + LanternHeight * 0.45f, 0f);
             var light = lightGo.AddComponent<Light>();
             light.type = LightType.Point;
             light.color = new Color(1f, 0.72f, 0.4f);
-            light.intensity = 1.4f;
-            light.range = 9f;
+            light.intensity = 1.6f;
+            light.range = 10f;
             light.shadows = LightShadows.None;
             light.enabled = false;
 
@@ -143,79 +152,167 @@ namespace SailTrim
             Plugin.Log.LogInfo("SailTrim: buoy prefab built.");
         }
 
-        private static void Part(GameObject parent, string name, Vector3 pos, Vector3 size, Mesh mesh, Material mat, bool collider)
+        /// <summary>
+        /// The model, from the game's own parts (found through ObjectDB, so it works in the main menu too). Built
+        /// once; the parts' meshes and materials are the game's shared ones.
+        /// </summary>
+        private static void BuildVisual(ObjectDB db)
         {
-            var p = new GameObject(name);
-            p.transform.SetParent(parent.transform, false);
-            p.transform.localPosition = pos;
-            p.transform.localScale = size;
-            p.layer = parent.layer;
-            if (mat != null && mesh != null)
+            if (_visualBuilt || Models.Headless || _prefab == null) return;
+            var old = _prefab.transform.Find("visual");
+            if (old != null) Object.Destroy(old.gameObject);
+            var visual = new GameObject("visual");
+            visual.transform.SetParent(_prefab.transform, false);
+            visual.layer = _prefab.layer;
+            var t = visual.transform;
+            var used = new List<string>();
+
+            // ---- The float: a barrel standing in the water ----
+            var barrelSrc = Models.FindFirst(db, out string barrelName, "piece_chest_barrel", "barrell", "bogwitch_barrel");
+            Bounds bb = default;
+            GameObject barrel = barrelSrc != null ? Models.CopyVisual(barrelSrc, t, "float", out bb) : null;
+            if (barrel != null)
             {
-                p.AddComponent<MeshFilter>().sharedMesh = mesh;
-                var mr = p.AddComponent<MeshRenderer>();
-                mr.sharedMaterial = mat;
+                bb = FitBounds(barrel, bb);
+                float s = BarrelHeight / Mathf.Max(0.05f, bb.size.y);
+                Models.Place(barrel, bb, new Vector3(0.5f, 0f, 0.5f), new Vector3(0f, -BarrelDraft, 0f), s, Quaternion.identity);
+                used.Add("float " + barrelName);
             }
-            if (collider)
+            else
             {
-                var c = p.AddComponent<CapsuleCollider>();
-                c.direction = 1;
+                var mb = new Models.MeshBuilder();
+                mb.Tube(new Vector3(0f, -BarrelDraft, 0f), new Vector3(0f, BarrelHeight - BarrelDraft, 0f), u => 0.3f + 0.04f * Mathf.Sin(u * Mathf.PI), 20, 8);
+                Models.MeshPart(t, "float", mb.Build("SailTrim_BuoyFloat"), Models.Standard(Models.NoiseTexture(new Color(0.3f, 0.21f, 0.13f), 0.35f, 3, 0.8f), 0f, 0.15f));
+                used.Add("float plain");
             }
-        }
 
-        private static Mesh Primitive(PrimitiveType type)
-        {
-            try
+            // ---- The staff and the crossbar the banner hangs from ----
+            float staffBottom = BarrelHeight - BarrelDraft - 0.1f;
+            var poleSrc = Models.FindFirst(db, out string poleName, "wood_pole2", "wood_pole");
+            if (poleSrc != null)
             {
-                var tmp = GameObject.CreatePrimitive(type);
-                var mesh = tmp.GetComponent<MeshFilter>().sharedMesh;
-                Object.Destroy(tmp);
-                return mesh;
+                var staffGo = Models.CopyVisual(poleSrc, t, "staff", out var pb);
+                var barGo = Models.CopyVisual(poleSrc, t, "crossbar", out var cb);
+                if (staffGo != null) StretchPole(staffGo, pb, new Vector3(0f, staffBottom, 0f), new Vector3(0f, StaffTop, 0f), 0.085f);
+                if (barGo != null) StretchPole(barGo, cb, new Vector3(-0.36f, BarY, 0.02f), new Vector3(0.36f, BarY, 0.02f), 0.06f);
+                used.Add("staff " + poleName);
             }
-            catch { return null; }
+            else
+            {
+                var wood = Models.Standard(Models.NoiseTexture(new Color(0.42f, 0.3f, 0.18f), 0.3f, 5, 0.9f), 0f, 0.1f);
+                var mb = new Models.MeshBuilder();
+                mb.Tube(new Vector3(0f, staffBottom, 0f), new Vector3(0f, StaffTop, 0f), u => 0.042f, 10, 1);
+                mb.Tube(new Vector3(-0.36f, BarY, 0.02f), new Vector3(0.36f, BarY, 0.02f), u => 0.03f, 10, 1);
+                Models.MeshPart(t, "staff", mb.Build("SailTrim_BuoyStaff"), wood);
+                used.Add("staff plain");
+            }
+
+            // ---- The banner, dyed ----
+            var bannerSrc = Models.FindFirst(db, out string bannerName, "piece_banner01", "piece_banner02", "piece_banner03");
+            Bounds fb = default;
+            GameObject flag = bannerSrc != null ? Models.CopyVisual(bannerSrc, t, "flag", out fb) : null;
+            Material bannerMat = null;
+            if (flag != null)
+            {
+                var mr = flag.GetComponentInChildren<MeshRenderer>();
+                bannerMat = mr != null ? mr.sharedMaterial : null;
+                // Turn it so its thinnest side faces front, then hang it by the middle of its top edge.
+                Quaternion rot = Quaternion.identity;
+                if (fb.size.x < fb.size.z) rot = Quaternion.Euler(0f, 90f, 0f);
+                Vector3 size = rot * fb.size; size = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z));
+                float sx = 0.62f / Mathf.Max(0.05f, size.x), sy = 0.95f / Mathf.Max(0.05f, size.y);
+                Vector3 scale = rot == Quaternion.identity ? new Vector3(sx, sy, (sx + sy) * 0.5f) : new Vector3((sx + sy) * 0.5f, sy, sx);
+                Models.Place(flag, fb, new Vector3(0.5f, 1f, 0.5f), new Vector3(0f, BarY - 0.02f, 0.07f), scale, rot);
+                used.Add("flag " + bannerName);
+            }
+            else
+            {
+                var mb = new Models.MeshBuilder();
+                mb.Box(new Vector3(0f, BarY - 0.02f - 0.45f, 0.07f), new Vector3(0.6f, 0.9f, 0.015f));
+                flag = Models.MeshPart(t, "flag", mb.Build("SailTrim_BuoyFlag"), null);
+                used.Add("flag plain");
+            }
+            FlagMaterials = new Material[Colors.Length];
+            for (int i = 0; i < Colors.Length; i++)
+            {
+                var cloth = Models.NoiseTexture(Colors[i], 0.18f, 100 + i, 0.25f);
+                FlagMaterials[i] = bannerMat != null ? Models.Retextured(bannerMat, cloth) : Models.Standard(cloth, 0f, 0.05f);
+                FlagMaterials[i].name = "SailTrim_Flag_" + ColorNames[i];
+            }
+            foreach (var r in flag.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                for (int k = 0; k < mats.Length; k++) if (mats[k] == bannerMat || bannerMat == null) mats[k] = FlagMaterials[0];
+                r.sharedMaterials = mats;
+            }
+
+            // ---- The lantern on top, and a glow inside it that reads from far off at night ----
+            var lanternSrc = Models.FindFirst(db, out string lanternName, "piece_dvergr_lantern", "Lantern", "piece_hoodedlantern", "piece_snowlantern");
+            Bounds lb = default;
+            GameObject lantern = lanternSrc != null ? Models.CopyVisual(lanternSrc, t, "lantern", out lb) : null;
+            if (lantern != null)
+            {
+                float s = LanternHeight / Mathf.Max(0.05f, lb.size.y);
+                Models.Place(lantern, lb, new Vector3(0.5f, 0f, 0.5f), new Vector3(0f, StaffTop - 0.02f, 0f), s, Quaternion.identity);
+                used.Add("lantern " + lanternName);
+            }
+            var glowMesh = new Models.MeshBuilder();
+            glowMesh.Box(new Vector3(0f, StaffTop + LanternHeight * 0.45f, 0f), Vector3.one * 0.09f);
+            var unlit = Shader.Find("Sprites/Default");
+            LanternMaterial = unlit != null ? new Material(unlit) { color = LanternDim } : null;
+            if (LanternMaterial != null) Models.MeshPart(t, "glow", glowMesh.Build("SailTrim_BuoyGlow"), LanternMaterial);
+
+            foreach (var r in visual.GetComponentsInChildren<Renderer>(true)) r.gameObject.layer = _prefab.layer;
+            _visualBuilt = true;
+            Plugin.Log.LogInfo("SailTrim: buoy model: " + string.Join(", ", used));
         }
 
-        internal static Material LanternMaterial;
-        internal static readonly Color LanternDim = new Color(0.55f, 0.42f, 0.25f), LanternLit = new Color(1f, 0.85f, 0.5f);
+        /// <summary>The copy's bounds as they come (kept as a hook for parts that need trimming).</summary>
+        private static Bounds FitBounds(GameObject part, Bounds b) => b;
 
-        private static Material Unlit(Color color)
+        /// <summary>A pole's copy stretched between two points (its longest side along the line), this thick.</summary>
+        private static void StretchPole(GameObject pole, Bounds b, Vector3 from, Vector3 to, float thickness)
         {
-            var m = Cleat.MaterialOrNull("Sprites/Default", "Standard");
-            if (m != null) m.color = color;
-            return m;
+            // Which of the copy's own axes is its length.
+            int axis = b.size.x >= b.size.y && b.size.x >= b.size.z ? 0 : (b.size.y >= b.size.z ? 1 : 2);
+            Vector3 lengthAxis = axis == 0 ? Vector3.right : (axis == 1 ? Vector3.up : Vector3.forward);
+            Quaternion rot = Quaternion.FromToRotation(lengthAxis, (to - from).normalized);
+            float len = Vector3.Distance(from, to);
+            Vector3 scale = Vector3.one;
+            for (int i = 0; i < 3; i++) scale[i] = i == axis ? len / Mathf.Max(0.01f, b.size[i]) : thickness / Mathf.Max(0.01f, b.size[i]);
+            Vector3 anchor = new Vector3(0.5f, 0.5f, 0.5f); anchor[axis] = 0f;
+            Models.Place(pole, b, anchor, from, scale, rot);
         }
 
-        private static Material Fallback(Color color, float gloss)
-        {
-            var m = Cleat.MaterialOrNull("Standard", "Sprites/Default");
-            if (m == null) return null;
-            m.color = color;
-            if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", gloss);
-            return m;
-        }
-
-        /// <summary>ObjectDB is up: the cost (wood and resin, no station) and the piece into the hammer.</summary>
+        /// <summary>ObjectDB is up: the model and its icon, the cost (wood and resin, no station), and the piece into the hammer.</summary>
         internal static void OnObjectDb(ObjectDB db, Transform root)
         {
             if (!Plugin.BuoyEnabled.Value || db == null) return;
             EnsurePrefab(root);
+            // The main menu's ObjectDB has no items or pieces: the model is built from the game's parts once a
+            // world's ObjectDB is up (it has the hammer), never from fallbacks in the menu.
+            bool full = db.GetItemPrefab("Hammer") != null;
+            if (full) BuildVisual(db);
             var piece = _prefab.GetComponent<Piece>();
             var wood = db.GetItemPrefab("Wood"); var resin = db.GetItemPrefab("Resin");
             var wd = wood != null ? wood.GetComponent<ItemDrop>() : null;
             var rd = resin != null ? resin.GetComponent<ItemDrop>() : null;
             if (wd != null)
-            {
                 piece.m_resources = rd != null
                     ? new[] { new Piece.Requirement { m_resItem = wd, m_amount = 6, m_recover = true }, new Piece.Requirement { m_resItem = rd, m_amount = 2, m_recover = true } }
                     : new[] { new Piece.Requirement { m_resItem = wd, m_amount = 6, m_recover = true } };
-                if (piece.m_icon == null) piece.m_icon = wd.m_itemData.GetIcon();
+            if (_icon == null && _visualBuilt)
+            {
+                var visual = _prefab.transform.Find("visual");
+                _icon = visual != null ? Models.RenderIcon(visual.gameObject, "icon_buoy", 256, 150f, 12f) : null;
             }
+            piece.m_icon = _icon != null ? _icon : (wd != null ? wd.m_itemData.GetIcon() : piece.m_icon);
             var hammer = db.GetItemPrefab("Hammer");
             var table = hammer != null ? hammer.GetComponent<ItemDrop>()?.m_itemData.m_shared.m_buildPieces : null;
             if (table != null && !table.m_pieces.Contains(_prefab)) table.m_pieces.Add(_prefab);
         }
 
-        /// <summary>ZNetScene is up: the prefab into the world's list, and the game's wood for the float and staff.</summary>
+        /// <summary>ZNetScene is up: the prefab into the world's list.</summary>
         internal static void OnZNetScene(ZNetScene scene, Transform root)
         {
             if (!Plugin.BuoyEnabled.Value || scene == null) return;
@@ -223,29 +320,9 @@ namespace SailTrim
             int hash = PrefabName.GetStableHashCode();
             if (!scene.m_prefabs.Contains(_prefab)) scene.m_prefabs.Add(_prefab);
             if (!scene.m_namedPrefabs.ContainsKey(hash)) scene.m_namedPrefabs.Add(hash, _prefab);
-            if (!_materialsApplied)
-            {
-                Material wood = null;
-                foreach (var name in new[] { "wood_pole", "wood_beam", "piece_chest_wood" })
-                {
-                    var src = scene.GetPrefab(name);
-                    var mr = src != null ? src.GetComponentInChildren<MeshRenderer>(true) : null;
-                    if (mr != null && mr.sharedMaterial != null) { wood = mr.sharedMaterial; break; }
-                }
-                if (wood != null)
-                {
-                    foreach (var n in new[] { "float", "staff" })
-                    {
-                        var t = _prefab.transform.Find(n);
-                        var mr2 = t != null ? t.GetComponent<MeshRenderer>() : null;
-                        if (mr2 != null) mr2.sharedMaterial = wood;
-                    }
-                    _materialsApplied = true;
-                }
-            }
             if (!_effectsApplied)
             {
-                var chest = scene.GetPrefab("piece_chest_wood");
+                var chest = scene.GetPrefab("piece_chest_barrel") ?? scene.GetPrefab("piece_chest_wood");
                 if (chest != null)
                 {
                     var cp = chest.GetComponent<Piece>(); var cw = chest.GetComponent<WearNTear>();
@@ -267,8 +344,7 @@ namespace SailTrim
         private WaterVolume _water;
         private float _lightTimer;
         private int _shownColor = -1;
-        private Renderer[] _dyed;
-        private static MaterialPropertyBlock _block;
+        private MeshRenderer[] _flag;
         private Minimap.PinData _pin;
 
         /// <summary>Every loaded buoy's map pin and its colour, for the minimap patch to tint (the game paints every pin white each frame).</summary>
@@ -279,13 +355,8 @@ namespace SailTrim
             _nview = GetComponent<ZNetView>();
             _body = GetComponent<Rigidbody>();
             _light = GetComponentInChildren<Light>(true);
-            var dyed = new List<Renderer>();
-            foreach (var n in new[] { "pennant", "hoopTop" })
-            {
-                var t = transform.Find(n);
-                if (t != null) dyed.Add(t.GetComponent<Renderer>());
-            }
-            _dyed = dyed.ToArray();
+            var flag = transform.Find("visual/flag");
+            _flag = flag != null ? flag.GetComponentsInChildren<MeshRenderer>(true) : new MeshRenderer[0];
         }
 
         private void OnDestroy()
@@ -307,9 +378,15 @@ namespace SailTrim
         {
             if (index == _shownColor) return;
             _shownColor = index;
-            if (_block == null) _block = new MaterialPropertyBlock();
-            _block.SetColor("_Color", Buoy.Colors[index]);
-            foreach (var r in _dyed) if (r != null) r.SetPropertyBlock(_block);
+            var mats = Buoy.FlagMaterials;
+            if (mats != null && index < mats.Length && mats[index] != null)
+                foreach (var r in _flag)
+                {
+                    if (r == null) continue;
+                    var m = r.sharedMaterials;
+                    for (int k = 0; k < m.Length; k++) if (m[k] != null && m[k].name.StartsWith("SailTrim_Flag_")) m[k] = mats[index];
+                    r.sharedMaterials = m;
+                }
             if (_pin != null) Pins[_pin] = Buoy.PinColors[index];
         }
 
@@ -374,17 +451,13 @@ namespace SailTrim
             Vector3 anchor = zdo.GetVec3(Buoy.AnchorHash, Vector3.zero);
             if (anchor == Vector3.zero)
             {
-                // Just placed (the game sets a water piece down a little above the surface): this is its spot.
+                // Just placed (the game sets a water piece down above the surface): this is its spot.
                 anchor = pos;
                 zdo.Set(Buoy.AnchorHash, anchor);
             }
             Vector3 v = _body.linearVelocity;
             float water = Floating.GetWaterLevel(pos, ref _water);
-            if (water > -5000f)
-            {
-                // Ride the surface: the float's waterline sits just under the buoy's origin.
-                v.y = (water - 0.06f - pos.y) * 4f;
-            }
+            if (water > -5000f) v.y = (water - pos.y) * 4f; // ride the surface: the origin is the waterline
             else v.y = Mathf.Max(v.y - 9.81f * Time.fixedDeltaTime, -5f); // no water here: sink to whatever is below
             // Hold the spot: most of any push is gone the next step, and the anchor pulls it home.
             v.x *= 0.2f; v.z *= 0.2f;

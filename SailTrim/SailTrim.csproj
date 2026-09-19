@@ -39,6 +39,10 @@
       <HintPath>$(ManagedDir)\Splatform.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>$(ManagedDir)\UnityEngine.ImageConversionModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="assembly_guiutils">
       <HintPath>$(ManagedDir)\assembly_guiutils.dll</HintPath>
       <Private>false</Private>
