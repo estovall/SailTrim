@@ -120,6 +120,7 @@ namespace SailTrim
         internal static ConfigEntry<float> CleatRange;
         internal static ConfigEntry<int> CleatCost;
         internal static ConfigEntry<float> MooringHold;
+        internal static ConfigEntry<float> CastOffDelay;
 
         // ---- Config: visuals ----
         internal static ConfigEntry<float> YardTurnRate;
@@ -462,6 +463,8 @@ namespace SailTrim
                 new ConfigDescription("How far from the cleat a boat can be to tie it up, metres.", new AcceptableValueRange<float>(2f, 30f)));
             CleatCost = Config.Bind("8. Mooring", "CleatCost", 1,
                 new ConfigDescription("Bronze per cleat.", new AcceptableValueRange<int>(1, 20)));
+            CastOffDelay = Config.Bind("8. Mooring", "CastOffDelay", 1f,
+                new ConfigDescription("Seconds at the helm of a tied-up boat before it casts off by itself.", new AcceptableValueRange<float>(0f, 10f)));
             MooringHold = Config.Bind("8. Mooring", "MooringHold", 1f,
                 new ConfigDescription("How firmly a moored boat is pulled back to where it was tied (heading too). 0 = only the vanilla empty-boat damping.", new AcceptableValueRange<float>(0f, 5f)));
 

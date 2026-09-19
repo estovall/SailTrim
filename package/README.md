@@ -144,10 +144,10 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 
 Build a **Cleat** from the hammer's Misc tab (one bronze). Stand at it with a boat within 10 m and press E to
 tie the boat up: a rope runs from the cleat to the hull, and the boat holds its spot and heading the way an
-empty boat does in vanilla, with or without people aboard. Creatures and waves cannot shove it away. Sail and
-oars do nothing while it is tied (the game tells you); the rudder still turns. Press E at the cleat again to
-untie. If the boat sinks, or the cleat is broken, the other side lets go by itself. `CleatRange`, `CleatCost`
-and `MooringHold` are in the config.
+empty boat does in vanilla, with or without people aboard. Creatures and waves cannot shove it away. Press E at the
+cleat again to untie, or just take the helm: after a second at the rudder (`CastOffDelay`) the boat casts off
+by itself. If the boat sinks, or the cleat is broken, the other side lets go too. `CleatRange`, `CleatCost`,
+`CastOffDelay` and `MooringHold` are in the config.
 
 ## Config highlights (`BepInEx\config\com.maxst.sailtrim.cfg`)
 

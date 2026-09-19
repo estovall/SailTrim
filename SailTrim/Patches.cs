@@ -98,10 +98,10 @@ namespace SailTrim
             var st = SailTrimShip.Get(ship);
             if (st == null) return true;
 
-            // Tied to a cleat: the rudder still turns, sail and oars do nothing until it is untied.
+            // Tied to a cleat: taking the helm casts off after a second. Until then the rudder turns and nothing else.
             if (Mooring.IsMoored(ship))
             {
-                if (Mathf.Abs(moveDir.z) > 0.1f) Mooring.PilotBlocked();
+                Mooring.PilotAtHelm(ship, Time.fixedDeltaTime);
                 if (!Plugin.ManualTrim.Value)
                 {
                     ship.ApplyControlls(new Vector3(moveDir.x, 0f, 0f));

@@ -241,6 +241,15 @@ namespace SailTrim
             user.Message(MessageHud.MessageType.TopLeft, "Tied up " + Localization.instance.Localize(ShipName(ship)));
         }
 
+        /// <summary>The boat's pilot took the helm: let go of it from this end (no message here; the pilot gets one).</summary>
+        internal void UntieFromBoat()
+        {
+            if (_nview == null || !_nview.IsValid() || Boat.IsNone()) return;
+            _nview.ClaimOwnership();
+            _nview.GetZDO().Set(Cleat.BoatKey, ZDOID.None);
+            HideRope();
+        }
+
         private void Untie(Humanoid user)
         {
             var boat = Boat;
@@ -462,13 +471,32 @@ namespace SailTrim
             body.angularVelocity = av;
         }
 
-        /// <summary>The pilot tried to sail or row a moored boat: a reminder, at most every two seconds.</summary>
-        internal static void PilotBlocked()
+        private static Ship _helmShip;
+        private static float _helmTime;
+
+        /// <summary>Pilot's client, every physics step at the helm of a moored boat: after a second, cast off.</summary>
+        internal static void PilotAtHelm(Ship ship, float dt)
         {
-            if (Time.time - _messageTime < 2f) return;
-            _messageTime = Time.time;
+            if (_helmShip != ship) { _helmShip = ship; _helmTime = 0f; }
+            _helmTime += dt;
+            if (_helmTime < Plugin.CastOffDelay.Value) return;
+            _helmTime = 0f;
+            CastOff(ship);
+        }
+
+        /// <summary>Untie from wherever this boat is tied: the cleat, if it is loaded here, else the boat's own record (the cleat notices and lets go).</summary>
+        internal static void CastOff(Ship ship)
+        {
+            var nv = ship.m_nview;
+            if (nv == null || !nv.IsValid()) return;
+            ZDOID cleat = nv.GetZDO().GetZDOID(CleatKey);
+            var scene = ZNetScene.instance;
+            var go = scene != null && !cleat.IsNone() ? scene.FindInstance(cleat) : null;
+            var piece = go != null ? go.GetComponent<CleatPiece>() : null;
+            if (piece != null) piece.UntieFromBoat();
+            nv.InvokeRPC(RpcName, cleat, false);
             var p = Player.m_localPlayer;
-            if (p != null) p.Message(MessageHud.MessageType.Center, "Tied up: untie the boat at the cleat first");
+            if (p != null && Time.time - _messageTime > 2f) { _messageTime = Time.time; p.Message(MessageHud.MessageType.TopLeft, "Cast off"); }
         }
     }
 }
