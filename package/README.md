@@ -142,23 +142,23 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
 
 ## The cleat (1.6.0)
 
-Build a **Cleat** from the hammer's Misc tab (one bronze). Stand at it with a boat within 10 m and press E to
-tie the boat up: a rope runs from the cleat to the hull, and the boat holds its spot and heading the way an
-empty boat does in vanilla, with or without people aboard. Creatures and waves cannot shove it away. Press E at the
-cleat again to untie, or just take the helm: after a second at the rudder (`CastOffDelay`) the boat casts off
-by itself. If the boat sinks, or the cleat is broken, the other side lets go too. `CleatRange`, `CleatCost`,
-`CastOffDelay` and `MooringHold` are in the config. A tied-up boat also mends itself a few percent a minute
-(`MoorRepairPerMinute`).
+Build a **Cleat** from the hammer's Misc tab (one bronze): a bronze horn cleat that sits on top of planks or a
+floor. Stand at it with a boat within 10 m and press E to tie the boat up. The rope is made fast round the horn
+and runs to the hull, and the boat holds its spot and heading the way an empty boat does in vanilla, with or
+without people aboard. Creatures and waves cannot shove it away. Press E at the cleat again to untie, or just
+take the helm: after a second at the rudder (`CastOffDelay`) the boat casts off by itself. If the boat sinks,
+or the cleat is broken, the other side lets go too. A tied-up boat also mends itself a few percent a minute
+(`MoorRepairPerMinute`). `CleatRange`, `CleatCost`, `CastOffDelay` and `MooringHold` are in the config.
 
 ## The buoy (1.6.0)
 
-Build a **Buoy** from the hammer's Misc tab: 6 wood and 2 resin, no workbench. Aim at open water and place it
-like a boat. It floats on the waves, holds the spot it was set at, and its lantern burns at night. It stays in the world
-as far out as the game keeps distant objects (several zones), so a mark shows from far down a channel. Line them
-up for a channel or a race course; a boat that hits one shoves it aside for a moment and it works its way
-back. Press E at a buoy to change its colour: red and green for a channel, yellow for a race mark, and so on.
-Every buoy that is loaded shows on the map as a small disc in its colour. `BuoyEnabled`, `BuoyLight` and
-`BuoyPins` are in the config.
+Build a **Buoy** from the hammer's Misc tab: 6 wood and 2 resin, no workbench. It is a barrel float with a
+staff, a banner and a lantern. Aim at open water and place it like a boat. It floats on the waves, holds the
+spot it was set at, and its lantern glows at night. It stays in the world as far out as the game keeps distant
+objects (several zones), so a mark shows from far down a channel. Press E at a buoy to change the banner's
+colour: red and green for a channel, yellow for a race mark, and so on. Every buoy that is loaded shows on the
+map as a small disc in its colour. A boat that hits one shoves it aside for a moment and it works its way back.
+`BuoyEnabled`, `BuoyLight` and `BuoyPins` are in the config.
 
 ## Config highlights (`BepInEx\config\com.maxst.sailtrim.cfg`)
 
