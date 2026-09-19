@@ -153,7 +153,8 @@ by itself. If the boat sinks, or the cleat is broken, the other side lets go too
 ## The buoy (1.6.0)
 
 Build a **Buoy** from the hammer's Misc tab: 6 wood and 2 resin, no workbench. Aim at open water and place it
-like a boat. It floats on the waves, holds the spot it was set at, and its lantern burns at night. Line them
+like a boat. It floats on the waves, holds the spot it was set at, and its lantern burns at night. It stays in the world
+as far out as the game keeps distant objects (several zones), so a mark shows from far down a channel. Line them
 up for a channel or a race course; a boat that hits one shoves it aside for a moment and it works its way
 back. `BuoyEnabled` and `BuoyLight` are in the config.
 

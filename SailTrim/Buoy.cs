@@ -33,6 +33,9 @@ namespace SailTrim
             var nview = go.AddComponent<ZNetView>();
             nview.m_persistent = true;
             nview.m_type = ZDO.ObjectType.Default;
+            // A "distant" object: the game keeps it in the world out to the distant area (several zones, hundreds
+            // of metres) instead of only the zones around the player, so a mark shows from far down a channel.
+            nview.m_distant = true;
 
             var body = go.AddComponent<Rigidbody>();
             body.mass = 30f;
@@ -78,7 +81,9 @@ namespace SailTrim
             Part(go, "hoopTop", new Vector3(0f, 0.3f, 0f), new Vector3(0.72f, 0.02f, 0.72f), cyl, cloth, false);
             Part(go, "staff", new Vector3(0f, 1.05f, 0f), new Vector3(0.08f, 0.45f, 0.08f), cyl, wood, true);
             Part(go, "pennant", new Vector3(0f, 1.62f, 0.26f), new Vector3(0.02f, 0.26f, 0.5f), cube, cloth, false);
-            Part(go, "lantern", new Vector3(0f, 1.98f, 0f), new Vector3(0.12f, 0.12f, 0.12f), cube, wood, false);
+            // The lantern glass is unlit, so at night it is a bright point from as far as the buoy exists.
+            LanternMaterial = Unlit(LanternDim);
+            Part(go, "lantern", new Vector3(0f, 1.98f, 0f), new Vector3(0.12f, 0.12f, 0.12f), cube, LanternMaterial, false);
 
             var lightGo = new GameObject("light");
             lightGo.transform.SetParent(go.transform, false);
@@ -118,6 +123,17 @@ namespace SailTrim
             var mesh = tmp.GetComponent<MeshFilter>().sharedMesh;
             Object.Destroy(tmp);
             return mesh;
+        }
+
+        internal static Material LanternMaterial;
+        internal static readonly Color LanternDim = new Color(0.55f, 0.42f, 0.25f), LanternLit = new Color(1f, 0.85f, 0.5f);
+
+        private static Material Unlit(Color color)
+        {
+            var shader = Shader.Find("Sprites/Default");
+            var m = new Material(shader != null ? shader : Shader.Find("Standard"));
+            m.color = color;
+            return m;
         }
 
         private static Material Fallback(Color color, float gloss)
@@ -169,7 +185,7 @@ namespace SailTrim
                 }
                 if (wood != null)
                 {
-                    foreach (var n in new[] { "float", "staff", "lantern" })
+                    foreach (var n in new[] { "float", "staff" })
                     {
                         var t = _prefab.transform.Find(n);
                         if (t != null) t.GetComponent<MeshRenderer>().sharedMaterial = wood;
@@ -215,6 +231,7 @@ namespace SailTrim
             _lightTimer = 1f;
             bool on = Plugin.BuoyLight.Value && EnvMan.instance != null && EnvMan.IsNight();
             if (_light.enabled != on) _light.enabled = on;
+            if (Buoy.LanternMaterial != null) Buoy.LanternMaterial.color = on ? Buoy.LanternLit : Buoy.LanternDim;
         }
 
         private void FixedUpdate()
