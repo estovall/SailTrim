@@ -156,15 +156,25 @@ namespace SailTrim
                 float x = WrapReach * Mathf.Sin(t) * side;
                 float phi = Mathf.PI / 2f - 2f * t; // round the horn: top at x = 0, under it at either end
                 float layer = i / (float)steps * turns;
-                float r = HornRadius(x) + WrapRopeRadius * (1f + 1.7f * layer);
+                // Snug on the horn; each figure-eight a little outside the one before (the crossings on top stack).
+                float r = HornRadius(x) + WrapRopeRadius * (1.05f + 0.55f * layer);
                 path.Add(new Vector3(x, HornY + Mathf.Sin(phi) * r, Mathf.Cos(phi) * r * side));
             }
-            // The finishing turn round the middle, lying on top of the crossings.
-            float rTop = HornRadius(0f) + WrapRopeRadius * 6.2f;
-            for (int i = 1; i <= 24; i++)
+            // The finishing half hitch: one snug turn round the horn beside the crossings, on the lead's side.
+            Vector3 last = path[path.Count - 1];
+            float hx = 0.17f * side;
+            float rHitch = HornRadius(hx) + WrapRopeRadius * 1.1f;
+            for (int i = 1; i <= 8; i++)
             {
-                float phi = Mathf.PI / 2f - i / 24f * Mathf.PI * 2f;
-                path.Add(new Vector3(0.03f * side * i / 24f, HornY + Mathf.Sin(phi) * rTop, Mathf.Cos(phi) * rTop));
+                float u = i / 8f;
+                float phi = Mathf.PI / 2f - u * Mathf.PI * 0.25f;
+                path.Add(Vector3.Lerp(last, new Vector3(hx, HornY + Mathf.Sin(phi) * rHitch, Mathf.Cos(phi) * rHitch * side), u));
+            }
+            for (int i = 1; i <= 28; i++)
+            {
+                float u = i / 28f;
+                float phi = Mathf.PI / 2f - Mathf.PI * 0.25f - u * Mathf.PI * 2f;
+                path.Add(new Vector3(hx + 0.04f * side * u, HornY + Mathf.Sin(phi) * rHitch, Mathf.Cos(phi) * rHitch * side));
             }
             return path;
         }
@@ -393,7 +403,7 @@ namespace SailTrim
         // hull nearest the cleat, found again every half second and carried with the ship in between.
         // ------------------------------------------------------------------
         private const int RopePoints = 20;
-        private const float RopeRadius = 0.025f;
+        private const float RopeRadius = 0.019f;
         private LineRenderer _rope;
         private Vector3[] _pts, _prev;
         private SphereCollider _probe;
