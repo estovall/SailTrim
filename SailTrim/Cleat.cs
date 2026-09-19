@@ -75,8 +75,9 @@ namespace SailTrim
             wnt.m_health = 400f;
             wnt.m_materialType = WearNTear.MaterialType.Iron;
             wnt.m_burnable = false;
-            wnt.m_noRoofWear = true;
-            wnt.m_noSupportWear = true;
+            wnt.m_noRoofWear = false;   // bronze: no rain wear (true would turn it on)
+            wnt.m_noSupportWear = true; // falls with the dock under it
+            wnt.m_ashDamageImmune = true;
             wnt.m_supports = false;
 
             go.AddComponent<CleatPiece>();

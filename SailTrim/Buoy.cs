@@ -117,8 +117,11 @@ namespace SailTrim
             wnt.m_health = 200f;
             wnt.m_materialType = WearNTear.MaterialType.Wood;
             wnt.m_burnable = false;
-            wnt.m_noRoofWear = true;
-            wnt.m_noSupportWear = true;
+            // Neither flag means what its name says: true turns that wear ON. A buoy stands in the rain and on
+            // nothing, and with support wear on it broke the moment it was placed (100 damage per check).
+            wnt.m_noRoofWear = false;
+            wnt.m_noSupportWear = false;
+            wnt.m_ashDamageImmune = true;
             wnt.m_supports = false;
             wnt.m_staticPosition = false;
 

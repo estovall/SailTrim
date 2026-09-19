@@ -85,6 +85,28 @@ namespace SailTrim
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: buoy setup failed: " + e); }
         }
 
+        // Buoys and cleats take no damage: a ship's impact damage ignores resistances, and a buoy in a channel or a
+        // cleat by a berth gets rammed as a matter of course. Wear goes through ApplyDamage too. The hammer removes
+        // them as usual (that is RPC_Remove, not damage).
+        private static bool Indestructible(WearNTear w) => w != null && (w.GetComponent<BuoyPiece>() != null || w.GetComponent<CleatPiece>() != null);
+
+        [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.Damage))]
+        [HarmonyPrefix]
+        private static bool WearNTear_Damage(WearNTear __instance) => !Indestructible(__instance);
+
+        [HarmonyPatch(typeof(WearNTear), "RPC_Damage")]
+        [HarmonyPrefix]
+        private static bool WearNTear_RPC_Damage(WearNTear __instance) => !Indestructible(__instance);
+
+        [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.ApplyDamage))]
+        [HarmonyPrefix]
+        private static bool WearNTear_ApplyDamage(WearNTear __instance, ref bool __result)
+        {
+            if (!Indestructible(__instance)) return true;
+            __result = false;
+            return false;
+        }
+
         // The game paints every pin white each frame; the buoys' pins take their buoy's colour after that.
         [HarmonyPatch(typeof(Minimap), "UpdatePins")]
         [HarmonyPostfix]

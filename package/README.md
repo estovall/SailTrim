@@ -160,6 +160,8 @@ colour: red and green for a channel, yellow for a race mark, and so on. Every bu
 map as a small disc in its colour. A boat that hits one shoves it aside for a moment and it works its way back.
 `BuoyEnabled`, `BuoyLight` and `BuoyPins` are in the config.
 
+Buoys and cleats cannot be damaged (a ship's ram, weather, the sea floor); remove them with the hammer.
+
 ## Config highlights (`BepInEx\config\com.maxst.sailtrim.cfg`)
 
 | Key | Default | Meaning |

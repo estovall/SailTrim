@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1
+
+- Fixed: a buoy broke the moment it was placed. It counted as a piece with nothing holding it up, and the game wears those away at once. Buoys and cleats now take no damage at all: not from wear, rain or ash, not from a ship ramming them, and not from waves setting a buoy down on the sea floor. Remove them with the hammer as usual.
+- The server needs 1.6.1 too (the version check wants the same version everywhere).
+
 ## 1.6.0
 
 - The Cleat: a bronze horn cleat for the dock, under the hammer's Misc tab (one bronze). It sits on top of planks and floors only and does not snap into beams. With a boat within 10 m (`CleatRange`), press E to tie it up: the rope is made fast round the horn with a cleat hitch and runs to the nearest point of the hull, hanging and draping over the dock edge instead of passing through it. A tied boat holds its spot and heading the way an empty boat does in vanilla, crew aboard or not, and creatures and waves cannot shove it away (`MooringHold`). Press E again to untie, or take the helm: after a second (`CastOffDelay`) the boat casts off by itself. If the boat sinks or the cleat is broken, the other side lets go.
