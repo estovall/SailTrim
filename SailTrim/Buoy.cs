@@ -39,7 +39,7 @@ namespace SailTrim
         internal static readonly Color LanternDim = new Color(0.35f, 0.26f, 0.14f), LanternLit = new Color(1f, 0.82f, 0.45f);
 
         // Heights on the model, metres above the waterline (the buoy's origin).
-        private const float BarrelHeight = 0.95f, BarrelDraft = 0.42f, StaffTop = 2.45f, BarY = 2.25f, LanternHeight = 0.38f;
+        private const float BarrelHeight = 0.95f, BarrelDraft = 0.42f, StaffTop = 2.5f, BarY = 2.4f, LanternHeight = 0.42f, BannerHeight = 1.25f;
 
         private static Sprite _pinSprite, _icon;
         private static GameObject _prefab;
@@ -192,9 +192,7 @@ namespace SailTrim
             if (poleSrc != null)
             {
                 var staffGo = Models.CopyVisual(poleSrc, t, "staff", out var pb);
-                var barGo = Models.CopyVisual(poleSrc, t, "crossbar", out var cb);
                 if (staffGo != null) StretchPole(staffGo, pb, new Vector3(0f, staffBottom, 0f), new Vector3(0f, StaffTop, 0f), 0.085f);
-                if (barGo != null) StretchPole(barGo, cb, new Vector3(-0.36f, BarY, 0.02f), new Vector3(0.36f, BarY, 0.02f), 0.06f);
                 used.Add("staff " + poleName);
             }
             else
@@ -202,7 +200,6 @@ namespace SailTrim
                 var wood = Models.Standard(Models.NoiseTexture(new Color(0.42f, 0.3f, 0.18f), 0.3f, 5, 0.9f), 0f, 0.1f);
                 var mb = new Models.MeshBuilder();
                 mb.Tube(new Vector3(0f, staffBottom, 0f), new Vector3(0f, StaffTop, 0f), u => 0.042f, 10, 1);
-                mb.Tube(new Vector3(-0.36f, BarY, 0.02f), new Vector3(0.36f, BarY, 0.02f), u => 0.03f, 10, 1);
                 Models.MeshPart(t, "staff", mb.Build("SailTrim_BuoyStaff"), wood);
                 used.Add("staff plain");
             }
@@ -214,21 +211,26 @@ namespace SailTrim
             Material bannerMat = null;
             if (flag != null)
             {
-                var mr = flag.GetComponentInChildren<MeshRenderer>();
-                bannerMat = mr != null ? mr.sharedMaterial : null;
-                // Turn it so its thinnest side faces front, then hang it by the middle of its top edge.
-                Quaternion rot = Quaternion.identity;
-                if (fb.size.x < fb.size.z) rot = Quaternion.Euler(0f, 90f, 0f);
-                Vector3 size = rot * fb.size; size = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z));
-                float sx = 0.62f / Mathf.Max(0.05f, size.x), sy = 0.95f / Mathf.Max(0.05f, size.y);
-                Vector3 scale = rot == Quaternion.identity ? new Vector3(sx, sy, (sx + sy) * 0.5f) : new Vector3((sx + sy) * 0.5f, sy, sx);
-                Models.Place(flag, fb, new Vector3(0.5f, 1f, 0.5f), new Vector3(0f, BarY - 0.02f, 0.07f), scale, rot);
+                // The banner piece is a beam with the cloth hanging from it; the cloth is the renderer on the
+                // swaying vegetation shader (or named for a banner).
+                foreach (var mr in flag.GetComponentsInChildren<MeshRenderer>(true))
+                {
+                    var m = mr.sharedMaterial;
+                    if (m == null) continue;
+                    string sn = m.shader != null ? m.shader.name : "";
+                    if (sn.Contains("Vegetation") || m.name.ToLowerInvariant().Contains("banner")) { bannerMat = m; break; }
+                }
+                // Turn it so its thinnest side faces front, and hang it, beam and all, by the top of the staff.
+                Quaternion rot = fb.size.x < fb.size.z ? Quaternion.Euler(0f, 90f, 0f) : Quaternion.identity;
+                float s = BannerHeight / Mathf.Max(0.05f, fb.size.y);
+                Models.Place(flag, fb, new Vector3(0.5f, 1f, 0.5f), new Vector3(0f, BarY + 0.05f, 0.075f), s, rot);
                 used.Add("flag " + bannerName);
             }
             else
             {
                 var mb = new Models.MeshBuilder();
                 mb.Box(new Vector3(0f, BarY - 0.02f - 0.45f, 0.07f), new Vector3(0.6f, 0.9f, 0.015f));
+                mb.Box(new Vector3(0f, BarY, 0.07f), new Vector3(0.7f, 0.05f, 0.05f));
                 flag = Models.MeshPart(t, "flag", mb.Build("SailTrim_BuoyFlag"), null);
                 used.Add("flag plain");
             }
@@ -242,29 +244,54 @@ namespace SailTrim
             foreach (var r in flag.GetComponentsInChildren<MeshRenderer>(true))
             {
                 var mats = r.sharedMaterials;
-                for (int k = 0; k < mats.Length; k++) if (mats[k] == bannerMat || bannerMat == null) mats[k] = FlagMaterials[0];
+                for (int k = 0; k < mats.Length; k++)
+                    if ((bannerMat != null && mats[k] == bannerMat) || (bannerMat == null && r.transform.parent == flag.transform)) mats[k] = FlagMaterials[0];
                 r.sharedMaterials = mats;
             }
 
             // ---- The lantern on top, and a glow inside it that reads from far off at night ----
-            var lanternSrc = Models.FindFirst(db, out string lanternName, "piece_dvergr_lantern", "Lantern", "piece_hoodedlantern", "piece_snowlantern");
+            var lanternSrc = Models.FindFirst(db, out string lanternName, "Lantern", "piece_hoodedlantern", "piece_snowlantern");
             Bounds lb = default;
             GameObject lantern = lanternSrc != null ? Models.CopyVisual(lanternSrc, t, "lantern", out lb) : null;
+            LanternMaterial = null;
             if (lantern != null)
             {
                 float s = LanternHeight / Mathf.Max(0.05f, lb.size.y);
                 Models.Place(lantern, lb, new Vector3(0.5f, 0f, 0.5f), new Vector3(0f, StaffTop - 0.02f, 0f), s, Quaternion.identity);
+                // Its own material, copied, so the night glow (emission) touches only buoys.
+                foreach (var mr in lantern.GetComponentsInChildren<MeshRenderer>(true))
+                {
+                    var mats = mr.sharedMaterials;
+                    for (int k = 0; k < mats.Length; k++)
+                    {
+                        if (mats[k] == null) continue;
+                        if (LanternMaterial == null) { LanternMaterial = new Material(mats[k]) { name = "SailTrim_BuoyLantern" }; LanternMaterial.EnableKeyword("_EMISSION"); }
+                        mats[k] = LanternMaterial;
+                    }
+                    mr.sharedMaterials = mats;
+                }
                 used.Add("lantern " + lanternName);
             }
-            var glowMesh = new Models.MeshBuilder();
-            glowMesh.Box(new Vector3(0f, StaffTop + LanternHeight * 0.45f, 0f), Vector3.one * 0.09f);
-            var unlit = Shader.Find("Sprites/Default");
-            LanternMaterial = unlit != null ? new Material(unlit) { color = LanternDim } : null;
-            if (LanternMaterial != null) Models.MeshPart(t, "glow", glowMesh.Build("SailTrim_BuoyGlow"), LanternMaterial);
+            else
+            {
+                var glowMesh = new Models.MeshBuilder();
+                glowMesh.Box(new Vector3(0f, StaffTop + LanternHeight * 0.4f, 0f), new Vector3(0.18f, LanternHeight * 0.8f, 0.18f));
+                LanternMaterial = Models.Standard(Models.NoiseTexture(new Color(0.25f, 0.2f, 0.12f), 0.2f, 9), 0.4f, 0.4f);
+                if (LanternMaterial != null) { LanternMaterial.EnableKeyword("_EMISSION"); Models.MeshPart(t, "lantern", glowMesh.Build("SailTrim_BuoyLantern"), LanternMaterial); }
+                used.Add("lantern plain");
+            }
+            SetLanternLit(false);
 
             foreach (var r in visual.GetComponentsInChildren<Renderer>(true)) r.gameObject.layer = _prefab.layer;
             _visualBuilt = true;
             Plugin.Log.LogInfo("SailTrim: buoy model: " + string.Join(", ", used));
+        }
+
+        /// <summary>The lantern glows at night (emission on its material, shared by every buoy).</summary>
+        internal static void SetLanternLit(bool on)
+        {
+            if (LanternMaterial == null) return;
+            if (LanternMaterial.HasProperty("_EmissionColor")) LanternMaterial.SetColor("_EmissionColor", on ? LanternLit * 2.2f : Color.black);
         }
 
         /// <summary>The copy's bounds as they come (kept as a hook for parts that need trimming).</summary>
@@ -305,6 +332,8 @@ namespace SailTrim
             {
                 var visual = _prefab.transform.Find("visual");
                 _icon = visual != null ? Models.RenderIcon(visual.gameObject, "icon_buoy", 256, 150f, 12f) : null;
+                // A night view too, for checking the lantern.
+                if (visual != null) { SetLanternLit(true); Models.RenderIcon(visual.gameObject, "preview_buoy_night", 256, 150f, 12f); SetLanternLit(false); }
             }
             piece.m_icon = _icon != null ? _icon : (wd != null ? wd.m_itemData.GetIcon() : piece.m_icon);
             var hammer = db.GetItemPrefab("Hammer");
@@ -440,7 +469,7 @@ namespace SailTrim
             if (_light == null) return;
             bool on = Plugin.BuoyLight.Value && EnvMan.instance != null && EnvMan.IsNight();
             if (_light.enabled != on) _light.enabled = on;
-            if (Buoy.LanternMaterial != null) Buoy.LanternMaterial.color = on ? Buoy.LanternLit : Buoy.LanternDim;
+            Buoy.SetLanternLit(on);
         }
 
         private void FixedUpdate()

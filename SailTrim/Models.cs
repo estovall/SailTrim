@@ -122,7 +122,7 @@ namespace SailTrim
                 var lods = lod.GetLODs();
                 if (lods.Length > 0)
                     foreach (var r in lods[0].renderers)
-                        if (Usable(r, src.transform) && (root == src.transform || r.transform.IsChildOf(root))) result.Add(r);
+                        if (Usable(r, src.transform) && (root == src.transform || r.transform.IsChildOf(root)) && !IsAlternate(r.transform, src.transform)) result.Add(r);
             }
             if (result.Count == 0)
                 foreach (var r in root.GetComponentsInChildren<Renderer>(true))
@@ -144,7 +144,7 @@ namespace SailTrim
             for (; t != null && t != top; t = t.parent)
             {
                 string n = t.name.ToLowerInvariant();
-                if (n.Contains("lod1") || n.Contains("lod2") || n.Contains("lod3") || n.Contains("broken") || n.Contains("worn") || n.Contains("destruction") || n.Contains("fragment"))
+                if (n.Contains("lod") || n.Contains("broken") || n.Contains("worn") || n.Contains("destruction") || n.Contains("fragment"))
                     return true;
             }
             return false;
@@ -336,9 +336,14 @@ namespace SailTrim
         /// The visual child rendered on its own against a clear background, three-quarter view from above, as a
         /// sprite; the image is also written to BepInEx\cache\SailTrim\{file}.png. Null on failure.
         /// </summary>
+        private static int _iconCount;
+
         internal static Sprite RenderIcon(GameObject visual, string file, int size = 256, float yaw = 145f, float pitch = 22f)
         {
             if (Headless || visual == null) return null;
+            // Rendered at twice the size and averaged down: the game draws deferred, which has no MSAA.
+            int big = size * 2;
+            Vector3 spot = new Vector3(40f * (++_iconCount % 50), 6000f, 0f);
             int layer = FreeLayer();
             GameObject copy = null, camGo = null, lightGo = null;
             RenderTexture rt = null;
@@ -348,7 +353,7 @@ namespace SailTrim
                 copy = Object.Instantiate(visual);
                 copy.name = "SailTrim_IconModel";
                 copy.transform.SetParent(null, false);
-                copy.transform.position = new Vector3(0f, 6000f, 0f);
+                copy.transform.position = spot;
                 copy.transform.rotation = Quaternion.identity;
                 copy.transform.localScale = Vector3.one;
                 copy.SetActive(true);
@@ -367,9 +372,10 @@ namespace SailTrim
                 cam.enabled = false;
                 cam.cullingMask = 1 << layer;
                 cam.clearFlags = CameraClearFlags.SolidColor;
-                cam.renderingPath = RenderingPath.Forward;
+                // Deferred, as the game draws: this build has no forward pass for the Standard shader (magenta).
+                cam.renderingPath = RenderingPath.DeferredShading;
                 cam.allowHDR = false;
-                cam.allowMSAA = true;
+                cam.allowMSAA = false;
                 cam.orthographic = true;
                 Quaternion view = Quaternion.Euler(pitch, yaw, 0f);
                 float radius = bounds.extents.magnitude;
@@ -392,22 +398,30 @@ namespace SailTrim
                 RenderSettings.ambientLight = new Color(0.5f, 0.5f, 0.52f);
                 RenderSettings.ambientIntensity = 1f;
 
-                rt = new RenderTexture(size, size, 24, RenderTextureFormat.ARGB32) { antiAliasing = 8 };
+                rt = new RenderTexture(big, big, 24, RenderTextureFormat.ARGB32);
                 cam.targetTexture = rt;
-                var black = Grab(cam, rt, Color.black, size);
-                var white = Grab(cam, rt, Color.white, size);
+                var black = Grab(cam, rt, Color.black, big);
+                var white = Grab(cam, rt, Color.white, big);
                 cam.targetTexture = null;
 
-                // Alpha from how much the background shows through; colour unmultiplied from the black render.
+                // Alpha from how much the background shows through; colour unmultiplied from the black render;
+                // each output pixel the average of four.
                 var px = new Color[size * size];
                 var pb = black.GetPixels(); var pw = white.GetPixels();
-                for (int i = 0; i < px.Length; i++)
-                {
-                    float a = 1f - Mathf.Max(pw[i].r - pb[i].r, Mathf.Max(pw[i].g - pb[i].g, pw[i].b - pb[i].b));
-                    a = Mathf.Clamp01(a);
-                    px[i] = a > 0.004f ? new Color(Mathf.Clamp01(pb[i].r / a), Mathf.Clamp01(pb[i].g / a), Mathf.Clamp01(pb[i].b / a), a) : new Color(0f, 0f, 0f, 0f);
-                }
-                Object.Destroy(black); Object.Destroy(white);
+                for (int y = 0; y < size; y++)
+                    for (int x = 0; x < size; x++)
+                    {
+                        float r = 0f, g = 0f, bl = 0f, a = 0f;
+                        for (int k = 0; k < 4; k++)
+                        {
+                            int i = (y * 2 + (k >> 1)) * big + x * 2 + (k & 1);
+                            float ak = Mathf.Clamp01(1f - Mathf.Max(pw[i].r - pb[i].r, Mathf.Max(pw[i].g - pb[i].g, pw[i].b - pb[i].b)));
+                            r += pb[i].r; g += pb[i].g; bl += pb[i].b; a += ak;
+                        }
+                        r *= 0.25f; g *= 0.25f; bl *= 0.25f; a *= 0.25f;
+                        px[y * size + x] = a > 0.004f ? new Color(Mathf.Clamp01(r / a), Mathf.Clamp01(g / a), Mathf.Clamp01(bl / a), a) : new Color(0f, 0f, 0f, 0f);
+                    }
+                Object.DestroyImmediate(black); Object.DestroyImmediate(white);
                 var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
                 tex.SetPixels(px);
                 tex.Apply();
@@ -423,10 +437,11 @@ namespace SailTrim
             finally
             {
                 RenderSettings.fog = fog; RenderSettings.ambientMode = ambMode; RenderSettings.ambientLight = amb; RenderSettings.ambientIntensity = ambI;
-                if (copy != null) Object.Destroy(copy);
-                if (camGo != null) Object.Destroy(camGo);
-                if (lightGo != null) Object.Destroy(lightGo);
-                if (rt != null) { rt.Release(); Object.Destroy(rt); }
+                // Gone now, not at the end of the frame: the next icon is rendered in this same frame.
+                if (copy != null) Object.DestroyImmediate(copy);
+                if (camGo != null) Object.DestroyImmediate(camGo);
+                if (lightGo != null) Object.DestroyImmediate(lightGo);
+                if (rt != null) { rt.Release(); Object.DestroyImmediate(rt); }
             }
         }
 
@@ -476,7 +491,7 @@ namespace SailTrim
                 log.Add($"{n}: bounds centre {b.center} size {b.size}, {part.transform.childCount} meshes: " + string.Join(", ", ChildNames(part)));
                 RenderIcon(part, "candidate_" + n, 256);
             }
-            Object.Destroy(holder);
+            Object.DestroyImmediate(holder);
             try { File.WriteAllLines(Path.Combine(CacheDir, "candidates.txt"), log.ToArray()); } catch { }
             Plugin.Log.LogInfo("SailTrim: rendered " + names.Count + " candidate previews to " + CacheDir);
         }
