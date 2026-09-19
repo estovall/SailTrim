@@ -119,7 +119,58 @@ namespace SailTrim
             }, 18, 24, false, false);
             var mat = Models.Standard(Models.NoiseTexture(new Color(0.72f, 0.46f, 0.22f), 0.35f, 7), 0.85f, 0.5f);
             Models.MeshPart(visual.transform, "cleat", mb.Build("SailTrim_Cleat"), mat);
+            // The rope made fast round the horn, one for each end the lead can leave from; shown while a boat is tied.
+            foreach (int side in new[] { -1, 1 })
+            {
+                var wb = new Models.MeshBuilder();
+                wb.Sweep(WrapPath(side), WrapRopeRadius, 8);
+                var wrap = Models.MeshPart(visual.transform, side < 0 ? "wrapL" : "wrapR", wb.Build("SailTrim_CleatWrap"), null);
+                wrap.SetActive(false);
+            }
         }
+
+        internal const float WrapRopeRadius = 0.017f;
+        private const float HornY = 0.245f, WrapReach = 0.27f;
+
+        /// <summary>The horn's radius at x (the same taper the horn mesh has).</summary>
+        private static float HornRadius(float x)
+        {
+            float u = Mathf.Clamp01(Mathf.Abs(x) / 0.45f);
+            return 0.05f * (1f - 0.5f * u * u);
+        }
+
+        /// <summary>
+        /// A cleat hitch on the horn: two and a half figure-eights, each crossing the top diagonally and passing
+        /// under one horn end, then a last turn round the middle. It starts under the horn at the side's end, where
+        /// the lead to the boat leaves (side -1 = the left end, +1 = the right). The turns lie a little further out
+        /// each time so they sit on each other instead of in each other.
+        /// </summary>
+        internal static List<Vector3> WrapPath(int side)
+        {
+            var path = new List<Vector3>();
+            const int steps = 160;
+            float turns = 2.5f;
+            for (int i = 0; i <= steps; i++)
+            {
+                float t = -Mathf.PI / 2f + i / (float)steps * turns * Mathf.PI * 2f;
+                float x = WrapReach * Mathf.Sin(t) * side;
+                float phi = Mathf.PI / 2f - 2f * t; // round the horn: top at x = 0, under it at either end
+                float layer = i / (float)steps * turns;
+                float r = HornRadius(x) + WrapRopeRadius * (1f + 1.7f * layer);
+                path.Add(new Vector3(x, HornY + Mathf.Sin(phi) * r, Mathf.Cos(phi) * r * side));
+            }
+            // The finishing turn round the middle, lying on top of the crossings.
+            float rTop = HornRadius(0f) + WrapRopeRadius * 6.2f;
+            for (int i = 1; i <= 24; i++)
+            {
+                float phi = Mathf.PI / 2f - i / 24f * Mathf.PI * 2f;
+                path.Add(new Vector3(0.03f * side * i / 24f, HornY + Mathf.Sin(phi) * rTop, Mathf.Cos(phi) * rTop));
+            }
+            return path;
+        }
+
+        /// <summary>Where the lead leaves the hitch toward the boat, in the cleat's own space.</summary>
+        internal static Vector3 LeadPoint(int side) => WrapPath(side)[0];
 
         /// <summary>ObjectDB is up (menu or game): cost, icon, and the piece into the hammer.</summary>
         internal static void OnObjectDb(ObjectDB db)
@@ -140,12 +191,32 @@ namespace SailTrim
             {
                 var visual = _prefab.transform.Find("visual");
                 _icon = visual != null ? Models.RenderIcon(visual.gameObject, "icon_cleat", 256, 150f, 32f) : null;
+
             }
             piece.m_icon = _icon != null ? _icon : (drop != null ? drop.m_itemData.GetIcon() : piece.m_icon);
             var hammer = db.GetItemPrefab("Hammer");
             var table = hammer != null ? hammer.GetComponent<ItemDrop>()?.m_itemData.m_shared.m_buildPieces : null;
+            MaybeRenderTiedPreview();
             if (table == null) return; // the main menu: the pieces go in when a world's ObjectDB is up
             if (!table.m_pieces.Contains(_prefab)) table.m_pieces.Add(_prefab);
+        }
+
+        private static bool _tiedPreviewDone;
+
+        /// <summary>A render of the cleat tied up, to BepInEx\cache\SailTrim, once per session (needs the model and the world's rope material).</summary>
+        private static void MaybeRenderTiedPreview()
+        {
+            if (_tiedPreviewDone || _prefab == null || Models.Headless) return;
+            var visual = _prefab.transform.Find("visual");
+            var wrapT = visual != null ? visual.Find("wrapR") : null;
+            var ropeMat = CleatPiece.RopeMaterial();
+            if (wrapT == null || ropeMat == null) return;
+            _tiedPreviewDone = true;
+            wrapT.GetComponent<MeshRenderer>().sharedMaterial = ropeMat;
+            wrapT.gameObject.SetActive(true);
+            Models.RenderIcon(visual.gameObject, "preview_cleat_tied", 256, 150f, 32f);
+            Models.RenderIcon(visual.gameObject, "preview_cleat_tied_side", 256, 90f, 10f);
+            wrapT.gameObject.SetActive(false);
         }
 
         /// <summary>ZNetScene is up (a world is loading): the prefab must be known before any cleat ZDO arrives.</summary>
@@ -156,6 +227,7 @@ namespace SailTrim
             int hash = PrefabName.GetStableHashCode();
             if (!scene.m_prefabs.Contains(_prefab)) scene.m_prefabs.Add(_prefab);
             if (!scene.m_namedPrefabs.ContainsKey(hash)) scene.m_namedPrefabs.Add(hash, _prefab);
+            MaybeRenderTiedPreview();
             if (!_effectsApplied)
             {
                 // Placement, hit and break effects of an iron piece where there is one, else a wooden chest's.
@@ -189,6 +261,26 @@ namespace SailTrim
         }
 
         private Vector3 Top => transform.TransformPoint(Cleat.RopePoint);
+
+        // The hitch on the horn: the wrap on the end nearer the boat is shown, and the rope leads from it.
+        private GameObject _wrapL, _wrapR;
+        private int _wrapSide;
+
+        private void ShowWrap(int side)
+        {
+            if (_wrapL == null && _wrapR == null)
+            {
+                var l = transform.Find("visual/wrapL"); var r = transform.Find("visual/wrapR");
+                _wrapL = l != null ? l.gameObject : null; _wrapR = r != null ? r.gameObject : null;
+                var mat = RopeMaterial();
+                foreach (var w in new[] { _wrapL, _wrapR })
+                    if (w != null && mat != null) w.GetComponent<MeshRenderer>().sharedMaterial = mat;
+            }
+            if (side == _wrapSide) return;
+            _wrapSide = side;
+            if (_wrapL != null && _wrapL.activeSelf != (side < 0)) _wrapL.SetActive(side < 0);
+            if (_wrapR != null && _wrapR.activeSelf != (side > 0)) _wrapR.SetActive(side > 0);
+        }
 
         // ------------------------------------------------------------------
         public string GetHoverName() => "Cleat";
@@ -315,8 +407,13 @@ namespace SailTrim
         private void DrawRope(Ship ship)
         {
             if (_rope == null) BuildRope();
-            Vector3 a = Top;
-            Vector3 b = ShipEnd(ship, a);
+            Vector3 b = ShipEnd(ship, Top);
+            // The lead leaves from the end of the horn nearer the boat (with a little hold, so it does not flick
+            // from one end to the other when the boat lies nearly square to the cleat).
+            float lx = transform.InverseTransformPoint(b).x;
+            int side = _wrapSide == 0 ? (lx < 0f ? -1 : 1) : (Mathf.Abs(lx) > 0.3f ? (lx < 0f ? -1 : 1) : _wrapSide);
+            ShowWrap(side);
+            Vector3 a = transform.TransformPoint(Cleat.LeadPoint(side));
             var cam = Camera.main;
             bool near = cam == null || Vector3.Distance(cam.transform.position, a) < 70f;
             if (near) Simulate(a, b);
@@ -354,6 +451,7 @@ namespace SailTrim
         {
             if (_rope != null && _rope.enabled) _rope.enabled = false;
             _pts = null;
+            if (_wrapSide != 0) ShowWrap(0);
         }
 
         /// <summary>The ship end of the rope: the hull point nearest the cleat, kept in the ship's own space.</summary>
@@ -460,12 +558,14 @@ namespace SailTrim
             }
         }
 
-        private static Material RopeMaterial()
+        internal static Material RopeMaterial()
         {
             if (_ropeMaterial != null) return _ropeMaterial;
-            // The cart's rope, or any ship's; else a plain hemp-coloured one.
+            // The cart's rope, or any ship's; else a plain hemp-coloured one. Nothing is decided before the world's
+            // prefabs are up (the ObjectDB comes first).
             Material src = null;
             var scene = ZNetScene.instance;
+            if (scene == null) return null;
             if (scene != null)
                 foreach (var name in new[] { "Cart", "Karve", "VikingShip", "Raft" })
                 {

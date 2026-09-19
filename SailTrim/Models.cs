@@ -337,6 +337,43 @@ namespace SailTrim
                 }
             }
 
+            /// <summary>A round tube of constant radius swept along a path (a rope), frames carried along without twisting.</summary>
+            internal void Sweep(IList<Vector3> path, float radius, int sides = 8)
+            {
+                if (path.Count < 2) return;
+                int b0 = _v.Count;
+                Vector3 prevT = (path[1] - path[0]).normalized;
+                Vector3 n = Vector3.Cross(prevT, Mathf.Abs(prevT.y) < 0.9f ? Vector3.up : Vector3.right).normalized;
+                float along = 0f;
+                for (int i = 0; i < path.Count; i++)
+                {
+                    Vector3 tan = i == 0 ? path[1] - path[0] : (i == path.Count - 1 ? path[i] - path[i - 1] : path[i + 1] - path[i - 1]);
+                    tan.Normalize();
+                    // Parallel transport: turn the previous normal by the change in direction.
+                    n = Quaternion.FromToRotation(prevT, tan) * n;
+                    n = (n - tan * Vector3.Dot(n, tan)).normalized;
+                    prevT = tan;
+                    Vector3 bn = Vector3.Cross(tan, n);
+                    if (i > 0) along += Vector3.Distance(path[i], path[i - 1]);
+                    for (int s2 = 0; s2 <= sides; s2++)
+                    {
+                        float ang = s2 / (float)sides * Mathf.PI * 2f;
+                        Vector3 dir = n * Mathf.Cos(ang) + bn * Mathf.Sin(ang);
+                        _v.Add(path[i] + dir * radius);
+                        _n.Add(dir);
+                        _uv.Add(new Vector2(s2 / (float)sides, along / (radius * 6f)));
+                    }
+                }
+                int row = sides + 1;
+                for (int i = 0; i < path.Count - 1; i++)
+                    for (int s2 = 0; s2 < sides; s2++)
+                    {
+                        int p0 = b0 + i * row + s2, p1 = p0 + 1, p2 = p0 + row, p3 = p2 + 1;
+                        _t.Add(p0); _t.Add(p1); _t.Add(p2);
+                        _t.Add(p1); _t.Add(p3); _t.Add(p2);
+                    }
+            }
+
             internal Mesh Build(string name)
             {
                 var m = new Mesh { name = name };
