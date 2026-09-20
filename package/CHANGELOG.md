@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.2
+
+- Fixed: boats came untied when the world was reloaded. Both the cleat and the boat took "the other one's data is not here yet" to mean it had gone, and in the first seconds after a world loads nothing is here yet. Neither side lets go now until it actually hears otherwise, and a cleat that has really been broken releases its boat after half a minute.
+
 ## 1.6.1
 
 - Fixed: a buoy broke the moment it was placed. It counted as a piece with nothing holding it up, and the game wears those away at once. Buoys and cleats now take no damage at all: not from wear, rain or ash, not from a ship ramming them, and not from waves setting a buoy down on the sea floor. Remove them with the hammer as usual.

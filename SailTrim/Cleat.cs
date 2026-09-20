@@ -374,16 +374,19 @@ namespace SailTrim
             if (_checkTimer <= 0f)
             {
                 _checkTimer = 1f;
-                // The boat is gone (sunk, broken up, or the world forgot it), or it is tied to another cleat now.
+                // The boat says it is tied to another cleat now, so let go of it. A boat whose data has not
+                // reached us is NOT a reason to let go: right after a world loads nothing is here yet, and up to
+                // 1.6.1 every cleat untied itself in those first seconds, which is why moorings did not survive a
+                // restart.
                 var shipZdo = ZDOMan.instance.GetZDO(boat);
-                if (shipZdo == null || shipZdo.GetZDOID(Mooring.CleatKey) != _nview.GetZDO().m_uid)
+                if (shipZdo != null && shipZdo.GetZDOID(Mooring.CleatKey) != _nview.GetZDO().m_uid)
                 {
                     // Only one client should take this on; the one nearest the cleat does.
                     var p = Player.m_localPlayer;
                     if (p != null && Vector3.Distance(p.transform.position, transform.position) < 40f)
                     {
                         // A boat freshly tied has not had its owner write the cleat id yet: give it a moment.
-                        if (shipZdo == null || Time.time - _tieTime > 5f) { Untie(null); return; }
+                        if (Time.time - _tieTime > 5f) { Untie(null); return; }
                     }
                 }
             }
@@ -648,6 +651,8 @@ namespace SailTrim
 
         private static readonly Dictionary<Ship, float> _checkAt = new Dictionary<Ship, float>();
         private static readonly Dictionary<Ship, float> _repairAt = new Dictionary<Ship, float>();
+        /// <summary>Ships whose cleat has not been seen lately, and since when (see FixedStep).</summary>
+        private static readonly Dictionary<Ship, float> _cleatMissingSince = new Dictionary<Ship, float>();
         private const float RepairStep = 5f;
         private static float _messageTime;
 
@@ -696,9 +701,25 @@ namespace SailTrim
             if (!_checkAt.TryGetValue(ship, out float at) || Time.time > at)
             {
                 _checkAt[ship] = Time.time + 1f;
-                // The cleat is gone, or it no longer claims this boat: let go.
                 var cz = ZDOMan.instance.GetZDO(cleat);
-                if (cz == null || cz.GetZDOID(Cleat.BoatKey) != zdo.m_uid) { zdo.Set(CleatKey, ZDOID.None); return; }
+                if (cz != null)
+                {
+                    _cleatMissingSince.Remove(ship);
+                    // It no longer claims this boat: let go.
+                    if (cz.GetZDOID(Cleat.BoatKey) != zdo.m_uid) { zdo.Set(CleatKey, ZDOID.None); return; }
+                }
+                else
+                {
+                    // The cleat's data is not here. Just after a world loads that is normal and the mooring must
+                    // hold; a cleat that has really been broken never comes back, so give it half a minute.
+                    if (!_cleatMissingSince.TryGetValue(ship, out float since)) { _cleatMissingSince[ship] = Time.time; }
+                    else if (Time.time - since > 30f)
+                    {
+                        _cleatMissingSince.Remove(ship);
+                        zdo.Set(CleatKey, ZDOID.None);
+                        return;
+                    }
+                }
             }
             var body = ship.m_body;
             if (body == null) return;
