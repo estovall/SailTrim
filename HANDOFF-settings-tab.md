@@ -765,3 +765,17 @@ want = asin((mount.position.y - ProbeMedian()) / _restDist) * Rad2Deg;
 No lag on the boat's motion, which is real and must be tracked exactly, and no jitter from the ray, which is
 noise and must not be. The overshoot past contact drops from 1 degree to 0.3 now that it no longer has to cover
 for the lag.
+
+## Gangway: the shader varies itself two ways, not one
+
+The iron beams flickered while the planking stayed steady, and the log proved both materials had been through
+`Tame()` — `_MoveableObject` and `_TriplanarLocalPos` both set. So the triplanar is not the only way
+`Custom/Piece` varies itself by where a thing is. Its property list also carries `_ValueNoise`,
+`_ValueNoiseVertex`, `_RippleDistance` and `_RippleFreq`, and `_MoveableObject` evidently does not reach them.
+
+`Tame()` turns those off and **logs the value it found**, so the next run says whether this was the difference:
+the beam's material should report a non-zero value noise and the hull's timber should report nothing at all,
+which is exactly why one flickered and the other did not.
+
+If the log shows nothing turned off, the cause is elsewhere and the next thing to try is `shadowCastingMode`
+off on the ironwork alone — the beams carry rivets, which is the sort of geometry that acnes at a grazing angle.

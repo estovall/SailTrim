@@ -318,7 +318,21 @@ namespace SailTrim
                         || low.Contains("triplanarlocal") || low.Contains("localpos"))
                     {
                         m.SetFloat(prop, 1f);
-                        Plugin.Log.LogInfo($"SailTrim: gangway material {prop} set for a moving object");
+                        Plugin.Log.LogInfo($"SailTrim: {m.name} {prop} set for a moving object");
+                    }
+                    // The triplanar is not the shader's only way of varying itself by where a thing is. Custom/Piece
+                    // also carries a value noise, and _MoveableObject evidently does not reach it: the planking is
+                    // steady and the iron beams, whose material leans on it, are not. Off, and the old value logged,
+                    // so it is on record whether this was the difference.
+                    else if (low.Contains("valuenoise") || low.Contains("ripplefreq") || low.Contains("rippledistance"))
+                    {
+                        float had = 0f;
+                        try { had = m.GetFloat(prop); } catch { }
+                        if (Mathf.Abs(had) > 0.0001f)
+                        {
+                            m.SetFloat(prop, 0f);
+                            Plugin.Log.LogInfo($"SailTrim: {m.name} {prop} was {had:0.###}, turned off for a moving object");
+                        }
                     }
                 }
             }
