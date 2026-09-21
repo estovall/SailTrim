@@ -134,11 +134,16 @@ namespace SailTrim
                          + $"{Plugin.RowForwardKey.Value} row  ·  {jump} let go";
                 }
             }
-            else if (Plugin.CrewCanTrim.Value)
+            else
             {
-                if (Plugin.CrewActive) hint = "You have the sheet: W in, S out" + (char)10 + "Jump to let go";
-                else if (st.SheetHand == 0L) hint = "Hold fast on the mast to trim the sail";
-                else hint = "Someone has the sheet";
+                string weight = CrewWeightHint(st, ship, player);
+                if (weight != "") hint = weight;
+                else if (Plugin.CrewCanTrim.Value)
+                {
+                    if (Plugin.CrewActive) hint = "You have the sheet: W in, S out" + (char)10 + "Jump to let go";
+                    else if (st.SheetHand == 0L) hint = "Hold fast on the mast to trim the sail";
+                    else hint = "Someone has the sheet";
+                }
             }
             _hintText.text = hint;
         }
@@ -197,6 +202,25 @@ namespace SailTrim
             if (s.StartsWith("Alpha")) return s.Substring(5);
             if (s.StartsWith("Keypad")) return "Num " + s.Substring(6);
             return s;
+        }
+
+        /// <summary>
+        /// Standing on deck with the boat over: which rail to stand on. Weight to windward stands her up, and a
+        /// boat sailing flatter carries more drive, so this is worth real speed rather than being a chore.
+        /// </summary>
+        private static string CrewWeightHint(SailTrimShip st, Ship ship, Player player)
+        {
+            if (!Plugin.CrewWeightHints.Value || Plugin.CrewWeight.Value <= 0f) return "";
+            if (player == null || ship == null || player.IsAttached() || !ship.IsSailUp()) return "";
+            float heel = st.HeelAngle;
+            if (Mathf.Abs(heel) < 6f) return "";
+            bool windwardIsStarboard = st.WindFromAngle >= 0f;
+            float side = Vector3.Dot(player.transform.position - ship.transform.position, ship.transform.right);
+            bool onStarboard = side > 0f;
+            if (onStarboard == windwardIsStarboard) return "Weight to windward: she stands up and sails faster";
+            return windwardIsStarboard
+                ? "Stand to starboard: your weight holds her up"
+                : "Stand to port: your weight holds her up";
         }
 
         private static void Show(RectTransform rt, bool on)

@@ -140,6 +140,13 @@ the rudder the boat sails vanilla for everyone aboard; hand it to a manual-trim 
   stern with the sail up gives a "GYBE!" roll kick and hull damage (5% of max health at full sail in strong
   wind with the sheet fully eased), softened by half sail, light wind, or sheeting in first.
 
+## Crew weight (1.7.0)
+
+Bodies on deck move the boat. Stand to windward and she comes upright and sails faster; everyone to leeward and
+she lies over and slows. Sitting crew, anyone holding fast at the mast and the helmsman are braced, so they do
+not count. The effect is the boat's own physics, which means a karve answers to one person moving and a longship
+hardly notices. Crew on deck are told which rail to be on while she is heeling.
+
 ## The cleat (1.6.0)
 
 Build a **Cleat** from the hammer's Misc tab (one bronze): a bronze horn cleat that sits on top of planks or a

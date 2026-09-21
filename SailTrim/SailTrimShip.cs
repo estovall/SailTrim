@@ -898,6 +898,7 @@ namespace SailTrim
                 _body.AddForce(-fwd * (decel * _body.mass * dt), ForceMode.Impulse);
             }
 
+            ApplyCrewWeight(dt, t, fwd);
             ApplyPitch(dt, t, fwd, driveN);
 
             if (Plugin.HeelTorque.Value <= 0f) return;
@@ -972,6 +973,42 @@ namespace SailTrim
         /// never pitchpoles. A buried bow also ships water: a little hull damage per second until you ease
         /// out or reef.
         /// </summary>
+        /// <summary>Crew standing on deck, and how far off the centreline their weight sits (metres, starboard positive).</summary>
+        public int StandingCrew { get; private set; }
+        public float CrewArm { get; private set; }
+
+        /// <summary>
+        /// Bodies on deck move the boat. Crew who are sitting, holding the mast or steering do not count: they are
+        /// braced and their weight is part of the hull already. Nothing is scaled by hand for ship size, because
+        /// the same shove of weight against a longship's inertia is worth a fraction of what it is worth on a karve.
+        /// </summary>
+        private void ApplyCrewWeight(float dt, Transform t, Vector3 fwd)
+        {
+            StandingCrew = 0;
+            CrewArm = 0f;
+            if (Plugin.CrewWeight.Value <= 0f || _ship.m_players == null) return;
+
+            float lateral = 0f, fore = 0f;
+            var players = _ship.m_players;
+            for (int i = 0; i < players.Count; i++)
+            {
+                var p = players[i];
+                if (p == null || p.IsDead() || p.IsAttached()) continue;
+                Vector3 d = p.transform.position - t.position;
+                lateral += Vector3.Dot(d, t.right);
+                fore += Vector3.Dot(d, fwd);
+                StandingCrew++;
+            }
+            if (StandingCrew == 0) return;
+            CrewArm = lateral / StandingCrew;
+
+            float w = Plugin.CrewMass.Value * 9.81f * Plugin.CrewWeight.Value;
+            // Weight to starboard pushes the starboard side down (positive torque about +forward lifts it), and
+            // weight forward pushes the bow down (positive about +right).
+            _body.AddTorque(t.forward * (-lateral * w * dt), ForceMode.Impulse);
+            _body.AddTorque(t.right * (fore * w * 0.5f * dt), ForceMode.Impulse);
+        }
+
         private void ApplyPitch(float dt, Transform t, Vector3 fwd, float driveN)
         {
             if (Plugin.PitchTorque.Value <= 0f || driveN <= 0f) { ResetNoseDiveDamage(); return; }

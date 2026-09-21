@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.0
+
+- Crew weight. Anyone standing on deck shifts the boat: weight to windward stands her up, weight forward puts the bow down. Sitting crew, anyone holding the mast and the helmsman do not count, since they are braced and already part of the hull. Nothing is scaled by hand for ship size; a body that visibly stands a karve up barely troubles a longship, because the longship's inertia says so. A boat sailing flatter loses less drive, so a crew that works the rail is faster than the same boat sailed alone, and faster than vanilla.
+- Crew on deck are told which rail to stand on while the boat is over, and told when they are already in the right place (`CrewWeightHints`). `CrewWeight` and `CrewMass` are in the Heel section and the server owns them.
+
 ## 1.6.2
 
 - Fixed: boats came untied when the world was reloaded. Both the cleat and the boat took "the other one's data is not here yet" to mean it had gone, and in the first seconds after a world loads nothing is here yet. Neither side lets go now until it actually hears otherwise, and a cleat that has really been broken releases its boat after half a minute.

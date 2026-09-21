@@ -14,7 +14,7 @@ namespace SailTrim
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.6.2";
+        public const string VERSION = "1.7.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -85,6 +85,9 @@ namespace SailTrim
         internal static ConfigEntry<float> HeelDriveShare;
         internal static ConfigEntry<float> StallHeelBoost;
         internal static ConfigEntry<float> MaxHeelAngle;
+        internal static ConfigEntry<float> CrewWeight;
+        internal static ConfigEntry<float> CrewMass;
+        internal static ConfigEntry<bool> CrewWeightHints;
         internal static ConfigEntry<float> MastStrainAngle;
         internal static ConfigEntry<float> MastStrainGrace;
         internal static ConfigEntry<float> MastStrainDamagePerSecond;
@@ -268,6 +271,8 @@ namespace SailTrim
             CrewTrimBonus = Config.Bind("2. Controls", "CrewTrimBonus", 0.2f,
                 new ConfigDescription("Extra sheet speed when a dedicated crew member is on the sheet (0.2 = 20% faster than the pilot trimming alone).",
                     new AcceptableValueRange<float>(0f, 1f)));
+            CrewWeightHints = Config.Bind("1. General", "CrewWeightHints", true,
+                "Tell crew on deck which side to stand on when the boat is heeling, and say so when they are already in the right place.");
             PassengerHud = Config.Bind("1. General", "PassengerHud", true,
                 "Show the ship HUD (wind circle, sail icon, speed gauge, trim state) to passengers with the mod, not just the pilot.");
             ToggleKey = Config.Bind("2. Controls", "ToggleKey", KeyCode.H,
@@ -363,6 +368,11 @@ namespace SailTrim
             MastStrainDamagePerSecond = Config.Bind("4. Heel", "MastStrainDamagePerSecond", 0.5f,
                 new ConfigDescription("Hull damage per second, as a percent of max health, while the rig is straining. 0 disables.",
                     new AcceptableValueRange<float>(0f, 5f)));
+            CrewWeight = Config.Bind("4. Heel", "CrewWeight", 0.35f,
+                new ConfigDescription("How much a standing crew member's weight shifts the boat. Sitting crew, anyone on the mast and the helmsman do not count: their weight is already part of the hull. The ship's own inertia decides what that is worth, so the same body that stands a karve up barely troubles a longship. 0 = off.",
+                    new AcceptableValueRange<float>(0f, 2f)));
+            CrewMass = Config.Bind("4. Heel", "CrewMass", 90f,
+                new ConfigDescription("What a viking and their kit weigh, kilograms.", new AcceptableValueRange<float>(20f, 200f)));
             MaxHeelAngle = Config.Bind("4. Heel", "MaxHeelAngle", 45f,
                 new ConfigDescription("The heeling torque fades out over the last 10 degrees before this angle, so the mod can never knock the boat down.",
                     new AcceptableValueRange<float>(5f, 60f)));
