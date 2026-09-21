@@ -665,3 +665,23 @@ ironwork too".
 The edge beams keep the beam's **own cross-section**, shrunk uniformly if it is thicker than 20 cm, rather than
 being squashed to a fixed 10 cm kerb on two axes. Squashing one axis and not the other is what smears straps and
 rivets into stripes — the same mistake as the brackets, in a different place.
+
+## Gangway: `piece_woodironbeam`
+
+The log said it plainly — `gangway ironwork cut from wood_beam` — so there was never any ironwork, only plain
+timber, and no amount of looking at it would have said why. The name is **`piece_woodironbeam`** (variants `_26`
+and `_45`, mesh `woodiron_beam`), found by grepping the game's own bundles under
+`valheim_Data/StreamingAssets/SoftRef/Bundles/`. That is the way to settle a prefab name: the bundles are on
+disk and `grep -ria` reads them.
+
+The search was also built wrong. `wood_beam` sat in the same list as the names being looked for, so
+`FindFirst` succeeded on it and the scene sweep that would have found the right piece never ran. **A fallback
+listed beside the thing it is a fallback for is not a fallback.** The ironwork is looked for alone first, then
+by sweeping the scene for anything named `*ironbeam*`, and only then does plain timber stand in.
+
+## Gangway: lash what is there, not what was expected
+
+The rope was sized from the leaf thickness — three leaves of 0.22 stacked by the leaf lift — which ignored the
+edge beams sitting on top of them, so it ran straight through the ironwork. `BuildLashings` now waits until the
+bundle is genuinely folded (`_wasFitted && _deploy <= 0.001`) and measures it: every mesh under the visual, its
+eight corners into the plank's own space, encapsulated. The rope is then drawn round *that*, 7 cm proud of it.

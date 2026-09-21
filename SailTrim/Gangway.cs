@@ -486,18 +486,25 @@ namespace SailTrim
         {
             name = "plain";
             if (Plugin.GangwayPlainTimber.Value) return null;
+            // piece_woodironbeam, as the game's own bundles spell it. The first guesses at the name were wrong and
+            // the list ended in wood_beam, so the search found plain timber and never reached the sweep that would
+            // have found the right thing: a fallback listed beside what it is a fallback for is not a fallback.
             var src = Models.FindFirst(ObjectDB.instance, out name,
-                "wood_ibeam", "wood_ibeam_1", "iron_beam", "wood_beam", "wood_beam_1", "wood_pole");
+                "piece_woodironbeam", "piece_woodironbeam_26", "piece_woodironbeam_45", "wood_ibeam", "iron_beam");
             if (src == null)
             {
-                // Whatever the world calls it; the names above are only the likely ones.
                 var scene = ZNetScene.instance;
                 if (scene != null && scene.m_prefabs != null)
                     foreach (var p in scene.m_prefabs)
-                        if (p != null && p.name.IndexOf("ibeam", StringComparison.OrdinalIgnoreCase) >= 0
-                            && p.GetComponentInChildren<MeshRenderer>(true) != null)
-                        { name = p.name; src = p; break; }
+                    {
+                        if (p == null || p.GetComponentInChildren<MeshRenderer>(true) == null) continue;
+                        string pn = p.name;
+                        if (pn.IndexOf("ironbeam", StringComparison.OrdinalIgnoreCase) < 0
+                            && pn.IndexOf("ibeam", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        name = pn; src = p; break;
+                    }
             }
+            if (src == null) src = Models.FindFirst(ObjectDB.instance, out name, "wood_beam", "wood_beam_1", "wood_pole");
             if (src != null && !_loggedBeam)
             {
                 _loggedBeam = true;
@@ -1338,29 +1345,43 @@ namespace SailTrim
         private void BuildLashings()
         {
             if (_lashing != null || Models.Headless || _visual == null) return;
+            // Only once the bundle is actually folded, because the rope is measured round whatever is there.
+            if (!_wasFitted || _deploy > 0.001f) return;
             var mat = CleatPiece.RopeMaterial();
             if (mat == null) return;   // the world's prefabs are not up yet; try again next frame
 
-            // The folded bundle: three leaves, each hanging below its own top surface, stacked by the leaf lift.
-            const float Thick = 0.22f;
-            float top = LeafLift * 2f;
-            float midY = (top - Thick) * 0.5f;
-            // Standing well clear of the timber, so it reads as a rope round a bundle and not a stripe painted
-            // on one. Drawn tight to the wood it was the same colour at the same depth and disappeared into it.
-            float ry = (top + Thick) * 0.5f + 0.085f;
-            float rz = 0.42f + 0.085f;
-
-            float seg = Length / 3f;
-            var mb = new Models.MeshBuilder();
-            foreach (float x0 in new[] { seg * 0.26f, seg * 0.74f })
+            // Measure the folded bundle rather than working it out from the leaf thickness. Worked out, the rope
+            // passed straight through the edge beams stacked on top of the leaves, which is a rope round nothing.
+            Bounds bb = new Bounds();
+            bool any = false;
+            foreach (var mf in _visual.GetComponentsInChildren<MeshFilter>(true))
             {
-                var path = new List<Vector3>();
-                for (int i = 0; i <= 16; i++)
+                var mesh = mf.sharedMesh;
+                if (mesh == null) continue;
+                Bounds lb = mesh.bounds;
+                for (int c = 0; c < 8; c++)
                 {
-                    float a = Mathf.Lerp(-Mathf.PI, Mathf.PI, i / 16f);
-                    path.Add(new Vector3(x0, midY + Mathf.Cos(a) * ry, Mathf.Sin(a) * rz));
+                    Vector3 corner = lb.center + Vector3.Scale(lb.extents,
+                        new Vector3((c & 1) == 0 ? -1 : 1, (c & 2) == 0 ? -1 : 1, (c & 4) == 0 ? -1 : 1));
+                    Vector3 pt = transform.InverseTransformPoint(mf.transform.TransformPoint(corner));
+                    if (!any) { bb = new Bounds(pt, Vector3.zero); any = true; } else bb.Encapsulate(pt);
                 }
-                mb.Sweep(path, 0.045f, 8);
+            }
+            if (!any) return;
+
+            float ry = bb.extents.y + 0.07f;
+            float rz = bb.extents.z + 0.07f;
+            var mb = new Models.MeshBuilder();
+            foreach (float t0 in new[] { 0.24f, 0.72f })
+            {
+                float x0 = bb.min.x + bb.size.x * t0;
+                var path = new List<Vector3>();
+                for (int i = 0; i <= 20; i++)
+                {
+                    float a = Mathf.Lerp(-Mathf.PI, Mathf.PI, i / 20f);
+                    path.Add(new Vector3(x0, bb.center.y + Mathf.Cos(a) * ry, bb.center.z + Mathf.Sin(a) * rz));
+                }
+                mb.Sweep(path, 0.05f, 8);
             }
             _lashing = Models.MeshPart(transform, "lashing", mb.Build("SailTrim_GangwayLashing"), mat);
             if (_lashing != null)
