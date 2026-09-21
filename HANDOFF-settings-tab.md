@@ -276,7 +276,7 @@ board (separate from the cleat); lowering it within reach of a free cleat ties t
 - The item: a clone of FineWood with cloned `SharedData` (it is a plain class, so a reflection field copy), the
   stock renderers disabled, our plank mesh as its model and an icon rendered from it; added to `ObjectDB.m_items`
   + `UpdateRegisters()`, to `ZNetScene`, and a `Recipe` at whatever station an existing workbench recipe uses
-  (10 wood + 4 bronze nails, configurable). `Inventory.GetItem("Gangway")` matches on the shared name.
+  (10 fine wood + 4 iron nails, configurable: a later-game unlock, matching the longship's own nails). `Inventory.GetItem("Gangway")` matches on the shared name.
 - Config section `10. Gangway`: Enabled, Length (3), MaxAngle (35), StowAngle (-78), SwingRate (45),
   RetractDelay (2), TiesCleat, WoodCost, NailCost. Unsynced, like `8. Mooring` and `9. Buoy`.
 - Version left at 1.7.1 on purpose: the dev build still matches the server.

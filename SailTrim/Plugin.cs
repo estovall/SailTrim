@@ -134,8 +134,8 @@ namespace SailTrim
         internal static ConfigEntry<float> GangwaySwingRate;
         internal static ConfigEntry<float> GangwayRetractDelay;
         internal static ConfigEntry<bool> GangwayTiesCleat;
-        internal static ConfigEntry<int> GangwayWoodCost;
-        internal static ConfigEntry<int> GangwayNailCost;
+        internal static ConfigEntry<int> GangwayFineWoodCost;
+        internal static ConfigEntry<int> GangwayIronNailCost;
         internal static ConfigEntry<bool> BuoyLight;
         internal static ConfigEntry<bool> BuoyPins;
 
@@ -496,7 +496,7 @@ namespace SailTrim
             MoorRepairPerMinute = Config.Bind("8. Mooring", "MoorRepairPerMinute", 5f,
                 new ConfigDescription("A tied-up boat mends itself: this percent of its full health per minute (the dock knocks it about between tides). 0 = off.", new AcceptableValueRange<float>(0f, 100f)));
             GangwayEnabled = Config.Bind("10. Gangway", "GangwayEnabled", true,
-                "Adds the Gangway: a plank you craft at the workbench and fit to a boat's rail (any hull but the raft, one a side). Lower it to walk between the deck and the dock with a load you could not climb with.");
+                "Adds the Gangway: a plank of fine wood and iron nails you craft at the workbench and fit to a boat's rail (any hull but the raft, one a side). Lower it to walk between the deck and the dock with a load you could not climb with.");
             GangwayLength = Config.Bind("10. Gangway", "GangwayLength", 3f,
                 new ConfigDescription("How long the plank is, in metres. Longer reaches further but is heavier to look at.",
                     new AcceptableValueRange<float>(1.5f, 8f)));
@@ -514,10 +514,10 @@ namespace SailTrim
                     new AcceptableValueRange<float>(0f, 10f)));
             GangwayTiesCleat = Config.Bind("10. Gangway", "GangwayTiesCleat", true,
                 "Lowering a gangway within CleatRange of a cleat that has no boat on it ties that cleat on as well.");
-            GangwayWoodCost = Config.Bind("10. Gangway", "GangwayWoodCost", 10,
-                new ConfigDescription("Wood to craft one gangway.", new AcceptableValueRange<int>(1, 100)));
-            GangwayNailCost = Config.Bind("10. Gangway", "GangwayNailCost", 4,
-                new ConfigDescription("Bronze nails to craft one gangway. 0 for none.", new AcceptableValueRange<int>(0, 50)));
+            GangwayFineWoodCost = Config.Bind("10. Gangway", "GangwayFineWoodCost", 10,
+                new ConfigDescription("Fine wood to craft one gangway.", new AcceptableValueRange<int>(1, 100)));
+            GangwayIronNailCost = Config.Bind("10. Gangway", "GangwayIronNailCost", 4,
+                new ConfigDescription("Iron nails to craft one gangway. 0 for none.", new AcceptableValueRange<int>(0, 50)));
 
             BuoyEnabled = Config.Bind("9. Buoy", "BuoyEnabled", true,
                 "Adds the Buoy build piece (hammer, Misc; 6 wood, 2 resin, no workbench). Placed on open water like a boat, it floats and holds its spot: channel markers, race marks.");

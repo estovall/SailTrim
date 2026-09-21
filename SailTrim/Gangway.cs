@@ -225,7 +225,7 @@ namespace SailTrim
                 if (drop == null) { UnityEngine.Object.Destroy(go); return; }
                 var shared = CloneShared(drop.m_itemData.m_shared);
                 shared.m_name = "Gangway";
-                shared.m_description = "A hinged plank for a ship's rail. Fit it to either side of any boat but a raft, then lower it to walk ashore with a load that is too heavy to climb with.";
+                shared.m_description = "A hinged plank of fine wood, iron-nailed, for a ship's rail. Fit it to either side of any boat but a raft, then lower it to walk ashore with a load that is too heavy to climb with.";
                 shared.m_itemType = ItemDrop.ItemData.ItemType.Material;
                 shared.m_maxStackSize = 10;
                 shared.m_weight = 6f;
@@ -270,12 +270,13 @@ namespace SailTrim
                     var cs = r != null ? r.m_craftingStation : null;
                     if (cs != null && cs.name.IndexOf("workbench", StringComparison.OrdinalIgnoreCase) >= 0) { bench = cs; break; }
                 }
-                var wood = db.GetItemPrefab("Wood")?.GetComponent<ItemDrop>();
-                var nails = db.GetItemPrefab("BronzeNails")?.GetComponent<ItemDrop>();
+                // Fine wood and iron nails: a fitting you come to once the longship is within reach, not a starter piece.
+                var wood = db.GetItemPrefab("FineWood")?.GetComponent<ItemDrop>() ?? db.GetItemPrefab("Wood")?.GetComponent<ItemDrop>();
+                var nails = db.GetItemPrefab("IronNails")?.GetComponent<ItemDrop>();
                 var reqs = new List<Piece.Requirement>();
-                if (wood != null) reqs.Add(new Piece.Requirement { m_resItem = wood, m_amount = Mathf.Max(1, Plugin.GangwayWoodCost.Value), m_recover = true });
-                if (nails != null && Plugin.GangwayNailCost.Value > 0)
-                    reqs.Add(new Piece.Requirement { m_resItem = nails, m_amount = Plugin.GangwayNailCost.Value, m_recover = true });
+                if (wood != null) reqs.Add(new Piece.Requirement { m_resItem = wood, m_amount = Mathf.Max(1, Plugin.GangwayFineWoodCost.Value), m_recover = true });
+                if (nails != null && Plugin.GangwayIronNailCost.Value > 0)
+                    reqs.Add(new Piece.Requirement { m_resItem = nails, m_amount = Plugin.GangwayIronNailCost.Value, m_recover = true });
                 if (reqs.Count > 0)
                 {
                     _recipe = ScriptableObject.CreateInstance<Recipe>();
