@@ -38,7 +38,6 @@ namespace SailTrim
 
         private static GameObject _itemPrefab;
         private static Sprite _icon;
-        private static Mesh _plankMesh;
         private static Material _woodMat;
         private static Recipe _recipe;
 
@@ -163,23 +162,6 @@ namespace SailTrim
         // ------------------------------------------------------------------
         // The item and its recipe
         // ------------------------------------------------------------------
-        private static Mesh PlankMesh()
-        {
-            if (_plankMesh != null) return _plankMesh;
-            float len = Mathf.Max(1.5f, Plugin.GangwayLength.Value);
-            float halfW = 0.42f;
-            var mb = new Models.MeshBuilder();
-            // The plank itself, from the hinge outboard along +X, and a batten every half metre to walk on.
-            mb.Box(new Vector3(len * 0.5f, -0.04f, 0f), new Vector3(len, 0.08f, halfW * 2f));
-            for (float x = 0.35f; x < len - 0.1f; x += 0.5f)
-                mb.Box(new Vector3(x, 0.02f, 0f), new Vector3(0.07f, 0.04f, halfW * 1.9f));
-            // A rib down each edge so it reads as a gangway and not a floorboard.
-            foreach (float sz in new[] { -1f, 1f })
-                mb.Box(new Vector3(len * 0.5f, 0.01f, sz * (halfW - 0.03f)), new Vector3(len - 0.06f, 0.06f, 0.06f));
-            _plankMesh = mb.Build("SailTrim_Gangway");
-            return _plankMesh;
-        }
-
         /// <summary>
         /// The plank wears the game's own fine wood, taken off the item it is built from. A material of the
         /// game's is lit the way everything else is, and it is the light timber a gangway should be; a material
@@ -209,17 +191,72 @@ namespace SailTrim
             return _woodMat;
         }
 
-        /// <summary>Hangs the plank model on a mount (needs a world's ObjectDB for the material).</summary>
         internal static Material WoodMaterialPublic() => WoodMaterial();
 
-        internal static GameObject BuildVisual(Transform parent)
+        /// <summary>
+        /// The walkway, laid from the game's own wooden floor pieces end to end with a beam down each edge, the way
+        /// the buoy is put together from a barrel and a banner. Real parts rather than a mesh of our own: a game
+        /// material expects the UVs of the mesh it ships with, and ours sampled it into muddy darkness.
+        /// </summary>
+        internal static GameObject BuildWalkway(Transform parent, string name, float length, float width, int layer)
         {
             if (Models.Headless || parent == null) return null;
-            var existing = parent.Find("visual");
+            var existing = parent.Find(name);
             if (existing != null) return existing.gameObject;
-            var mat = WoodMaterial();
-            if (mat == null) return null;
-            return Models.MeshPart(parent, "visual", PlankMesh(), mat);
+            var db = ObjectDB.instance;
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, false);
+
+            bool built = false;
+            string beamName = null;
+            var floorSrc = Models.FindFirst(db, out string floorName, "wood_floor", "wood_floor_1x1", "piece_woodfloor");
+            if (floorSrc != null)
+            {
+                int n = Mathf.Max(1, Mathf.RoundToInt(length / 2f));
+                float seg = length / n;
+                for (int k = 0; k < n; k++)
+                {
+                    var part = Models.CopyVisual(floorSrc, root.transform, "deck" + k, out var b);
+                    if (part == null || b.size.x < 0.05f || b.size.z < 0.05f) continue;
+                    var scale = new Vector3(seg / b.size.x, 1f, width / b.size.z);
+                    Models.Place(part, b, new Vector3(0f, 1f, 0.5f), new Vector3(k * seg, 0f, 0f), scale, Quaternion.identity);
+                    built = true;
+                }
+            }
+            var beamSrc = built ? Models.FindFirst(db, out beamName, "wood_beam", "wood_beam_1", "wood_pole") : null;
+            if (beamSrc != null)
+            {
+                foreach (float sz in new[] { -1f, 1f })
+                {
+                    var part = Models.CopyVisual(beamSrc, root.transform, sz < 0f ? "edgeL" : "edgeR", out var b);
+                    if (part == null) continue;
+                    float along = Mathf.Max(b.size.x, Mathf.Max(b.size.y, b.size.z));
+                    if (along < 0.05f) continue;
+                    var scale = new Vector3(length / along, 0.5f, 0.5f);
+                    Models.Place(part, b, new Vector3(0f, 0.5f, 0.5f), new Vector3(0f, -0.07f, sz * (width * 0.5f - 0.05f)), scale, Quaternion.identity);
+                }
+            }
+            if (!built)
+            {
+                var mat = WoodMaterial();
+                if (mat == null) { UnityEngine.Object.Destroy(root); return null; }
+                var mb = new Models.MeshBuilder();
+                mb.Box(new Vector3(length * 0.5f, -0.05f, 0f), new Vector3(length, 0.1f, width));
+                Models.MeshPart(root.transform, "plain", mb.Build("SailTrim_GangwayPlain"), mat);
+            }
+            SetLayer(root.transform, layer);
+            Plugin.Log.LogInfo($"SailTrim: gangway {name} built from {(built ? floorName + " + " + (beamName ?? "no beam") : "a plain plank")}, layer {LayerMask.LayerToName(layer)}");
+            return root;
+        }
+
+        /// <summary>
+        /// The visible parts belong on the layer the boat's own MESHES use, not the layer of its colliders: they
+        /// are different layers, and a mesh left on the collider layer is not lit. That is why the plank was black.
+        /// </summary>
+        internal static void SetLayer(Transform t, int layer)
+        {
+            t.gameObject.layer = layer;
+            for (int k = 0; k < t.childCount; k++) SetLayer(t.GetChild(k), layer);
         }
 
         /// <summary>A copy of an item's shared data, so changing ours never touches the item we cloned.</summary>
@@ -265,13 +302,13 @@ namespace SailTrim
             {
                 var old = _itemPrefab.transform.Find("visual");
                 if (old != null) UnityEngine.Object.DestroyImmediate(old.gameObject);
-                var visual = BuildVisual(_itemPrefab.transform);
+                var visual = BuildWalkway(_itemPrefab.transform, "visual", Plugin.GangwayLength.Value, 0.9f, _itemPrefab.layer);
                 if (visual != null)
                 {
                     foreach (var r in visual.GetComponentsInChildren<Renderer>(true)) r.enabled = true;
                     // Laid flat and shrunk to sit in the hand and on the ground like an ordinary item.
-                    visual.transform.localScale = Vector3.one * 0.32f;
-                    visual.transform.localPosition = new Vector3(-Plugin.GangwayLength.Value * 0.16f, 0.05f, 0f);
+                    visual.transform.localScale = Vector3.one * 0.22f;
+                    visual.transform.localPosition = new Vector3(-Plugin.GangwayLength.Value * 0.11f, 0.05f, 0f);
                     _icon = Models.RenderIcon(visual, "icon_gangway", 256, 150f, 28f);
                 }
             }
@@ -365,6 +402,7 @@ namespace SailTrim
         private bool _deckFound;
         private float _deckDrop = 0.6f;   // rail top above the deck at this mount, measured per hull
         private GameObject _step;
+        private Rigidbody _rb;
         private float _nextProbe;
         // The probe is noisy: the boat lifts and rolls under it and a ray can catch an edge. Keep the last few
         // readings and steer for the middle one, then move smoothly toward that, rather than following each frame.
@@ -386,6 +424,14 @@ namespace SailTrim
             _box.size = new Vector3(Length, 0.12f, 0.84f);
             // The layer the hull uses, so it hovers, blocks and carries a player exactly as the deck does.
             gameObject.layer = HullLayer(ship);
+            // A child collider of the boat is part of the boat to the physics engine: resting the far end on the
+            // shore propped the hull up and heeled it over as the water fell. Give the plank its own kinematic
+            // body and it stops being part of the boat: still solid to stand on, but it cannot push the boat about.
+            var rb = gameObject.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.interpolation = RigidbodyInterpolation.None;
+            _rb = rb;
             SetCollider(0);
             Apply(0f);
         }
@@ -419,6 +465,14 @@ namespace SailTrim
         }
 
         private void RefreshCollider() => SetCollider(!_wasFitted ? 0 : (_deploy > 0.5f ? 2 : 1));
+
+        /// <summary>The layer the boat's visible meshes are on, which is not the layer of its colliders.</summary>
+        private static int VisualLayer(Ship ship)
+        {
+            foreach (var r in ship.GetComponentsInChildren<MeshRenderer>(true))
+                if (r != null && r.gameObject.activeInHierarchy) return r.gameObject.layer;
+            return 0;
+        }
 
         private static int HullLayer(Ship ship)
         {
@@ -659,21 +713,21 @@ namespace SailTrim
             col.center = new Vector3(0f, -0.05f, 0f);
             col.size = new Vector3(len + 0.1f, 0.12f, 0.9f);
 
-            var mat = Gangway.WoodMaterialPublic();
-            if (!Models.Headless && mat != null)
-            {
-                var mb = new Models.MeshBuilder();
-                mb.Box(new Vector3(0f, -0.05f, 0f), new Vector3(len, 0.1f, 0.9f));
-                // A tread every so often, so it reads as a step and not a slide.
-                int treads = Mathf.Max(2, Mathf.RoundToInt(len / 0.35f));
-                for (int i = 1; i < treads; i++)
-                {
-                    float x = -len * 0.5f + len * i / treads;
-                    mb.Box(new Vector3(x, 0.02f, 0f), new Vector3(0.06f, 0.05f, 0.86f));
-                }
-                Models.MeshPart(_step.transform, "visual", mb.Build("SailTrim_GangwayStep"), mat);
-            }
+            // The ramp is the same timber as the plank, laid from the game's own floor pieces.
+            var ramp = Gangway.BuildWalkway(_step.transform, "visual", len, 0.9f, VisualLayer(_ship));
+            if (ramp != null) ramp.transform.localPosition = new Vector3(-len * 0.5f, 0f, 0f);
             _step.SetActive(_wasFitted);
+        }
+
+        /// <summary>
+        /// The game moves you with whatever you are standing on by adding that body's velocity at your feet.
+        /// A kinematic body has none of its own, so hand it the boat's, or a passenger would be left behind.
+        /// </summary>
+        private void FixedUpdate()
+        {
+            if (_rb == null || _ship == null || _ship.m_body == null) return;
+            _rb.linearVelocity = _ship.m_body.GetPointVelocity(_rb.worldCenterOfMass);
+            _rb.angularVelocity = _ship.m_body.angularVelocity;
         }
 
         // ------------------------------------------------------------------
@@ -688,7 +742,7 @@ namespace SailTrim
 
             if (_visual == null)
             {
-                _visual = Gangway.BuildVisual(transform);
+                _visual = Gangway.BuildWalkway(transform, "visual", Length, 0.84f, VisualLayer(_ship));
                 if (_visual != null) _visual.SetActive(fitted);
             }
             if (fitted != _wasFitted)

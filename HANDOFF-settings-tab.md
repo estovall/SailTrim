@@ -328,3 +328,20 @@ lying the length of the rail. Left until placement is settled, since folding onl
    correction is derived from the plank's own length (`asin(dy / Length)`), probes go into a five-deep ring and
    the plank steers for the **median**, and `_restAngle` is `SmoothDamp`ed toward it over 0.35 s. Max's call that
    a tip slightly inside the dock beats a shivering plank, so it aims 1 deg past what it reads.
+
+**Third in-game try (Max): the boat heeled over at low tide, the stairs were no good, the plank looked terrible.**
+1. *The heel.* The plank was a child collider of the ship, so the physics engine treated it as part of the hull:
+   resting the far end on the shore propped the boat up and levered it over as the water fell. The plank now has
+   its own **kinematic Rigidbody**, which takes it out of the boat's compound collider. It stays solid to walk on
+   and cannot push the boat. `FixedUpdate` hands it the boat's point velocity so anyone standing on it is still
+   carried along (a kinematic body has none of its own).
+2. *Black timber, and why.* Not the material after all. `Models.MeshPart` puts the mesh on its parent's layer, and
+   the plank's parent was on the boat's COLLIDER layer, which the scene's lights do not illuminate. The boat's
+   meshes are on a different layer. `Gangway.SetLayer` now puts the visuals on `VisualLayer(ship)`, read off one
+   of the boat's own MeshRenderers. Worth remembering for any future part hung on a ship.
+3. *Built from real pieces now*, as Max asked and as the buoy does: `BuildWalkway` lays the game's `wood_floor`
+   end to end (one piece per 2 m, scaled to width) with a `wood_beam` down each edge, falling back to a plain
+   plank only if those prefabs are missing. The inboard ramp is the same walkway, shorter and tilted, so the
+   "stairs" are now real timber. The item's own model and its icon come from the same builder.
+   Note a game material needs the UVs of the mesh it ships with: our procedural mesh sampled the atlas into mud,
+   which is the other half of why it looked wrong. Use CopyVisual for anything that wants a game texture.
