@@ -140,13 +140,15 @@ namespace SailTrim
             public float Z;       // fraction of the half length aft of the float collider's centre
             public float Inset;   // extra metres inboard of the measured rail edge
             public float Rise;    // extra metres above the measured rail top
+            public bool Step;     // build a step from the deck up to the rail
         }
 
         internal static Placement PlacementFor(Ship ship)
         {
-            var p = new Placement { Z = Plugin.GangwayMountZ.Value, Inset = 0f, Rise = 0f };
+            var p = new Placement { Z = Plugin.GangwayMountZ.Value, Inset = 0f, Rise = 0f, Step = true };
             string n = (ship != null ? ship.name : "") ?? "";
-            if (n.IndexOf("Ashlands", StringComparison.OrdinalIgnoreCase) >= 0) { }      // Drakkar
+            if (n.IndexOf("Ashlands", StringComparison.OrdinalIgnoreCase) >= 0)
+                p.Step = false;   // the Drakkar's own hull already climbs to the rail here
             else if (n.IndexOf("VikingShip", StringComparison.OrdinalIgnoreCase) >= 0) { } // Longship
             else if (n.IndexOf("Karve", StringComparison.OrdinalIgnoreCase) >= 0) { }
             return p;
@@ -422,7 +424,10 @@ namespace SailTrim
         // 0 stowed, 1 down. The first half swings the plank out from along the rail, the second half lowers it:
         // one number so the two run into each other instead of stepping.
         private float _deploy;
-        private const float FoldAngle = 168f;
+        private const float FoldAngle = 180f;
+        private const float LeafLift = 0.17f;    // how far each folded leaf stands clear of the one below it
+        private const float StowLean = 68f;      // degrees off flat: on edge, leaning against the rail
+        private const float StowInset = 0.30f;   // metres inboard of the hinge that the stack stands
         private bool _walkable;
         private bool _deckFound;
         private float _deckDrop = 0.6f;   // rail top above the deck at this mount, measured per hull
@@ -437,12 +442,19 @@ namespace SailTrim
         private bool _wasFitted, _wasDown;
         private Gangway.Placement _place;
         private Vector3 _railLocal;   // where the rail was found, before the per-hull correction
+        private BoxCollider _stepCol;
+        private Rigidbody _stepRb;
+        private float _ignoreAt;
+        private float _ignoreStop = float.MaxValue;
+        private string _profile = "";  // the shape of the hull the rail was picked out of
 
         /// <summary>What this mount worked out for itself, for the survey notes.</summary>
+        internal string ProfileText() => _profile;
+
         internal string Describe()
         {
             return $"rail(measured) {_railLocal}, inset {_place.Inset:0.00}, rise {_place.Rise:0.00}, " +
-                   $"deckDrop {_deckDrop:0.00}, deploy {_deploy:0.00}, rest {_restAngle:0.0} deg, length {Length:0.0}";
+                   $"deckDrop {_deckDrop:0.00}, step {_place.Step}, deploy {_deploy:0.00}, rest {_restAngle:0.0} deg, length {Length:0.0}";
         }
 
         private float Length => Mathf.Max(1.5f, Plugin.GangwayLength.Value);
@@ -469,6 +481,26 @@ namespace SailTrim
             _rb = rb;
             SetCollider(0);
             Apply(0f);
+            IgnoreShip();
+        }
+
+        /// <summary>
+        /// The plank is its own body, so to the physics engine it is a separate object sitting inside the boat,
+        /// and a kinematic body overlapping a floating one shoves it with everything it has: every hull went over
+        /// on its beam ends. Nothing we bolt on may push the boat about, so every pair is struck out by hand.
+        /// Ship colliders can arrive after Awake, so this is redone over the first few seconds.
+        /// </summary>
+        private void IgnoreShip()
+        {
+            if (_ship == null) return;
+            foreach (var c in _ship.GetComponentsInChildren<Collider>(true))
+            {
+                if (c == null || c == _box || c == _stepCol) continue;
+                if (_box != null) Physics.IgnoreCollision(_box, c, true);
+                if (_stepCol != null) Physics.IgnoreCollision(_stepCol, c, true);
+            }
+            _ignoreAt = Time.time + 1f;
+            if (_ignoreStop == float.MaxValue) _ignoreStop = Time.time + 20f;
         }
 
         /// <summary>
@@ -488,9 +520,9 @@ namespace SailTrim
                     _box.center = new Vector3(Length * 0.5f, -0.05f, 0f);
                     _box.size = new Vector3(Length, 0.12f, 0.84f);
                     break;
-                case 1: // folded and stowed along the rail: one section long, and the stack is taller than a plank
-                    _box.center = new Vector3(Length / 6f, 0.1f, 0f);
-                    _box.size = new Vector3(Length / 3f, 0.5f, 0.84f);
+                case 1: // folded and stowed: one section long, three leaves thick
+                    _box.center = new Vector3(Length / 6f, LeafLift, 0f);
+                    _box.size = new Vector3(Length / 3f, LeafLift * 2f + 0.16f, 0.84f);
                     break;
                 default: // a bare rail: a small post standing above it, clear of the hull
                     _box.center = new Vector3(0.05f, 0.3f, 0f);
@@ -525,24 +557,49 @@ namespace SailTrim
         private void Apply(float deploy)
         {
             _deploy = deploy;
+            // Nothing fitted: the mount is only somewhere to interact, and it belongs on the rail where it was put.
+            if (!_wasFitted)
+            {
+                transform.localPosition = Vector3.zero;
+                transform.localRotation = Quaternion.identity;
+                if (_walkable) { _walkable = false; RefreshCollider(); }
+                return;
+            }
+
             // In order, with a little overlap so they run into one another: unfold the sections, swing the whole
             // thing out from along the rail, then lower it onto what it rests on.
             float unfold = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(deploy / 0.4f));
             float swing = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((deploy - 0.35f) / 0.35f));
             float drop = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((deploy - 0.7f) / 0.3f));
 
-            float yaw = Mathf.Lerp(-90f * _side, 0f, swing);
+            // Stowed it stands on edge against the inside of the rail, pointing fore and aft, the way spare timber
+            // is actually kept aboard. Lying flat on top of the rail put half its width through the rail itself.
+            float stow = 1f - swing;
             float angle = Mathf.Lerp(0f, _restAngle, drop);
-            transform.localRotation = Quaternion.Euler(0f, yaw, 0f) * Quaternion.Euler(0f, 0f, -angle);
+            Quaternion outPose = Quaternion.Euler(0f, 0f, -angle);
+            Quaternion stowPose = Quaternion.Euler(0f, -90f * _side, 0f) * Quaternion.Euler(StowLean * _side, 0f, 0f);
+            transform.localRotation = Quaternion.Slerp(outPose, stowPose, stow);
+            transform.localPosition = Vector3.Lerp(Vector3.zero, StowOffset(), stow);
 
-            // Folded back on itself, a shade under flat so the three lie in a visible stack rather than in one plane.
-            float fold = (1f - unfold) * FoldAngle;
-            if (_seg2 != null) _seg2.localRotation = Quaternion.Euler(0f, 0f, fold);
-            if (_seg3 != null) _seg3.localRotation = Quaternion.Euler(0f, 0f, -fold);
+            // Folded, each leaf stands clear of the one under it. Folded flat about a shared hinge they were three
+            // slabs in one plane, and the renderer had to choose between them every pixel: they crawled with z-fighting.
+            float folded = 1f - unfold;
+            float lift = LeafLift * folded;
+            float fold = folded * FoldAngle;
+            float seg = Length / 3f;
+            if (_seg2 != null) { _seg2.localPosition = new Vector3(seg, lift, 0f); _seg2.localRotation = Quaternion.Euler(0f, 0f, fold); }
+            if (_seg3 != null) { _seg3.localPosition = new Vector3(seg, -lift, 0f); _seg3.localRotation = Quaternion.Euler(0f, 0f, -fold); }
 
             // Only a ramp that is out over the side and unfolded is something to walk on.
             bool walk = deploy > 0.6f;
             if (walk != _walkable) { _walkable = walk; RefreshCollider(); }
+        }
+
+        /// <summary>Where the stowed stack sits: inboard of the rail, down on the deck, straddling the mount.</summary>
+        private Vector3 StowOffset()
+        {
+            // Forward of the mount, so the stack and the step are not fighting for the same patch of deck.
+            return new Vector3(-StowInset, -_deckDrop + 0.45f, _side * 0.9f);
         }
 
         /// <summary>
@@ -670,25 +727,28 @@ namespace SailTrim
             Vector3 start = _mount.localPosition;
             float sign = Mathf.Sign(start.x == 0f ? _side : start.x);
             float found = float.NaN, foundY = 0f;
-            // Feel inward from outside the boat: the first place a ray down lands on the boat is the rail edge.
-            // The float collider the mount was guessed from is a box round the hull and wider than the deck, which
-            // is why an unfitted mount hung in the air beside the boat.
-            for (float ax = Mathf.Abs(start.x) + 1f; ax > 0.4f; ax -= 0.08f)
+            // Take the whole section across the beam rather than stopping at the first thing a ray finds. Stopping
+            // at the first hit put the Drakkar's mount out in the air beside the ship, because an oar or a shield
+            // stands further out than the rail and answers the ray exactly the same way.
+            var xs = new List<float>();
+            var ys = new List<float>();
+            var profile = new System.Text.StringBuilder();
+            for (float ax = Mathf.Abs(start.x) + 3f; ax > 0.3f; ax -= 0.08f)
             {
-                Vector3 from = _ship.transform.TransformPoint(new Vector3(sign * ax, start.y + 2f, start.z));
-                var hits = Physics.RaycastAll(from, Vector3.down, 4.5f, ~0, QueryTriggerInteraction.Ignore);
-                float top = float.NegativeInfinity;
-                foreach (var h in hits)
-                {
-                    if (h.collider == _box || !h.collider.transform.IsChildOf(_ship.transform)) continue;
-                    if (h.point.y > top) top = h.point.y;
-                }
-                if (top > float.NegativeInfinity)
-                {
-                    found = ax;
-                    foundY = _ship.transform.InverseTransformPoint(new Vector3(from.x, top, from.z)).y;
-                    break;
-                }
+                float y = TopOfShip(sign * ax, start.z, start.y);
+                if (float.IsNegativeInfinity(y)) continue;
+                if (y < start.y - 3f || y > start.y + 3f) continue;   // not the masthead, not the keel
+                xs.Add(ax); ys.Add(y);
+                profile.Append(ax.ToString("0.00")).Append(':').Append(y.ToString("0.00")).Append(' ');
+            }
+            _profile = profile.ToString();
+            if (xs.Count > 0)
+            {
+                // The rail is the highest timber of the hull, so take the outermost place that reaches that height.
+                float high = float.NegativeInfinity;
+                foreach (float y in ys) if (y > high) high = y;
+                for (int i = 0; i < xs.Count; i++)
+                    if (ys[i] >= high - 0.12f) { found = xs[i]; foundY = ys[i]; break; }
             }
             // How far the rail stands above the deck here: probe inboard and take the lowest top surface we find,
             // which is the deck rather than a bench or a chest standing on it.
@@ -697,17 +757,10 @@ namespace SailTrim
                 float deck = float.PositiveInfinity;
                 foreach (float f in new[] { 0.75f, 0.55f, 0.35f })
                 {
-                    Vector3 from = _ship.transform.TransformPoint(new Vector3(sign * found * f, start.y + 2f, start.z));
-                    var hits = Physics.RaycastAll(from, Vector3.down, 4.5f, ~0, QueryTriggerInteraction.Ignore);
-                    float top = float.NegativeInfinity;
-                    foreach (var h in hits)
-                    {
-                        if (h.collider == _box || !h.collider.transform.IsChildOf(_ship.transform)) continue;
-                        if (h.point.y > top) top = h.point.y;
-                    }
-                    if (top > float.NegativeInfinity) deck = Mathf.Min(deck, _ship.transform.InverseTransformPoint(new Vector3(from.x, top, from.z)).y);
+                    float y = TopOfShip(sign * found * f, start.z, start.y);
+                    if (!float.IsNegativeInfinity(y)) deck = Mathf.Min(deck, y);
                 }
-                if (!float.IsInfinity(deck)) _deckDrop = Mathf.Clamp(foundY - deck, 0.15f, 1.6f);
+                if (!float.IsInfinity(deck)) _deckDrop = Mathf.Clamp(foundY - deck, 0.15f, 1.8f);
             }
             if (!float.IsNaN(found))
             {
@@ -718,6 +771,23 @@ namespace SailTrim
                 Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} rail at x {sign * found:0.00}, y {foundY:0.00}, {_deckDrop:0.00} m above the deck (guess was {start.x:0.00}, {start.y:0.00})");
             }
             else Plugin.Log.LogWarning($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} found no rail, kept the guess {start.x:0.00}, {start.y:0.00}");
+            IgnoreShip();
+        }
+
+        /// <summary>The top of the boat's own timber at this spot on the deck plan, in the boat's frame.</summary>
+        private float TopOfShip(float localX, float localZ, float aroundY)
+        {
+            Vector3 from = _ship.transform.TransformPoint(new Vector3(localX, aroundY + 6f, localZ));
+            var hits = Physics.RaycastAll(from, Vector3.down, 12f, ~0, QueryTriggerInteraction.Ignore);
+            float top = float.NegativeInfinity;
+            foreach (var h in hits)
+            {
+                if (h.collider == _box || h.collider == _stepCol) continue;
+                if (!h.collider.transform.IsChildOf(_ship.transform)) continue;
+                if (h.point.y > top) top = h.point.y;
+            }
+            if (float.IsNegativeInfinity(top)) return top;
+            return _ship.transform.InverseTransformPoint(new Vector3(from.x, top, from.z)).y;
         }
 
         /// <summary>
@@ -771,7 +841,7 @@ namespace SailTrim
         /// </summary>
         private void EnsureStep()
         {
-            if (_step != null || _mount == null || !_deckFound) return;
+            if (_step != null || _mount == null || !_deckFound || !_place.Step) return;
             float drop = _deckDrop;
             float run = Mathf.Max(0.9f, drop * 2.2f);   // a slope you can walk up with a full load
             float len = Mathf.Sqrt(run * run + drop * drop);
@@ -780,18 +850,27 @@ namespace SailTrim
             _step = new GameObject("step");
             _step.transform.SetParent(_mount, false);
             _step.layer = gameObject.layer;
-            // Down and inboard from the hinge, tilted to meet the deck.
-            _step.transform.localPosition = new Vector3(-run * 0.5f, -drop * 0.5f, 0f);
-            _step.transform.localRotation = Quaternion.Euler(0f, 0f, -pitch);
+            // Along the rail rather than across the boat. Across, it reached most of the way over a Karve's deck
+            // and you had to walk round it to get anywhere. Its high end is at the hinge, so you climb it and step
+            // straight onto the plank, and it runs the opposite way to where the stowed stack lies.
+            _step.transform.localPosition = new Vector3(-StowInset - 0.05f, 0.02f, 0f);
+            _step.transform.localRotation = Quaternion.Euler(0f, 90f * _side, 0f) * Quaternion.Euler(0f, 0f, -pitch);
 
-            var col = _step.AddComponent<BoxCollider>();
-            col.center = new Vector3(0f, -0.05f, 0f);
-            col.size = new Vector3(len + 0.1f, 0.12f, 0.9f);
+            _stepCol = _step.AddComponent<BoxCollider>();
+            _stepCol.center = new Vector3(len * 0.5f, -0.06f, 0f);
+            _stepCol.size = new Vector3(len, 0.12f, 0.8f);
+
+            // Its own body, for the same reason the plank has one: anything of ours left in the boat's own compound
+            // is part of the boat to the physics engine, and props the hull up the moment it touches the shore.
+            _stepRb = _step.AddComponent<Rigidbody>();
+            _stepRb.isKinematic = true;
+            _stepRb.useGravity = false;
+            _stepRb.interpolation = RigidbodyInterpolation.None;
 
             // The ramp is the same timber as the plank, laid from the game's own floor pieces.
-            var ramp = Gangway.BuildWalkway(_step.transform, "visual", len, 0.9f, VisualLayer(_ship));
-            if (ramp != null) ramp.transform.localPosition = new Vector3(-len * 0.5f, 0f, 0f);
+            Gangway.BuildWalkway(_step.transform, "visual", len, 0.8f, VisualLayer(_ship));
             _step.SetActive(_wasFitted);
+            IgnoreShip();
         }
 
         /// <summary>
@@ -803,6 +882,11 @@ namespace SailTrim
             if (_rb == null || _ship == null || _ship.m_body == null) return;
             _rb.linearVelocity = _ship.m_body.GetPointVelocity(_rb.worldCenterOfMass);
             _rb.angularVelocity = _ship.m_body.angularVelocity;
+            if (_stepRb != null)
+            {
+                _stepRb.linearVelocity = _ship.m_body.GetPointVelocity(_stepRb.worldCenterOfMass);
+                _stepRb.angularVelocity = _ship.m_body.angularVelocity;
+            }
         }
 
         // ------------------------------------------------------------------
@@ -812,6 +896,9 @@ namespace SailTrim
             // The rail height needs physics, which Awake does not have, so it is measured on the first frame.
             EnsureDeck();
             EnsureStep();
+            // Pieces of the boat go on arriving for a while after Awake, and any pair we have not struck out is a
+            // kinematic body wedged in a floating one.
+            if (Time.time >= _ignoreAt && Time.time < _ignoreStop) IgnoreShip();
             bool fitted = Gangway.Fitted(_ship, _side);
             bool down = fitted && Gangway.Down(_ship, _side);
 

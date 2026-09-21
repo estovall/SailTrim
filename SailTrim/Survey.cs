@@ -92,18 +92,27 @@ namespace SailTrim
                 var m = t != null ? t.GetComponentInChildren<GangwayMount>(true) : null;
                 if (m != null) s += $", {m.Describe()}";
                 notes.AppendLine($"{Gangway.SideName(side)}: fitted {Gangway.Fitted(ship, side)}, down {Gangway.Down(ship, side)}, {s}");
+                // The section across the beam the rail was picked out of: x:top, outboard first.
+                if (m != null && m.ProfileText().Length > 0) notes.AppendLine("  profile " + m.ProfileText());
             }
         }
 
+        /// <summary>
+        /// The hull, not the rig. Framing on the renderers put the camera far enough back to fit a twenty metre
+        /// mast and sail, which buried it in the hillside and left the boat a speck; the float collider is the
+        /// hull itself, and a little room round it is what wants looking at.
+        /// </summary>
         private static Bounds HullBounds(Ship ship)
         {
-            Bounds b = new Bounds(ship.transform.position, Vector3.one);
-            bool any = false;
-            foreach (var r in ship.GetComponentsInChildren<MeshRenderer>(true))
+            var fc = ship.m_floatCollider;
+            if (fc != null)
             {
-                if (r == null || !r.enabled) continue;
-                if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
+                Vector3 c = fc.transform.TransformPoint(fc.center);
+                Vector3 sz = fc.size;
+                return new Bounds(c + Vector3.up * Mathf.Max(1f, sz.y * 0.75f),
+                                  new Vector3(sz.x * 1.5f, Mathf.Max(3f, sz.y * 2.5f), sz.z * 1.15f));
             }
+            Bounds b = new Bounds(ship.transform.position, Vector3.one * 8f);
             return b;
         }
 
