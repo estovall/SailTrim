@@ -166,9 +166,11 @@ namespace SailTrim
                     sb.Append(" mesh=").Append(mf.sharedMesh.name).Append('/').Append(mf.sharedMesh.vertexCount);
                     if (mr != null)
                     {
-                        Bounds b = mr.bounds;
-                        sb.Append(" at").Append(V(ship.transform.InverseTransformPoint(b.center)))
-                          .Append(" size").Append(V(b.size));
+                        // The part's own size, not a world-aligned box round it: a yawed boat made every box
+                        // look like a diagonal and nothing could be compared with anything.
+                        Vector3 own = Vector3.Scale(mf.sharedMesh.bounds.size, t.lossyScale);
+                        sb.Append(" at").Append(V(ship.transform.InverseTransformPoint(mr.bounds.center)))
+                          .Append(" size").Append(V(own));
                     }
                 }
                 if (col != null)
