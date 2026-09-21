@@ -973,6 +973,23 @@ namespace SailTrim
         /// never pitchpoles. A buried bow also ships water: a little hull damage per second until you ease
         /// out or reef.
         /// </summary>
+        /// <summary>
+        /// Nobody aboard: the sail is furled for real, not just hidden. Vanilla stops an empty boat and puts its
+        /// sail away; the mod keeps its own sail amount, so up to 1.7.0 an empty boat looked furled but still held
+        /// whatever was set, and stepping back aboard had it sailing again at once. Loading cargo was a fight.
+        /// </summary>
+        internal void StowIfEmpty()
+        {
+            if (_nview == null || !_nview.IsValid() || !_nview.IsOwner() || _ship == null) return;
+            if (_ship.m_players != null && _ship.m_players.Count > 0) return;
+            if (SailAmount <= 0.001f && RowDir == 0) return;
+            SailAmount = 0f;
+            RowDir = 0;
+            _nview.GetZDO().Set(ZdoSailHash, 0f);
+            _ship.m_speed = Ship.Speed.Stop;
+            Plugin.Log.LogInfo("SailTrim: " + _ship.name + " left empty: sail furled");
+        }
+
         /// <summary>Crew standing on deck, and how far off the centreline their weight sits (metres, starboard positive).</summary>
         public int StandingCrew { get; private set; }
         public float CrewArm { get; private set; }

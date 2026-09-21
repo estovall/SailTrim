@@ -223,7 +223,9 @@ namespace SailTrim
             if (!Plugin.Enabled.Value) return;
             if (__instance.m_nview == null || !__instance.m_nview.IsValid() || !__instance.m_nview.IsOwner()) return;
             var st = SailTrimShip.Get(__instance);
-            if (st != null && st.ManualMode) st.ApplyHullEffects(fixedDeltaTime);
+            if (st == null) return;
+            st.StowIfEmpty();
+            if (st.ManualMode) st.ApplyHullEffects(fixedDeltaTime);
         }
 
         // Camera roll with the ship: blend between "level" and vanilla's tilted result by config.

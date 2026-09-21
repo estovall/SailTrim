@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.1
+
+- Fixed: stepping off a boat furled the sail to look at but not in fact. The mod kept its own sail amount, so an empty boat sat there apparently furled and then sailed off the moment you stepped back aboard, with the cloth snapping back to where it had been. An empty boat now furls for real and has to be set again, as in vanilla. Loading cargo is no longer a chase.
+
 ## 1.7.0
 
 - Crew weight. Anyone standing on deck shifts the boat: weight to windward stands her up, weight forward puts the bow down. Sitting crew, anyone holding the mast and the helmsman do not count, since they are braced and already part of the hull. Nothing is scaled by hand for ship size; a body that visibly stands a karve up barely troubles a longship, because the longship's inertia says so. A boat sailing flatter loses less drive, so a crew that works the rail is faster than the same boat sailed alone, and faster than vanilla.

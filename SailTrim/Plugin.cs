@@ -14,7 +14,7 @@ namespace SailTrim
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.7.0";
+        public const string VERSION = "1.7.1";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
