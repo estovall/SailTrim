@@ -141,17 +141,32 @@ namespace SailTrim
             public float Inset;   // extra metres inboard of the measured rail edge
             public float Rise;    // extra metres above the measured rail top
             public bool Step;     // build a step from the deck up to the rail
+            public float ZOffset; // metres further aft than the boat's own ladder
         }
 
         internal static Placement PlacementFor(Ship ship)
         {
-            var p = new Placement { Z = Plugin.GangwayMountZ.Value, Inset = 0f, Rise = 0f, Step = true };
+            var p = new Placement { Z = Plugin.GangwayMountZ.Value, Inset = 0f, Rise = 0f, Step = true, ZOffset = 0f };
             string n = (ship != null ? ship.name : "") ?? "";
             if (n.IndexOf("Ashlands", StringComparison.OrdinalIgnoreCase) >= 0)
                 p.Step = false;   // the Drakkar's own hull already climbs to the rail here
             else if (n.IndexOf("VikingShip", StringComparison.OrdinalIgnoreCase) >= 0) { } // Longship
             else if (n.IndexOf("Karve", StringComparison.OrdinalIgnoreCase) >= 0) { }
             return p;
+        }
+
+        /// <summary>The boat's own boarding ladder, if it has one: the place it was built to be boarded at.</summary>
+        private static Transform FindLadder(Ship ship)
+        {
+            Transform best = null;
+            foreach (var t in ship.GetComponentsInChildren<Transform>(true))
+            {
+                string n = t.name;
+                if (n.IndexOf("ladder", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (best == null || t.GetComponentsInChildren<Transform>(true).Length > best.GetComponentsInChildren<Transform>(true).Length)
+                    best = t;
+            }
+            return best;
         }
 
         /// <summary>Ship.Awake: a mount at each rail, amidships. They show and hide themselves from the boat's state.</summary>
@@ -164,9 +179,18 @@ namespace SailTrim
             Vector3 centre = ship.transform.InverseTransformPoint(fc.transform.TransformPoint(fc.center));
             float halfBeam = fc.size.x * 0.5f;
             float halfLen = fc.size.z * 0.5f;
-            // Aft of amidships, to keep the plank clear of the mast and its shrouds.
+            // Where the boat itself says to come aboard. Every hull but the raft carries a boarding ladder, and
+            // the beam it hangs on is the one place the builders left clear of benches, shrouds and the mast.
+            // Guessing a fraction of the length aft of amidships put the Drakkar's nowhere near it.
             Placement place = PlacementFor(ship);
             float z = centre.z - halfLen * place.Z;
+            Transform ladder = FindLadder(ship);
+            if (ladder != null)
+            {
+                z = ship.transform.InverseTransformPoint(ladder.position).z;
+                Plugin.Log.LogInfo($"SailTrim: {ship.name} gangway follows its ladder '{ladder.name}' at z {z:0.00}");
+            }
+            z += place.ZOffset;
 
             foreach (int side in Sides)
             {
@@ -462,6 +486,28 @@ namespace SailTrim
         /// <summary>What this mount worked out for itself, for the survey notes.</summary>
         internal string ProfileText() => _profile;
 
+        /// <summary>The walking surface, for the survey to measure against the hull.</summary>
+        internal Collider WalkCollider => _box;
+
+        internal Collider StepCollider => _stepCol;
+
+        internal Transform Visual => _visual != null ? _visual.transform : null;
+
+        internal float Deploy => _deploy;
+
+        /// <summary>
+        /// Put the rig at a given point of its travel and leave it there. The survey walks the whole swing this
+        /// way and photographs it, which is the only way to see whether the plank passes through the hull on its
+        /// way out; the next Update puts it back where the boat's state says it should be.
+        /// </summary>
+        internal void PoseFor(float deploy)
+        {
+            bool was = _wasFitted;
+            _wasFitted = true;
+            Apply(deploy);
+            _wasFitted = was;
+        }
+
         internal string Describe()
         {
             return $"rail(measured) {_railLocal}, inset {_place.Inset:0.00}, rise {_place.Rise:0.00}, " +
@@ -643,11 +689,7 @@ namespace SailTrim
         }
 
         /// <summary>Where the far end of the plank would be at this angle.</summary>
-        private Vector3 TipAt(float angle)
-        {
-            float r = angle * Mathf.Deg2Rad;
-            return _mount.TransformPoint(new Vector3(Mathf.Cos(r), -Mathf.Sin(r), 0f) * Length);
-        }
+        private Vector3 TipAt(float angle) => PointAt(Length, angle);
 
         // ------------------------------------------------------------------
         public string GetHoverName() => "Gangway";
@@ -845,19 +887,51 @@ namespace SailTrim
             // Not the sea, and not people: a gangway rests on something solid, or it does not go down at all.
             int mask = ~LayerMask.GetMask("Water", "WaterVolume", "water", "character", "character_net",
                                           "character_ghost", "character_trigger", "viewblock", "weapon", "smoke");
-            for (float a = -20f; a <= max + 0.01f; a += 1.5f)
+            // Whatever the plank would touch first, anywhere along its length, is what holds it up. Looking only
+            // under the far end, a beam halfway out was something the plank went straight through.
+            float shallowest = float.MaxValue;
+            for (float d = 1f; d <= Length + 0.01f; d += 0.4f)
             {
-                Vector3 tip = TipAt(a);
-                if (Physics.Raycast(tip + Vector3.up * 0.5f, Vector3.down, out var hit, 0.75f, mask, QueryTriggerInteraction.Ignore))
-                {
-                    if (hit.collider.transform.IsChildOf(_ship.transform)) continue; // the boat's own rail, not the shore
-                    // How much further to drop to put the tip on what the ray found, from the plank's own length.
-                    float correction = Mathf.Asin(Mathf.Clamp((tip.y - hit.point.y) / Length, -1f, 1f)) * Mathf.Rad2Deg;
-                    angle = Mathf.Clamp(a + correction, -20f, max);
-                    return true;
-                }
+                float a = AngleOnto(d, max, mask);
+                if (!float.IsNaN(a) && a < shallowest) shallowest = a;
             }
-            return false;
+            if (shallowest == float.MaxValue) return false;
+            angle = Mathf.Clamp(shallowest, -20f, max);
+            return true;
+        }
+
+        /// <summary>
+        /// The angle at which the plank, this far out from its hinge, would come down onto whatever is under it.
+        /// The plank's reach shortens as it tilts, so where it lands moves: two passes settle it.
+        /// </summary>
+        private float AngleOnto(float d, float max, int mask)
+        {
+            float a = 0f;
+            for (int pass = 0; pass < 3; pass++)
+            {
+                Vector3 p = PointAt(d, a);
+                var hits = Physics.RaycastAll(p + Vector3.up * 1.5f, Vector3.down, 6f, mask, QueryTriggerInteraction.Ignore);
+                float top = float.NegativeInfinity;
+                foreach (var h in hits)
+                {
+                    if (h.collider.transform.IsChildOf(_ship.transform)) continue;  // the boat's own timber, not the shore
+                    if (h.point.y > p.y + 0.4f) continue;                            // something overhead, not underfoot
+                    if (h.point.y > top) top = h.point.y;
+                }
+                if (float.IsNegativeInfinity(top)) return float.NaN;
+                float next = Mathf.Asin(Mathf.Clamp((_mount.position.y - top) / d, -1f, 1f)) * Mathf.Rad2Deg;
+                next = Mathf.Clamp(next, -20f, max);
+                if (Mathf.Abs(next - a) < 0.2f) return next;
+                a = next;
+            }
+            return a;
+        }
+
+        /// <summary>Where the plank is, this far out from the hinge, at this angle.</summary>
+        private Vector3 PointAt(float d, float angle)
+        {
+            float r = angle * Mathf.Deg2Rad;
+            return _mount.TransformPoint(new Vector3(Mathf.Cos(r), -Mathf.Sin(r), 0f) * d);
         }
 
         /// <summary>

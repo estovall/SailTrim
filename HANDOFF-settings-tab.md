@@ -402,3 +402,23 @@ that run. Probing at fixed fractions of the beam found the Drakkar's main deck a
 is alongside the rail there is a side walkway a hand's breadth below it — the stowed plank ended up buried in the
 hull. Checked against all three sections: Karve 0.71 m, Longship 0.69 m, Drakkar 0.11 m.
 
+
+## Gangway: measuring instead of squinting
+
+Screenshots showed that something was wrong but never what. Three things were added so the work can be done on
+numbers:
+
+- **`hierarchy.txt`** — every transform of every surveyed boat and of what we bolted to it, in the boat's own
+  frame, with mesh name and vertex count, renderer bounds and collider type/layer. Two meshes in the same place
+  is a thing you can read off a list; it is not a thing you can see in a screenshot of a plank at dusk.
+- **The swing** — `GangwayMount.PoseFor` puts the rig at a point of its travel and holds it there. The survey
+  walks 0, 0.2, 0.4, 0.6, 0.8, 1.0, photographing each and, at each, running `Physics.ComputePenetration`
+  between our colliders and the hull's. "It clips through the ship on the way out" becomes
+  `0.4  0.38 m (plank in Karve_hull)`, which can be fixed without being at the keyboard.
+- **Resting on anything, not just the tip** — `FindRest` used to look only under the far end, so a beam halfway
+  out was something the plank passed through. It now samples every 0.4 m along the plank, works out the angle at
+  which each point would come down on what is under it, and takes the shallowest.
+
+`FindLadder` anchors the mount to the boat's own boarding ladder. Every hull but the raft has one, and the beam
+it hangs on is the one place the builders left clear of benches, shrouds and mast; `Placement.ZOffset` nudges
+from there. Guessing a fraction of the length aft of amidships put the Drakkar's mount nowhere near it.

@@ -65,6 +65,10 @@ namespace SailTrim
                 shots += Shot(ship, b, stem + "_beam", ship.transform.right, 8f, 1.0f) ? 1 : 0;
                 shots += Shot(ship, b, stem + "_quarter", (ship.transform.right * 1.1f + ship.transform.forward * 0.7f + Vector3.up * 0.75f).normalized, 30f, 1.0f) ? 1 : 0;
                 shots += Shot(ship, b, stem + "_astern", (-ship.transform.forward * 1.2f + ship.transform.right * 0.35f + Vector3.up * 0.5f).normalized, 22f, 1.0f) ? 1 : 0;
+                var m0 = ship.transform.Find("SailTrim_Gangway_S");
+                var rig = m0 != null ? m0.GetComponentInChildren<GangwayMount>(true) : null;
+                if (rig != null && Gangway.Fitted(ship, 1)) shots += Swing(ship, rig, name, notes);
+
                 var mount = ship.transform.Find("SailTrim_Gangway_S");
                 if (mount != null)
                 {
@@ -77,9 +81,105 @@ namespace SailTrim
                 }
             }
             File.WriteAllText(Path.Combine(Dir, "survey.txt"), notes.ToString());
+
+            var tree = new StringBuilder();
+            foreach (var ship in ships)
+            {
+                tree.AppendLine();
+                tree.AppendLine("=== " + ship.name.Replace("(Clone)", "") + " ===");
+                DumpTree(ship, ship.transform, tree, 0);
+            }
+            File.WriteAllText(Path.Combine(Dir, "hierarchy.txt"), tree.ToString());
             Plugin.Log.LogInfo($"SailTrim: survey wrote {shots} image(s) to {Dir}");
             player.Message(MessageHud.MessageType.Center, $"Surveyed {ships.Count} boat(s): {shots} images");
         }
+
+        /// <summary>
+        /// The whole travel, a step at a time: pose the rig, measure how deep it is inside the hull, and take a
+        /// picture. "It clips through the ship" becomes a depth in metres against a named collider, which is
+        /// something that can be worked on without being at the keyboard.
+        /// </summary>
+        private static int Swing(Ship ship, GangwayMount rig, string name, StringBuilder notes)
+        {
+            float was = rig.Deploy;
+            int shots = 0;
+            notes.AppendLine("  swing (deploy: deepest overlap with the hull):");
+            var mount = rig.transform.parent;
+            var mb = new Bounds(mount.position, Vector3.one * 3.4f);
+            Vector3 eye = (ship.transform.right * 1.1f + ship.transform.forward * 0.4f + Vector3.up * 0.45f).normalized;
+            try
+            {
+                foreach (float f in new[] { 0f, 0.2f, 0.4f, 0.6f, 0.8f, 1f })
+                {
+                    rig.PoseFor(f);
+                    Physics.SyncTransforms();
+                    notes.AppendLine("    " + f.ToString("0.0") + "  " + Overlap(ship, rig));
+                    shots += Shot(ship, mb, $"{name}_swing{Mathf.RoundToInt(f * 100):000}", eye, 18f, 1.0f) ? 1 : 0;
+                }
+            }
+            finally { rig.PoseFor(was); Physics.SyncTransforms(); }
+            return shots;
+        }
+
+        /// <summary>How far our colliders are inside the boat's, and which of the boat's they are inside.</summary>
+        private static string Overlap(Ship ship, GangwayMount rig)
+        {
+            var mine = new List<Collider>();
+            if (rig.WalkCollider != null && rig.WalkCollider.enabled) mine.Add(rig.WalkCollider);
+            if (rig.StepCollider != null && rig.StepCollider.enabled) mine.Add(rig.StepCollider);
+            if (mine.Count == 0) return "no collider";
+
+            float worst = 0f;
+            string where = "";
+            foreach (var a in mine)
+                foreach (var b in ship.GetComponentsInChildren<Collider>())
+                {
+                    if (b == null || b.isTrigger || b.transform.IsChildOf(rig.transform.parent)) continue;
+                    if (b.GetComponentInParent<GangwayMount>() != null) continue;
+                    if (!Physics.ComputePenetration(a, a.transform.position, a.transform.rotation,
+                                                    b, b.transform.position, b.transform.rotation,
+                                                    out _, out float depth)) continue;
+                    if (depth > worst) { worst = depth; where = a.name + " in " + b.name; }
+                }
+            return worst <= 0.001f ? "clear" : $"{worst:0.00} m  ({where})";
+        }
+
+        /// <summary>
+        /// Every part of a boat and of what we bolted to it, with its place in the boat's own frame. A picture
+        /// says the plank is fighting with itself; this says whether there are two meshes in the same place, and
+        /// what the hull calls the beam the ladder is on.
+        /// </summary>
+        private static void DumpTree(Ship ship, Transform t, StringBuilder sb, int depth)
+        {
+            if (depth > 6) return;
+            var mf = t.GetComponent<MeshFilter>();
+            var mr = t.GetComponent<MeshRenderer>();
+            var col = t.GetComponent<Collider>();
+            bool interesting = mf != null || col != null || t.childCount > 0;
+            if (interesting)
+            {
+                sb.Append(' ', depth * 2).Append(t.name);
+                sb.Append(" @").Append(V(ship.transform.InverseTransformPoint(t.position)));
+                if (!t.gameObject.activeInHierarchy) sb.Append(" [off]");
+                if (mf != null && mf.sharedMesh != null)
+                {
+                    sb.Append(" mesh=").Append(mf.sharedMesh.name).Append('/').Append(mf.sharedMesh.vertexCount);
+                    if (mr != null)
+                    {
+                        Bounds b = mr.bounds;
+                        sb.Append(" at").Append(V(ship.transform.InverseTransformPoint(b.center)))
+                          .Append(" size").Append(V(b.size));
+                    }
+                }
+                if (col != null)
+                    sb.Append(" col=").Append(col.GetType().Name).Append(col.isTrigger ? "(trigger)" : "")
+                      .Append(col.enabled ? "" : "[off]").Append(" layer=").Append(LayerMask.LayerToName(t.gameObject.layer));
+                sb.AppendLine();
+            }
+            for (int i = 0; i < t.childCount; i++) DumpTree(ship, t.GetChild(i), sb, depth + 1);
+        }
+
+        private static string V(Vector3 v) => $"({v.x:0.00},{v.y:0.00},{v.z:0.00})";
 
         /// <summary>The numbers each mount worked out for itself, so a picture can be turned into a correction.</summary>
         private static void Describe(Ship ship, StringBuilder notes)
