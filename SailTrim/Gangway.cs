@@ -443,6 +443,31 @@ namespace SailTrim
         }
 
         /// <summary>Does the player have a gangway to fit?</summary>
+        private static readonly HashSet<ZDOID> _told = new HashSet<ZDOID>();
+        private static float _tellAt;
+
+        /// <summary>
+        /// Tell someone carrying a gangway, once per boat, that the boat has somewhere to put it. A fitting you
+        /// have to already know about is a fitting nobody finds: the brackets on the rail say where, and this
+        /// says that there is a where at all.
+        /// </summary>
+        internal static void Tick()
+        {
+            if (!Plugin.GangwayEnabled.Value || Time.time < _tellAt) return;
+            _tellAt = Time.time + 1f;
+            var player = Player.m_localPlayer;
+            if (player == null || !player.TakeInput()) return;
+            var ship = player.GetStandingOnShip();
+            if (ship == null || !Eligible(ship) || ship.m_nview == null || !ship.m_nview.IsValid()) return;
+            ZDOID id = ship.m_nview.GetZDO().m_uid;
+            if (_told.Contains(id)) return;
+            if (Fitted(ship, -1) || Fitted(ship, 1)) { _told.Add(id); return; }
+            if (!HasKit(player)) return;
+            _told.Add(id);
+            player.Message(MessageHud.MessageType.Center,
+                "Gangway: fit it to the brackets on either rail");
+        }
+
         internal static bool HasKit(Humanoid user)
         {
             var inv = user != null ? user.GetInventory() : null;
@@ -496,7 +521,8 @@ namespace SailTrim
         private const float StowInset = 0.50f;   // metres inboard of the hinge that the stack stands
         private const float StepInset = 0.75f;   // metres inboard of the hinge that the step runs
         private const float StepWidth = 0.7f;    // how much of the rail the steps take up, fore and aft
-        private const float TreadDepth = 0.4f;   // how far inboard each tread reaches
+        private const float TreadDepth = 0.45f;  // how far inboard the lowest tread reaches
+        private const float RailFace = 0.1f;     // where the treads hinge: just inside the rail
         private const float StepClear = 0.04f;   // the step lands this far above the timber, never in it
         private bool _walkable;
         private bool _deckFound;
@@ -513,7 +539,10 @@ namespace SailTrim
         private Gangway.Placement _place;
         private Vector3 _railLocal;   // where the rail was found, before the per-hull correction
         private BoxCollider _stepCol;
-        private Rigidbody _stepRb;
+        private Transform[] _treads;
+        private BoxCollider[] _treadCols;
+        private readonly List<Collider> _mine = new List<Collider>();
+        private GameObject _brackets;
         private float _ignoreAt;
         private int _stowDir = 1;      // +1 lies forward along the rail, -1 aft
         private bool _stowChosen;
@@ -561,6 +590,8 @@ namespace SailTrim
             _place = place;
             transform.localPosition = Vector3.zero;
             _box = gameObject.AddComponent<BoxCollider>();
+            _mine.Add(_box);
+            BuildBrackets();
             _box.center = new Vector3(Length * 0.5f, -0.05f, 0f);
             _box.size = new Vector3(Length, 0.12f, 0.84f);
             // The layer the hull uses, so it hovers, blocks and carries a player exactly as the deck does.
@@ -590,9 +621,8 @@ namespace SailTrim
             if (_ship == null) return;
             foreach (var c in _ship.GetComponentsInChildren<Collider>(true))
             {
-                if (c == null || c == _box || c == _stepCol) continue;
-                if (_box != null) Physics.IgnoreCollision(_box, c, true);
-                if (_stepCol != null) Physics.IgnoreCollision(_stepCol, c, true);
+                if (c == null || _mine.Contains(c)) continue;
+                foreach (var own in _mine) if (own != null) Physics.IgnoreCollision(own, c, true);
             }
             _ignoreAt = Time.time + 1f;
             if (_ignoreStop == float.MaxValue) _ignoreStop = Time.time + 20f;
@@ -685,6 +715,9 @@ namespace SailTrim
             if (_seg2 != null) { _seg2.localPosition = new Vector3(seg, lift, 0f); _seg2.localRotation = Quaternion.Euler(0f, 0f, fold); }
             if (_seg3 != null) { _seg3.localPosition = new Vector3(seg, -lift, 0f); _seg3.localRotation = Quaternion.Euler(0f, 0f, -fold); }
 
+            // The treads come down first: they are what you climb to reach the plank.
+            FoldTreads(unfold);
+
             // Only a ramp that is out over the side and unfolded is something to walk on.
             bool walk = deploy > 0.6f;
             if (walk != _walkable) { _walkable = walk; RefreshCollider(); }
@@ -737,7 +770,7 @@ namespace SailTrim
         private Vector3 TipAt(float angle) => PointAt(Length, angle);
 
         // ------------------------------------------------------------------
-        public string GetHoverName() => "Gangway";
+        public string GetHoverName() => Gangway.Fitted(_ship, _side) ? "Gangway" : "Gangway brackets";
         public float GetHoverOffset() => 0f;
 
         public string GetHoverText()
@@ -748,8 +781,11 @@ namespace SailTrim
             bool fitted = Gangway.Fitted(_ship, _side);
             if (!fitted)
             {
-                if (!Gangway.HasKit(p)) return Localization.instance.Localize("<color=#888888>Gangway: none in your inventory</color>");
-                return Localization.instance.Localize($"Rail ({Gangway.SideName(_side)})\n[<color=yellow><b>$KEY_Use</b></color>] Fit the gangway");
+                if (!Gangway.HasKit(p))
+                    return Localization.instance.Localize(
+                        "Gangway brackets (" + Gangway.SideName(_side) + ")\n" +
+                        "<color=#999999>Craft a Gangway at the workbench to fit one here</color>");
+                return Localization.instance.Localize($"Gangway brackets ({Gangway.SideName(_side)})\n[<color=yellow><b>$KEY_Use</b></color>] Fit the gangway");
             }
             if (Gangway.Down(_ship, _side))
                 return Localization.instance.Localize($"Gangway ({Gangway.SideName(_side)}), down\n[<color=yellow><b>$KEY_Use</b></color>] Raise");
@@ -895,7 +931,7 @@ namespace SailTrim
             float top = float.NegativeInfinity;
             foreach (var h in hits)
             {
-                if (h.collider == _box || h.collider == _stepCol) continue;
+                if (_mine.Contains(h.collider)) continue;
                 if (!h.collider.transform.IsChildOf(_ship.transform)) continue;
                 if (h.point.y > top) top = h.point.y;
             }
@@ -987,71 +1023,104 @@ namespace SailTrim
         private void EnsureStep()
         {
             if (_step != null || _mount == null || !_deckFound || !_place.Step) return;
-            // Where the steps come down, probed along their own line. A Karve has no deck at all: you stand on the
-            // curve of the hull, which rises going inboard, and a ramp set from the lowest reading anywhere on the
-            // section dug half a metre into the planking.
+            // How far there is to climb, probed just inside the rail rather than assumed flat: a Karve has no deck
+            // at all, you stand on the curve of the hull, and a reading taken anywhere else is the wrong height.
             float drop = _deckDrop;
-            int n = 1;
-            float run = TreadDepth;
             for (int pass = 0; pass < 2; pass++)
             {
-                n = Mathf.Clamp(Mathf.CeilToInt(drop / 0.38f), 1, 4);
-                run = n * TreadDepth;
                 float foot = float.NegativeInfinity;
                 for (int i = 1; i <= 3; i++)
                 {
                     Vector3 sp = _ship.transform.InverseTransformPoint(
-                        _mount.TransformPoint(new Vector3(-run * i / 3f, 0f, 0f)));
+                        _mount.TransformPoint(new Vector3(-RailFace - TreadDepth * i / 3f, 0f, 0f)));
                     float y = TopOfShip(sp.x, sp.z, _mount.localPosition.y);
                     if (y > foot) foot = y;
                 }
                 if (float.IsNegativeInfinity(foot)) break;
-                drop = Mathf.Clamp(_mount.localPosition.y - foot - StepClear, 0.08f, 1.8f);
+                drop = Mathf.Clamp(_mount.localPosition.y - foot, 0.1f, 1.8f);
             }
+            // One step for a rail you can stride, two for a high one. Never a staircase: there is no room aboard
+            // a Karve for a staircase, and a ramp along the rail sat in the mast or in a bench.
+            int n = Mathf.Clamp(Mathf.RoundToInt(drop / 0.45f), 1, 2);
 
             _step = new GameObject("step");
             _step.transform.SetParent(_mount, false);
             _step.layer = gameObject.layer;
-            _step.transform.localPosition = Vector3.zero;
-            _step.transform.localRotation = Quaternion.identity;
 
-            // Two or three treads hard against the rail, running inboard. A sloped ramp along the rail was 1.6 m
-            // long and there is nowhere on a Karve to put 1.6 m of anything: it sat in the mast or in a bench.
-            // This takes 0.8 m of deck in the corner the rail already wastes.
-            float rise = drop / n;
+            _treads = new Transform[n];
+            _treadCols = new BoxCollider[n];
             int layer = VisualLayer(_ship);
             for (int i = 1; i <= n; i++)
             {
-                float top = -(n - i) * rise;
-                float cx = -(n - i + 0.5f) * TreadDepth;
-                Gangway.BuildTread(_step.transform, "tread" + i, new Vector3(TreadDepth, 0.1f, StepWidth),
-                                   new Vector3(cx, top - 0.05f, 0f), layer);
+                // Evenly spaced between the deck and the rail, the lowest reaching furthest inboard so there is
+                // somewhere to put a foot on the way to the one above it.
+                float hi = -drop * i / (n + 1f);
+                float di = TreadDepth * (n - i + 1f) / n;
+
+                var hinge = new GameObject("tread" + i);
+                hinge.transform.SetParent(_step.transform, false);
+                hinge.layer = _step.layer;
+                hinge.transform.localPosition = new Vector3(-RailFace, hi, 0f);
+
+                Gangway.BuildTread(hinge.transform, "visual", new Vector3(di, 0.09f, StepWidth),
+                                   new Vector3(-di * 0.5f, 0f, 0f), layer);
+
+                var col = hinge.AddComponent<BoxCollider>();
+                col.center = new Vector3(-di * 0.5f, -0.045f, 0f);
+                col.size = new Vector3(di, 0.09f, StepWidth);
+                _mine.Add(col);
+
+                // Its own body, for the same reason the plank has one: anything of ours left in the boat's own
+                // compound is part of the boat, and props the hull up the moment it touches the shore.
+                var rb = hinge.AddComponent<Rigidbody>();
+                rb.isKinematic = true;
+                rb.useGravity = false;
+                rb.interpolation = RigidbodyInterpolation.None;
+                hinge.AddComponent<GangwayFooting>().Ship = _ship;
+
+                _treads[i - 1] = hinge.transform;
+                _treadCols[i - 1] = col;
             }
-
-            // One sloped collider over the treads: the treads are what you see, this is what you walk on, and a
-            // smooth slope is kinder to climb with a full load than a staircase of ledges.
-            float len = Mathf.Sqrt(run * run + drop * drop);
-            float pitch = Mathf.Atan2(drop, run) * Mathf.Rad2Deg;
-            var ramp = new GameObject("ramp");
-            ramp.transform.SetParent(_step.transform, false);
-            ramp.layer = _step.layer;
-            ramp.transform.localPosition = new Vector3(-run * 0.5f, -drop * 0.5f, 0f);
-            ramp.transform.localRotation = Quaternion.Euler(0f, 0f, pitch);
-            _stepCol = ramp.AddComponent<BoxCollider>();
-            _stepCol.center = Vector3.zero;
-            _stepCol.size = new Vector3(len, 0.12f, StepWidth);
-
-            // Its own body, for the same reason the plank has one: anything of ours left in the boat's own compound
-            // is part of the boat to the physics engine, and props the hull up the moment it touches the shore.
-            _stepRb = _step.AddComponent<Rigidbody>();
-            _stepRb.isKinematic = true;
-            _stepRb.useGravity = false;
-            _stepRb.interpolation = RigidbodyInterpolation.None;
-            _step.AddComponent<GangwayFooting>().Ship = _ship;
+            _stepCol = _treadCols.Length > 0 ? _treadCols[0] : null;
 
             _step.SetActive(_wasFitted);
+            FoldTreads(0f);
             IgnoreShip();
-            Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} {n} tread(s), drop {drop:0.00}, run {run:0.00} (deck drop at the rail was {_deckDrop:0.00})");
+            Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} {n} folding tread(s), climb {drop:0.00} m (deck drop at the rail was {_deckDrop:0.00})");
+        }
+
+        /// <summary>
+        /// The treads swing down off the rail with the gangway and fold flat back against it when it is stowed,
+        /// so they take no deck at all when they are not being used. A step that lives on the deck is a step you
+        /// walk round for the rest of the voyage.
+        /// </summary>
+        private void FoldTreads(float down)
+        {
+            if (_treads == null) return;
+            float a = Mathf.Lerp(-90f, 0f, Mathf.Clamp01(down));
+            bool solid = down > 0.5f;
+            for (int i = 0; i < _treads.Length; i++)
+            {
+                if (_treads[i] != null) _treads[i].localRotation = Quaternion.Euler(0f, 0f, a);
+                if (_treadCols[i] != null && _treadCols[i].enabled != solid) _treadCols[i].enabled = solid;
+            }
+        }
+
+        /// <summary>
+        /// A pair of iron-strapped timber brackets bolted to the rail, there whether a gangway is fitted or not.
+        /// Nothing marked the spot before: you had to know that a particular stretch of rail on a particular boat
+        /// would answer, and nobody was going to work that out. Now the boat shows you where its gangway goes.
+        /// </summary>
+        private void BuildBrackets()
+        {
+            if (Models.Headless || _mount == null || _brackets != null) return;
+            _brackets = new GameObject("brackets");
+            _brackets.transform.SetParent(_mount, false);
+            int layer = VisualLayer(_ship);
+            foreach (float sz in new[] { -1f, 1f })
+                Gangway.BuildTread(_brackets.transform, sz < 0f ? "bracketL" : "bracketR",
+                                   new Vector3(0.22f, 0.12f, 0.14f),
+                                   new Vector3(-0.06f, 0.06f, sz * 0.36f), layer);
         }
 
         /// <summary>

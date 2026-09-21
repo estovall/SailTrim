@@ -663,6 +663,7 @@ namespace SailTrim
         {
             SailTrimNet.ClientUpdate();
             Survey.Update();
+            try { Gangway.Tick(); } catch { }
             if (!Enabled.Value) { _wasPiloting = false; return; }
 
             var player = Player.m_localPlayer;

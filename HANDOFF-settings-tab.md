@@ -446,3 +446,27 @@ a single sloped collider over them so it walks smoothly with a full load.
 Every hull puts its furniture somewhere different: a rule that stowed forward suited the Karve (mast at z 0)
 and put the Longship's stack through `sit_box` at z -3.03. `ChooseStowSide` poses the stack both ways once,
 measures each with `ComputePenetration` against the hull, and keeps the clearer one. It logs which it chose.
+
+## Gangway: the step, redesigned
+
+A ramp is the wrong shape for a boat. Whatever its slope, it is long, and a Karve has nowhere to put anything
+long: the survey caught the ramp 0.63 m inside the planking and, moved inboard to clear that, sitting in the
+mast. A staircase of treads fixed to the deck was no better — it is still something you walk round for the rest
+of the voyage.
+
+The step is now one or two treads **hinged on the inside of the rail**. They swing down with the gangway and
+fold flat back against the rail when it is stowed, so they occupy no deck at all except while being used. Each
+gets its own kinematic body and its collider is off while folded. Height is probed just inside the rail, which
+is the only place worth measuring on a hull with no flat deck; one tread up to 0.45 m of climb, two above that.
+
+## Gangway: finding it
+
+Nothing marked the spot. You had to know that one particular stretch of one particular rail would answer a
+keypress, which nobody was going to work out. Three changes:
+
+- **Brackets on the rail**, timber, present whether a gangway is fitted or not. The boat now shows where its
+  gangway goes.
+- **The hover text names them** — "Gangway brackets (starboard)" — and when you have no gangway it says where to
+  get one rather than only that you lack it.
+- **A message the first time you board a boat carrying a gangway**, once per boat: "Gangway: fit it to the
+  brackets on either rail."
