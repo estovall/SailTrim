@@ -422,3 +422,27 @@ numbers:
 `FindLadder` anchors the mount to the boat's own boarding ladder. Every hull but the raft has one, and the beam
 it hangs on is the one place the builders left clear of benches, shrouds and mast; `Placement.ZOffset` nudges
 from there. Guessing a fraction of the length aft of amidships put the Drakkar's mount nowhere near it.
+
+## Gangway: where the z-fighting actually was
+
+Not duplicate models. `hierarchy.txt` showed exactly one deck and two kerbs per section. The kerbs were placed
+at `width/2 - Kerb/2`, which puts the kerb's outer face in *exactly* the same plane as the deck's edge face, for
+the whole two metres of the section — and the renderer has no way to choose between two coincident faces. The
+sections met the same way, face to face in one plane at each joint. Kerbs are now set in by their own width, and
+each section is built a hair short so its joints are joints.
+
+The lesson is that coincident faces, not duplicate meshes, are what "two models inside each other" usually looks
+like, and a hierarchy dump proves which it is in seconds.
+
+### Steps, not a ramp
+
+The sloped ramp along the rail was about 1.6 m long, and there is nowhere on a Karve to put 1.6 m of anything:
+the survey caught it 0.29 m inside the Longship's `sit_box` and 0.63 m inside the Karve's planking. It is now two
+or three treads hard against the rail running inboard, 0.8 m of deck in the corner the rail already wastes, with
+a single sloped collider over them so it walks smoothly with a full load.
+
+### The stack picks its own end of the boat
+
+Every hull puts its furniture somewhere different: a rule that stowed forward suited the Karve (mast at z 0)
+and put the Longship's stack through `sit_box` at z -3.03. `ChooseStowSide` poses the stack both ways once,
+measures each with `ComputePenetration` against the hull, and keeps the clearer one. It logs which it chose.

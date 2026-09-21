@@ -296,7 +296,10 @@ namespace SailTrim
                     // of the deck rather than lying in it.
                     Vector3 anchor = new Vector3(0.5f, 0.5f, 0.5f);
                     anchor[longAxis] = 0f;
-                    Models.Place(part, b, anchor, new Vector3(0f, Kerb * 0.5f - 0.01f, sz * (width * 0.5f - Kerb * 0.5f)), scale, rot);
+                    // Set in by half its own width. Flush with the edge of the deck, the kerb's outer face and the
+                    // deck's were the same plane for the whole two metres, and the renderer had no way to choose
+                    // between them: that is the flicker down the length of the plank.
+                    Models.Place(part, b, anchor, new Vector3(0f, Kerb * 0.5f - 0.01f, sz * (width * 0.5f - Kerb)), scale, rot);
                 }
             }
             if (!built)
@@ -310,6 +313,20 @@ namespace SailTrim
             SetLayer(root.transform, layer);
             Plugin.Log.LogInfo($"SailTrim: gangway {name} built from {(built ? floorName + " + " + (beamName ?? "no beam") : "a plain plank")}, layer {LayerMask.LayerToName(layer)}");
             return root;
+        }
+
+        /// <summary>One tread of the steps, cut from the same floor piece the walkway is laid from.</summary>
+        internal static GameObject BuildTread(Transform parent, string name, Vector3 size, Vector3 centre, int layer)
+        {
+            if (Models.Headless || parent == null) return null;
+            var src = Models.FindFirst(ObjectDB.instance, out _, "wood_floor", "wood_floor_1x1", "piece_woodfloor");
+            if (src == null) return null;
+            var part = Models.CopyVisual(src, parent, name, out var b);
+            if (part == null || b.size.x < 0.05f || b.size.z < 0.05f) return null;
+            var scale = new Vector3(size.x / b.size.x, 1f, size.z / b.size.z);
+            Models.Place(part, b, new Vector3(0.5f, 1f, 0.5f), centre + new Vector3(0f, size.y * 0.5f, 0f), scale, Quaternion.identity);
+            SetLayer(part.transform, layer);
+            return part;
         }
 
         /// <summary>
@@ -478,7 +495,8 @@ namespace SailTrim
         private const float StowLean = 80f;      // degrees off flat: nearly upright, so its footprint on deck is narrow
         private const float StowInset = 0.50f;   // metres inboard of the hinge that the stack stands
         private const float StepInset = 0.75f;   // metres inboard of the hinge that the step runs
-        private const float StepWidth = 0.7f;    // narrow enough to keep its outboard edge off the side planking
+        private const float StepWidth = 0.7f;    // how much of the rail the steps take up, fore and aft
+        private const float TreadDepth = 0.4f;   // how far inboard each tread reaches
         private const float StepClear = 0.04f;   // the step lands this far above the timber, never in it
         private bool _walkable;
         private bool _deckFound;
@@ -497,6 +515,8 @@ namespace SailTrim
         private BoxCollider _stepCol;
         private Rigidbody _stepRb;
         private float _ignoreAt;
+        private int _stowDir = 1;      // +1 lies forward along the rail, -1 aft
+        private bool _stowChosen;
         private float _ignoreStop = float.MaxValue;
         private string _profile = "";  // the shape of the hull the rail was picked out of
 
@@ -652,7 +672,7 @@ namespace SailTrim
             float stow = 1f - swing;
             float angle = Mathf.Lerp(0f, _restAngle, drop);
             Quaternion outPose = Quaternion.Euler(0f, 0f, -angle);
-            Quaternion stowPose = Quaternion.Euler(0f, -90f * _side, 0f) * Quaternion.Euler(StowLean * _side, 0f, 0f);
+            Quaternion stowPose = Quaternion.Euler(0f, -90f * _side * _stowDir, 0f) * Quaternion.Euler(StowLean * _side * _stowDir, 0f, 0f);
             transform.localRotation = Quaternion.Slerp(outPose, stowPose, stow);
             transform.localPosition = Vector3.Lerp(Vector3.zero, StowOffset(), stow);
 
@@ -674,7 +694,7 @@ namespace SailTrim
         private Vector3 StowOffset()
         {
             // Forward of the mount, so the stack and the step are not fighting for the same patch of deck.
-            return new Vector3(-StowInset, -_deckDrop + 0.45f, _side * 1.1f);
+            return new Vector3(-StowInset, -_deckDrop + 0.45f, _side * 1.1f * _stowDir);
         }
 
         /// <summary>
@@ -687,21 +707,29 @@ namespace SailTrim
             int layer = VisualLayer(_ship);
             float seg = Length / 3f;
 
+            // A hair short at each end, so the joints are joints. Built to the full section length the sections
+            // met face to face in exactly one plane, which flickers the same way the kerbs did.
+            const float Joint = 0.02f;
             var s1 = new GameObject("section1");
             s1.transform.SetParent(transform, false);
-            if (Gangway.BuildWalkway(s1.transform, "visual", seg, 0.84f, layer) == null)
+            if (Gangway.BuildWalkway(s1.transform, "visual", seg - Joint * 2f, 0.84f, layer) == null)
             { UnityEngine.Object.Destroy(s1); return; }
 
             var s2 = new GameObject("section2");
             s2.transform.SetParent(s1.transform, false);
             s2.transform.localPosition = new Vector3(seg, 0f, 0f);
-            Gangway.BuildWalkway(s2.transform, "visual", seg, 0.84f, layer);
+            Gangway.BuildWalkway(s2.transform, "visual", seg - Joint * 2f, 0.84f, layer);
 
             var s3 = new GameObject("section3");
             s3.transform.SetParent(s2.transform, false);
             s3.transform.localPosition = new Vector3(seg, 0f, 0f);
-            Gangway.BuildWalkway(s3.transform, "visual", seg, 0.84f, layer);
+            Gangway.BuildWalkway(s3.transform, "visual", seg - Joint * 2f, 0.84f, layer);
 
+            foreach (var sec in new[] { s1, s2, s3 })
+            {
+                var v = sec.transform.Find("visual");
+                if (v != null) v.localPosition = new Vector3(Joint, 0f, 0f);
+            }
             _visual = s1; _seg2 = s2.transform; _seg3 = s3.transform;
         }
 
@@ -959,40 +987,58 @@ namespace SailTrim
         private void EnsureStep()
         {
             if (_step != null || _mount == null || !_deckFound || !_place.Step) return;
-            // Where the step comes down, probed along its own line rather than assumed flat. A Karve has no deck
-            // at all: you stand on the curve of the hull, which rises as you go inboard, and a straight ramp set
-            // from the lowest reading anywhere on the section dug half a metre into the planking.
+            // Where the steps come down, probed along their own line. A Karve has no deck at all: you stand on the
+            // curve of the hull, which rises going inboard, and a ramp set from the lowest reading anywhere on the
+            // section dug half a metre into the planking.
             float drop = _deckDrop;
-            float run = Mathf.Max(0.9f, drop * 2.2f);
+            int n = 1;
+            float run = TreadDepth;
             for (int pass = 0; pass < 2; pass++)
             {
+                n = Mathf.Clamp(Mathf.CeilToInt(drop / 0.38f), 1, 4);
+                run = n * TreadDepth;
                 float foot = float.NegativeInfinity;
                 for (int i = 1; i <= 3; i++)
                 {
                     Vector3 sp = _ship.transform.InverseTransformPoint(
-                        _mount.TransformPoint(new Vector3(-StepInset, 0f, -_side * run * i / 3f)));
+                        _mount.TransformPoint(new Vector3(-run * i / 3f, 0f, 0f)));
                     float y = TopOfShip(sp.x, sp.z, _mount.localPosition.y);
                     if (y > foot) foot = y;
                 }
                 if (float.IsNegativeInfinity(foot)) break;
-                drop = Mathf.Clamp(_mount.localPosition.y - foot - StepClear, 0.05f, 1.8f);
-                run = Mathf.Max(0.9f, drop * 2.2f);
+                drop = Mathf.Clamp(_mount.localPosition.y - foot - StepClear, 0.08f, 1.8f);
             }
-            float len = Mathf.Sqrt(run * run + drop * drop);
-            float pitch = Mathf.Atan2(drop, run) * Mathf.Rad2Deg;
-            Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} step drop {drop:0.00} run {run:0.00} (deck drop at the rail was {_deckDrop:0.00})");
 
             _step = new GameObject("step");
             _step.transform.SetParent(_mount, false);
             _step.layer = gameObject.layer;
-            // Along the rail rather than across the boat. Across, it reached most of the way over a Karve's deck
-            // and you had to walk round it to get anywhere. Its high end is at the hinge, so you climb it and step
-            // straight onto the plank, and it runs the opposite way to where the stowed stack lies.
-            _step.transform.localPosition = new Vector3(-StepInset, 0.02f, 0f);
-            _step.transform.localRotation = Quaternion.Euler(0f, 90f * _side, 0f) * Quaternion.Euler(0f, 0f, -pitch);
+            _step.transform.localPosition = Vector3.zero;
+            _step.transform.localRotation = Quaternion.identity;
 
-            _stepCol = _step.AddComponent<BoxCollider>();
-            _stepCol.center = new Vector3(len * 0.5f, -0.06f, 0f);
+            // Two or three treads hard against the rail, running inboard. A sloped ramp along the rail was 1.6 m
+            // long and there is nowhere on a Karve to put 1.6 m of anything: it sat in the mast or in a bench.
+            // This takes 0.8 m of deck in the corner the rail already wastes.
+            float rise = drop / n;
+            int layer = VisualLayer(_ship);
+            for (int i = 1; i <= n; i++)
+            {
+                float top = -(n - i) * rise;
+                float cx = -(n - i + 0.5f) * TreadDepth;
+                Gangway.BuildTread(_step.transform, "tread" + i, new Vector3(TreadDepth, 0.1f, StepWidth),
+                                   new Vector3(cx, top - 0.05f, 0f), layer);
+            }
+
+            // One sloped collider over the treads: the treads are what you see, this is what you walk on, and a
+            // smooth slope is kinder to climb with a full load than a staircase of ledges.
+            float len = Mathf.Sqrt(run * run + drop * drop);
+            float pitch = Mathf.Atan2(drop, run) * Mathf.Rad2Deg;
+            var ramp = new GameObject("ramp");
+            ramp.transform.SetParent(_step.transform, false);
+            ramp.layer = _step.layer;
+            ramp.transform.localPosition = new Vector3(-run * 0.5f, -drop * 0.5f, 0f);
+            ramp.transform.localRotation = Quaternion.Euler(0f, 0f, pitch);
+            _stepCol = ramp.AddComponent<BoxCollider>();
+            _stepCol.center = Vector3.zero;
             _stepCol.size = new Vector3(len, 0.12f, StepWidth);
 
             // Its own body, for the same reason the plank has one: anything of ours left in the boat's own compound
@@ -1003,10 +1049,42 @@ namespace SailTrim
             _stepRb.interpolation = RigidbodyInterpolation.None;
             _step.AddComponent<GangwayFooting>().Ship = _ship;
 
-            // The ramp is the same timber as the plank, laid from the game's own floor pieces.
-            Gangway.BuildWalkway(_step.transform, "visual", len, StepWidth, VisualLayer(_ship));
             _step.SetActive(_wasFitted);
             IgnoreShip();
+            Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} {n} tread(s), drop {drop:0.00}, run {run:0.00} (deck drop at the rail was {_deckDrop:0.00})");
+        }
+
+        /// <summary>
+        /// Which way along the rail the stack lies, settled by trying both and keeping the one that is not inside
+        /// the mast or a bench. Every hull puts its furniture somewhere different and a rule that suited the Karve
+        /// put the Longship's stack through a rowing bench.
+        /// </summary>
+        private void ChooseStowSide()
+        {
+            if (_stowChosen || _box == null || !_wasFitted) return;
+            _stowChosen = true;
+            float was = _deploy;
+            float best = float.MaxValue;
+            int bestDir = 1;
+            foreach (int dir in new[] { 1, -1 })
+            {
+                _stowDir = dir;
+                Apply(0f);
+                Physics.SyncTransforms();
+                float worst = 0f;
+                foreach (var c in _ship.GetComponentsInChildren<Collider>())
+                {
+                    if (c == null || c.isTrigger || c.GetComponentInParent<GangwayMount>() != null) continue;
+                    if (Physics.ComputePenetration(_box, _box.transform.position, _box.transform.rotation,
+                                                   c, c.transform.position, c.transform.rotation, out _, out float d))
+                        worst = Mathf.Max(worst, d);
+                }
+                if (worst < best) { best = worst; bestDir = dir; }
+            }
+            _stowDir = bestDir;
+            Apply(was);
+            Physics.SyncTransforms();
+            Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} stows {(bestDir > 0 ? "forward" : "aft")} ({best:0.00} m into the boat)");
         }
 
         // ------------------------------------------------------------------
@@ -1027,6 +1105,7 @@ namespace SailTrim
                 BuildSections();
                 if (_visual != null) _visual.SetActive(fitted);
             }
+            if (fitted && _visual != null && _box != null) ChooseStowSide();
             if (fitted != _wasFitted)
             {
                 _wasFitted = fitted;
