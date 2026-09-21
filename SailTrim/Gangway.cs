@@ -141,17 +141,21 @@ namespace SailTrim
             public float Inset;   // extra metres inboard of the measured rail edge
             public float Rise;    // extra metres above the measured rail top
             public bool Step;     // build a step from the deck up to the rail
+            public float Stow;    // metres inboard of the hinge that the stowed bundle stands
             public float ZOffset; // metres further aft than the boat's own ladder
         }
 
         internal static Placement PlacementFor(Ship ship)
         {
-            var p = new Placement { Z = Plugin.GangwayMountZ.Value, Inset = 0f, Rise = 0f, Step = true, ZOffset = -0.85f };
+            var p = new Placement { Z = Plugin.GangwayMountZ.Value, Inset = 0f, Rise = 0f, Step = true, ZOffset = -0.85f, Stow = 0.5f };
             string n = (ship != null ? ship.name : "") ?? "";
             if (n.IndexOf("Ashlands", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 p.Step = false;    // the Drakkar's own hull already climbs to the rail here
                 p.Inset = -0.18f;  // and its rail is broad enough to carry the brackets further out
+                // Its rail is broad, so half a metre inboard leaves the stowed bundle out in the middle of the
+                // side walkway instead of against the edge where it belongs.
+                p.Stow = 0.26f;
             }
             else if (n.IndexOf("VikingShip", StringComparison.OrdinalIgnoreCase) >= 0) { } // Longship
             else if (n.IndexOf("Karve", StringComparison.OrdinalIgnoreCase) >= 0) { }
@@ -1027,7 +1031,7 @@ namespace SailTrim
         private Vector3 StowOffset()
         {
             // Forward of the mount, so the stack and the step are not fighting for the same patch of deck.
-            return new Vector3(-StowInset, -_deckDrop + 0.45f, _side * 1.1f * _stowDir);
+            return new Vector3(-(_place.Stow > 0f ? _place.Stow : StowInset), -_deckDrop + 0.45f, _side * 1.1f * _stowDir);
         }
 
         /// <summary>
