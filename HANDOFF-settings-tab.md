@@ -470,3 +470,28 @@ keypress, which nobody was going to work out. Three changes:
   get one rather than only that you lack it.
 - **A message the first time you board a boat carrying a gangway**, once per boat: "Gangway: fit it to the
   brackets on either rail."
+
+## Gangway: the z-fighting was in the meshes we copied
+
+The kerbs were one cause and fixing them changed nothing, because the bigger one was underneath. The game's
+pieces are statically batched: `wood_floor`'s mesh holds its vertices in the world coordinates of whatever scene
+baked it — around fifty units from its own origin — and the renderer carries a matching negative translation to
+put it back. `hierarchy.txt` shows it plainly: every part we built read `_Combined Mesh [high] @(52.38,-9.01,0.89)`
+while its renderer bounds were at `(0.73,0.52,0.88)`. Reusing that mesh reproduces the offset, so every surface
+we draw is the difference of two large numbers, in every pass. It affects every piece we build, which is why it
+looked like everything was fighting.
+
+`Models.CopyVisual(..., bake: true)` now rewrites the vertices into the part's own space around its own origin,
+and keeps only the triangles inside that renderer's own bounds so nothing of a neighbour in the same batch comes
+with it. It falls back to the old path if the mesh is not readable — **check `hierarchy.txt` for mesh names
+ending `_SailTrim` to confirm the bake actually ran.**
+
+## Gangway: a ramp, because Valheim has no step-up
+
+The folding tread was the wrong idea and the reason is worth writing down: **Valheim characters do not step up
+onto ledges, they jump** — and a loaded player cannot jump, which is the entire reason this feature exists. A
+0.35 m tread is therefore something to stand in front of, not on.
+
+The step is now a **brow**: a ramp at a walkable 34 degrees, hinged just inside the rail, that folds in two
+against the rail when stowed so it takes no deck except while being walked on. Two leaves, because a ramp long
+enough to walk up is too long to stand against a rail unfolded.

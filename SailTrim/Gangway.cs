@@ -265,7 +265,7 @@ namespace SailTrim
                 float seg = length / n;
                 for (int k = 0; k < n; k++)
                 {
-                    var part = Models.CopyVisual(floorSrc, root.transform, "deck" + k, out var b);
+                    var part = Models.CopyVisual(floorSrc, root.transform, "deck" + k, out var b, true);
                     if (part == null || b.size.x < 0.05f || b.size.z < 0.05f) continue;
                     var scale = new Vector3(seg / b.size.x, 1f, width / b.size.z);
                     Models.Place(part, b, new Vector3(0f, 1f, 0.5f), new Vector3(k * seg, 0f, 0f), scale, Quaternion.identity);
@@ -278,7 +278,7 @@ namespace SailTrim
                 const float Kerb = 0.1f;   // a kerb down each edge, not a second plank
                 foreach (float sz in new[] { -1f, 1f })
                 {
-                    var part = Models.CopyVisual(beamSrc, root.transform, sz < 0f ? "edgeL" : "edgeR", out var b);
+                    var part = Models.CopyVisual(beamSrc, root.transform, sz < 0f ? "edgeL" : "edgeR", out var b, true);
                     if (part == null) continue;
                     // Lay the beam along the walkway whichever way round it was modelled. Taking the longest
                     // dimension and then always stretching X meant that a beam modelled along Z was squashed flat
@@ -321,9 +321,9 @@ namespace SailTrim
             if (Models.Headless || parent == null) return null;
             var src = Models.FindFirst(ObjectDB.instance, out _, "wood_floor", "wood_floor_1x1", "piece_woodfloor");
             if (src == null) return null;
-            var part = Models.CopyVisual(src, parent, name, out var b);
+            var part = Models.CopyVisual(src, parent, name, out var b, true);
             if (part == null || b.size.x < 0.05f || b.size.z < 0.05f) return null;
-            var scale = new Vector3(size.x / b.size.x, 1f, size.z / b.size.z);
+            var scale = new Vector3(size.x / b.size.x, Mathf.Max(0.05f, size.y / Mathf.Max(0.01f, b.size.y)), size.z / b.size.z);
             Models.Place(part, b, new Vector3(0.5f, 1f, 0.5f), centre + new Vector3(0f, size.y * 0.5f, 0f), scale, Quaternion.identity);
             SetLayer(part.transform, layer);
             return part;
@@ -521,8 +521,10 @@ namespace SailTrim
         private const float StowInset = 0.50f;   // metres inboard of the hinge that the stack stands
         private const float StepInset = 0.75f;   // metres inboard of the hinge that the step runs
         private const float StepWidth = 0.7f;    // how much of the rail the steps take up, fore and aft
-        private const float TreadDepth = 0.45f;  // how far inboard the lowest tread reaches
-        private const float RailFace = 0.1f;     // where the treads hinge: just inside the rail
+        private const float BrowReach = 0.9f;    // roughly how far inboard the ramp comes down
+        private const float BrowWidth = 0.7f;    // how wide the inboard ramp is
+        private const float BrowSlope = 34f;     // degrees: a slope you can walk up with a full load
+        private const float RailFace = 0.1f;     // where the ramp hinges: just inside the rail
         private const float StepClear = 0.04f;   // the step lands this far above the timber, never in it
         private bool _walkable;
         private bool _deckFound;
@@ -539,8 +541,8 @@ namespace SailTrim
         private Gangway.Placement _place;
         private Vector3 _railLocal;   // where the rail was found, before the per-hull correction
         private BoxCollider _stepCol;
-        private Transform[] _treads;
-        private BoxCollider[] _treadCols;
+        private Transform _brow, _browLeaf;
+        private float _browDrop = 0.6f, _browLen = 1.1f;
         private readonly List<Collider> _mine = new List<Collider>();
         private GameObject _brackets;
         private float _ignoreAt;
@@ -716,7 +718,7 @@ namespace SailTrim
             if (_seg3 != null) { _seg3.localPosition = new Vector3(seg, -lift, 0f); _seg3.localRotation = Quaternion.Euler(0f, 0f, -fold); }
 
             // The treads come down first: they are what you climb to reach the plank.
-            FoldTreads(unfold);
+            FoldBrow(unfold);
 
             // Only a ramp that is out over the side and unfolded is something to walk on.
             bool walk = deploy > 0.6f;
@@ -1032,78 +1034,82 @@ namespace SailTrim
                 for (int i = 1; i <= 3; i++)
                 {
                     Vector3 sp = _ship.transform.InverseTransformPoint(
-                        _mount.TransformPoint(new Vector3(-RailFace - TreadDepth * i / 3f, 0f, 0f)));
+                        _mount.TransformPoint(new Vector3(-RailFace - BrowReach * i / 3f, 0f, 0f)));
                     float y = TopOfShip(sp.x, sp.z, _mount.localPosition.y);
                     if (y > foot) foot = y;
                 }
                 if (float.IsNegativeInfinity(foot)) break;
                 drop = Mathf.Clamp(_mount.localPosition.y - foot, 0.1f, 1.8f);
             }
-            // One step for a rail you can stride, two for a high one. Never a staircase: there is no room aboard
-            // a Karve for a staircase, and a ramp along the rail sat in the mast or in a bench.
-            int n = Mathf.Clamp(Mathf.RoundToInt(drop / 0.45f), 1, 2);
+            _browDrop = drop;
+            // A slope, not a ledge. Valheim characters do not step up: you jump, and the whole point of a gangway
+            // is that a loaded player cannot jump. A single tread was something to stand in front of, not on.
+            _browLen = Mathf.Clamp(drop / Mathf.Sin(BrowSlope * Mathf.Deg2Rad), 0.8f, 2.2f);
 
             _step = new GameObject("step");
             _step.transform.SetParent(_mount, false);
             _step.layer = gameObject.layer;
+            _step.transform.localPosition = new Vector3(-RailFace, 0f, 0f);
 
-            _treads = new Transform[n];
-            _treadCols = new BoxCollider[n];
+            // Its own body, for the same reason the plank has one: anything of ours left in the boat's own
+            // compound is part of the boat, and props the hull the moment it touches the shore.
+            var rb = _step.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.interpolation = RigidbodyInterpolation.None;
+            _step.AddComponent<GangwayFooting>().Ship = _ship;
+
+            // Two leaves, so that a ramp long enough to walk up folds into something short enough to stand
+            // against the rail. Folded it takes no deck at all; a step that lives on the deck is a step you walk
+            // round for the rest of the voyage.
             int layer = VisualLayer(_ship);
-            for (int i = 1; i <= n; i++)
-            {
-                // Evenly spaced between the deck and the rail, the lowest reaching furthest inboard so there is
-                // somewhere to put a foot on the way to the one above it.
-                float hi = -drop * i / (n + 1f);
-                float di = TreadDepth * (n - i + 1f) / n;
+            float half = _browLen * 0.5f;
+            var a = new GameObject("browA");
+            a.transform.SetParent(_step.transform, false);
+            a.layer = _step.layer;
+            Gangway.BuildWalkway(a.transform, "visual", half - 0.02f, BrowWidth, layer);
+            var bLeaf = new GameObject("browB");
+            bLeaf.transform.SetParent(a.transform, false);
+            bLeaf.layer = _step.layer;
+            bLeaf.transform.localPosition = new Vector3(half, 0f, 0f);
+            Gangway.BuildWalkway(bLeaf.transform, "visual", half - 0.02f, BrowWidth, layer);
 
-                var hinge = new GameObject("tread" + i);
-                hinge.transform.SetParent(_step.transform, false);
-                hinge.layer = _step.layer;
-                hinge.transform.localPosition = new Vector3(-RailFace, hi, 0f);
+            var ramp = new GameObject("ramp");
+            ramp.transform.SetParent(a.transform, false);
+            ramp.layer = _step.layer;
+            ramp.transform.localPosition = new Vector3(_browLen * 0.5f, -0.05f, 0f);
+            _stepCol = ramp.AddComponent<BoxCollider>();
+            _stepCol.size = new Vector3(_browLen, 0.1f, BrowWidth);
+            _mine.Add(_stepCol);
 
-                Gangway.BuildTread(hinge.transform, "visual", new Vector3(di, 0.09f, StepWidth),
-                                   new Vector3(-di * 0.5f, 0f, 0f), layer);
-
-                var col = hinge.AddComponent<BoxCollider>();
-                col.center = new Vector3(-di * 0.5f, -0.045f, 0f);
-                col.size = new Vector3(di, 0.09f, StepWidth);
-                _mine.Add(col);
-
-                // Its own body, for the same reason the plank has one: anything of ours left in the boat's own
-                // compound is part of the boat, and props the hull up the moment it touches the shore.
-                var rb = hinge.AddComponent<Rigidbody>();
-                rb.isKinematic = true;
-                rb.useGravity = false;
-                rb.interpolation = RigidbodyInterpolation.None;
-                hinge.AddComponent<GangwayFooting>().Ship = _ship;
-
-                _treads[i - 1] = hinge.transform;
-                _treadCols[i - 1] = col;
-            }
-            _stepCol = _treadCols.Length > 0 ? _treadCols[0] : null;
-
+            _brow = a.transform;
+            _browLeaf = bLeaf.transform;
             _step.SetActive(_wasFitted);
-            FoldTreads(0f);
+            FoldBrow(0f);
             IgnoreShip();
-            Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} {n} folding tread(s), climb {drop:0.00} m (deck drop at the rail was {_deckDrop:0.00})");
+            Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} brow {_browLen:0.00} m for a {drop:0.00} m climb (deck drop at the rail was {_deckDrop:0.00})");
         }
 
         /// <summary>
-        /// The treads swing down off the rail with the gangway and fold flat back against it when it is stowed,
-        /// so they take no deck at all when they are not being used. A step that lives on the deck is a step you
-        /// walk round for the rest of the voyage.
+        /// The inboard ramp swings down off the rail with the gangway and folds in two against it when stowed, so
+        /// it is only on the deck while it is being walked on.
         /// </summary>
-        private void FoldTreads(float down)
+        private void FoldBrow(float down)
         {
-            if (_treads == null) return;
-            float a = Mathf.Lerp(-90f, 0f, Mathf.Clamp01(down));
-            bool solid = down > 0.5f;
-            for (int i = 0; i < _treads.Length; i++)
+            if (_brow == null) return;
+            float reach = Mathf.Rad2Deg * Mathf.Asin(Mathf.Clamp01(_browDrop / Mathf.Max(0.01f, _browLen)));
+            // +90 stands it up against the rail, -reach lays it down onto the deck.
+            float z = Mathf.Lerp(90f, -reach, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(down)));
+            _brow.localRotation = Quaternion.Euler(0f, 180f, 0f) * Quaternion.Euler(0f, 0f, z);
+
+            float folded = 1f - Mathf.Clamp01(down);
+            if (_browLeaf != null)
             {
-                if (_treads[i] != null) _treads[i].localRotation = Quaternion.Euler(0f, 0f, a);
-                if (_treadCols[i] != null && _treadCols[i].enabled != solid) _treadCols[i].enabled = solid;
+                _browLeaf.localPosition = new Vector3(_browLen * 0.5f, LeafLift * folded, 0f);
+                _browLeaf.localRotation = Quaternion.Euler(0f, 0f, folded * FoldAngle);
             }
+            bool solid = down > 0.8f;
+            if (_stepCol != null && _stepCol.enabled != solid) _stepCol.enabled = solid;
         }
 
         /// <summary>

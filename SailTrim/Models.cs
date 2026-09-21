@@ -70,6 +70,17 @@ namespace SailTrim
         /// as they are in src, with src's materials. bounds is the copy's extent in the child's own space.
         /// </summary>
         internal static GameObject CopyVisual(GameObject src, Transform parent, string name, out Bounds bounds)
+            => CopyVisual(src, parent, name, out bounds, false);
+
+        /// <summary>
+        /// The game's pieces are statically batched: the mesh a piece renders holds its vertices in the world
+        /// coordinates of whatever scene baked it, tens of units from its own origin, and the renderer carries a
+        /// matching negative translation to put it back. Reusing that mesh reproduces the offset, and every part
+        /// we build out of one is then drawn from the difference of two large numbers. Baking rewrites the
+        /// vertices into the part's own space, around its own origin, and keeps only the triangles inside this
+        /// renderer's own bounds, so nothing of a neighbour in the same batch comes along with it.
+        /// </summary>
+        internal static GameObject CopyVisual(GameObject src, Transform parent, string name, out Bounds bounds, bool bake)
         {
             var part = new GameObject(name);
             part.transform.SetParent(parent, false);
@@ -90,14 +101,27 @@ namespace SailTrim
                 var go = new GameObject(r.gameObject.name);
                 go.layer = part.layer;
                 go.transform.SetParent(part.transform, false);
-                go.transform.localPosition = m.GetColumn(3);
-                go.transform.localRotation = m.rotation;
-                go.transform.localScale = m.lossyScale;
-                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                Mesh use = mesh;
+                if (bake)
+                {
+                    var baked = Bake(r, mesh, m);
+                    if (baked != null)
+                    {
+                        use = baked;
+                        m = Matrix4x4.identity;   // the vertices already carry it
+                    }
+                }
+                if (m != Matrix4x4.identity)
+                {
+                    go.transform.localPosition = m.GetColumn(3);
+                    go.transform.localRotation = m.rotation;
+                    go.transform.localScale = m.lossyScale;
+                }
+                go.AddComponent<MeshFilter>().sharedMesh = use;
                 var mr = go.AddComponent<MeshRenderer>();
                 mr.sharedMaterials = r.sharedMaterials;
                 mr.shadowCastingMode = ShadowCastingMode.On;
-                var b = mesh.bounds;
+                var b = use.bounds;
                 for (int i = 0; i < 8; i++)
                 {
                     Vector3 c = b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
@@ -108,6 +132,78 @@ namespace SailTrim
             }
             if (!any) { Object.Destroy(part); return null; }
             return part;
+        }
+
+        /// <summary>
+        /// This renderer's own geometry, in the part's space, around the origin. Triangles outside the renderer's
+        /// own world bounds belong to other members of the same static batch and are left behind. Returns null if
+        /// the mesh cannot be read, in which case the caller keeps the original and its offset.
+        /// </summary>
+        private static Mesh Bake(Renderer r, Mesh mesh, Matrix4x4 m)
+        {
+            try
+            {
+                if (!mesh.isReadable) return null;
+                var verts = mesh.vertices;
+                if (verts.Length == 0) return null;
+                var norms = mesh.normals;
+                var uvs = mesh.uv;
+
+                // The renderer's own slice of the batch, in mesh space.
+                Matrix4x4 w2l = r.transform.worldToLocalMatrix;
+                Bounds wb = r.bounds;
+                Bounds keep = new Bounds(w2l.MultiplyPoint3x4(wb.center), Vector3.zero);
+                for (int i = 0; i < 8; i++)
+                {
+                    Vector3 c = wb.center + Vector3.Scale(wb.extents,
+                        new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                    keep.Encapsulate(w2l.MultiplyPoint3x4(c));
+                }
+                keep.Expand(0.02f);
+
+                var map = new Dictionary<int, int>();
+                var outV = new List<Vector3>();
+                var outN = new List<Vector3>();
+                var outU = new List<Vector2>();
+                var subs = new List<List<int>>();
+                bool any = false;
+                for (int sm = 0; sm < mesh.subMeshCount; sm++)
+                {
+                    var tris = mesh.GetTriangles(sm);
+                    var outT = new List<int>();
+                    for (int t = 0; t + 2 < tris.Length; t += 3)
+                    {
+                        if (!keep.Contains(verts[tris[t]]) || !keep.Contains(verts[tris[t + 1]]) || !keep.Contains(verts[tris[t + 2]])) continue;
+                        for (int k = 0; k < 3; k++)
+                        {
+                            int vi = tris[t + k];
+                            if (!map.TryGetValue(vi, out int ni))
+                            {
+                                ni = outV.Count;
+                                map[vi] = ni;
+                                outV.Add(m.MultiplyPoint3x4(verts[vi]));
+                                if (norms.Length == verts.Length) outN.Add(m.MultiplyVector(norms[vi]).normalized);
+                                if (uvs.Length == verts.Length) outU.Add(uvs[vi]);
+                            }
+                            outT.Add(ni);
+                        }
+                    }
+                    if (outT.Count > 0) any = true;
+                    subs.Add(outT);
+                }
+                if (!any || outV.Count == 0) return null;
+
+                var baked = new Mesh { name = mesh.name + "_SailTrim" };
+                baked.SetVertices(outV);
+                if (outN.Count == outV.Count) baked.SetNormals(outN);
+                if (outU.Count == outV.Count) baked.SetUVs(0, outU);
+                baked.subMeshCount = subs.Count;
+                for (int sm = 0; sm < subs.Count; sm++) baked.SetTriangles(subs[sm], sm);
+                if (outN.Count != outV.Count) baked.RecalculateNormals();
+                baked.RecalculateBounds();
+                return baked;
+            }
+            catch { return null; }
         }
 
         private static List<Renderer> VisibleRenderers(GameObject src)
