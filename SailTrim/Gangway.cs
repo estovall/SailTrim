@@ -36,6 +36,19 @@ namespace SailTrim
         internal static int DownBit(int side) => side < 0 ? DownPort : DownStbd;
         internal static string SideName(int side) => side < 0 ? "port" : "starboard";
 
+        // Lashing alongside: a gangway let down onto another boat's deck rather than onto the shore. The record
+        // is kept on both boats. The boat the plank belongs to carries, per side, which boat it went down on; the
+        // boat underneath carries who laid the plank on it. Two copies of one fact look like a mistake waiting to
+        // happen, and they would be if either side trusted its own alone: neither does. The boat underneath reads
+        // the other boat's record before it holds, so a plank that has come up lets it go even if the message
+        // saying so never arrived.
+        internal const string LashRpc = "SailTrim_Lash";
+        private const string LashPortKey = "SailTrim_LashPort";
+        private const string LashStbdKey = "SailTrim_LashStbd";
+        private const string LashedByKey = "SailTrim_LashedBy";
+
+        private static string LashKey(int side) => side < 0 ? LashPortKey : LashStbdKey;
+
         private static GameObject _itemPrefab;
         private static Sprite _icon;
         private static Material _woodMat;
@@ -55,23 +68,25 @@ namespace SailTrim
         internal static bool Down(Ship ship, int side) => (State(ship) & DownBit(side)) != 0;
         internal static bool AnyDown(Ship ship) => (State(ship) & (DownPort | DownStbd)) != 0;
 
-        /// <summary>Ask the boat's owner to change a gangway. action: 0 fit, 1 lower, 2 raise.</summary>
-        internal static void Request(Ship ship, int side, int action)
+        /// <summary>Ask the boat's owner to change a gangway. action: 0 fit, 1 lower, 2 raise. When lowering,
+        /// onto is the boat the plank came down on, or none for the shore.</summary>
+        internal static void Request(Ship ship, int side, int action, ZDOID onto = default(ZDOID))
         {
             var nv = ship != null ? ship.m_nview : null;
             if (nv == null || !nv.IsValid()) return;
-            nv.InvokeRPC(RpcName, side, action);
+            nv.InvokeRPC(RpcName, side, action, onto);
         }
 
         internal static void OnShipStart(Ship ship)
         {
             var nv = ship.m_nview;
             if (nv == null || !nv.IsValid()) return;
-            nv.Register<int, int>(RpcName, (sender, side, action) => RPC_Gangway(ship, side, action));
+            nv.Register<int, int, ZDOID>(RpcName, (sender, side, action, onto) => RPC_Gangway(ship, side, action, onto));
+            nv.Register<ZDOID, int>(LashRpc, (sender, from, on) => RPC_Lash(ship, from, on));
         }
 
         /// <summary>Runs on the boat's owner: the boat's ZDO is the one record of what is fitted and what is down.</summary>
-        private static void RPC_Gangway(Ship ship, int side, int action)
+        private static void RPC_Gangway(Ship ship, int side, int action, ZDOID onto)
         {
             var nv = ship.m_nview;
             if (nv == null || !nv.IsValid() || !nv.IsOwner()) return;
@@ -88,14 +103,119 @@ namespace SailTrim
                     ship.m_speed = Ship.Speed.Stop;
                     var st = SailTrimShip.Get(ship);
                     if (st != null) st.OnMoored();
+                    SetLash(ship, side, onto);
                     break;
-                case 2: state &= ~DownBit(side); break;
+                case 2:
+                    state &= ~DownBit(side);
+                    SetLash(ship, side, ZDOID.None);
+                    break;
                 default: return;
             }
             zdo.Set(StateHash, state);
         }
 
+        /// <summary>
+        /// Owner of the boat the plank belongs to: write down the boat it went down on, and ask that boat to hold
+        /// where it lies. Two hulls with a plank across them are one raft. If either drifted the plank would fall
+        /// between them, so both stop, exactly as a gangway onto a dock stops the one boat.
+        /// </summary>
+        private static void SetLash(Ship ship, int side, ZDOID onto)
+        {
+            var zdo = ship.m_nview.GetZDO();
+            ZDOID was = zdo.GetZDOID(LashKey(side));
+            if (was != onto && !was.IsNone()) TellLashed(ship, was, false);
+            if (was != onto) zdo.Set(LashKey(side), onto);
+            if (!onto.IsNone()) TellLashed(ship, onto, true);
+        }
+
+        /// <summary>Tell the boat underneath, through its own owner, that a plank is or is no longer across it.</summary>
+        private static void TellLashed(Ship ship, ZDOID other, bool on)
+        {
+            var go = ZNetScene.instance != null ? ZNetScene.instance.FindInstance(other) : null;
+            var nv = go != null ? go.GetComponent<ZNetView>() : null;
+            // Not here to be told. Nothing is lost: that boat reads our record for itself and stops holding when
+            // the plank comes up, so an undelivered message costs a moment, never the release.
+            if (nv == null || !nv.IsValid()) return;
+            // A boat nobody has claimed has nobody to send this to, and the message would be dropped with the
+            // raft half made. Take it on ourselves in that case: we are already running the other boat's side.
+            if (!nv.GetZDO().HasOwner()) nv.ClaimOwnership();
+            nv.InvokeRPC(LashRpc, ship.m_nview.GetZDO().m_uid, on ? 1 : 0);
+        }
+
+        /// <summary>Runs on the owner of the boat a plank has come down on: hold where we lie, and stop.</summary>
+        private static void RPC_Lash(Ship ship, ZDOID from, int on)
+        {
+            var nv = ship.m_nview;
+            if (nv == null || !nv.IsValid() || !nv.IsOwner()) return;
+            var zdo = nv.GetZDO();
+            if (on != 0)
+            {
+                zdo.Set(LashedByKey, from);
+                Mooring.HoldHere(ship);
+                ship.m_speed = Ship.Speed.Stop;
+                var st = SailTrimShip.Get(ship);
+                if (st != null) st.OnMoored();
+            }
+            else if (zdo.GetZDOID(LashedByKey) == from) zdo.Set(LashedByKey, ZDOID.None);
+        }
+
+        /// <summary>Ships whose lashing partner has not been seen lately, and since when (see LashedFrom).</summary>
+        private static readonly Dictionary<Ship, float> _lashMissingSince = new Dictionary<Ship, float>();
+
+        /// <summary>Is another boat's gangway lying across this one?</summary>
+        internal static bool LashedAlongside(Ship ship) => !LashedFrom(ship).IsNone();
+
+        /// <summary>
+        /// The boat whose gangway is lying across this one, if any. Checked against that boat's own record rather
+        /// than taken on trust, so the hold ends when the plank does, however the news arrives.
+        /// </summary>
+        internal static ZDOID LashedFrom(Ship ship)
+        {
+            var nv = ship != null ? ship.m_nview : null;
+            if (nv == null || !nv.IsValid()) return ZDOID.None;
+            var zdo = nv.GetZDO();
+            ZDOID from = zdo.GetZDOID(LashedByKey);
+            if (from.IsNone()) return ZDOID.None;
+            var oz = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(from) : null;
+            if (oz == null)
+            {
+                // The other boat's data is not here. Just after a world loads that is normal and the raft must
+                // hold; a boat that has really gone never comes back, so give it half a minute, as a mooring does.
+                if (!_lashMissingSince.TryGetValue(ship, out float since)) { _lashMissingSince[ship] = Time.time; return from; }
+                if (Time.time - since < 30f) return from;
+                _lashMissingSince.Remove(ship);
+                if (nv.IsOwner()) zdo.Set(LashedByKey, ZDOID.None);
+                return ZDOID.None;
+            }
+            _lashMissingSince.Remove(ship);
+            bool down = (oz.GetInt(StateHash) & (DownPort | DownStbd)) != 0;
+            bool ours = oz.GetZDOID(LashPortKey) == zdo.m_uid || oz.GetZDOID(LashStbdKey) == zdo.m_uid;
+            if (down && ours) return from;
+            if (nv.IsOwner()) zdo.Set(LashedByKey, ZDOID.None);
+            return ZDOID.None;
+        }
+
+        /// <summary>The boat this gangway is lying on, if it is on a boat and that boat is loaded here.</summary>
+        internal static Ship LashTarget(Ship ship, int side)
+        {
+            var nv = ship != null ? ship.m_nview : null;
+            if (nv == null || !nv.IsValid()) return null;
+            ZDOID id = nv.GetZDO().GetZDOID(LashKey(side));
+            if (id.IsNone()) return null;
+            var go = ZNetScene.instance != null ? ZNetScene.instance.FindInstance(id) : null;
+            return go != null ? go.GetComponent<Ship>() : null;
+        }
+
+        internal static string ShipName(Ship ship)
+        {
+            if (ship == null) return "boat";
+            var piece = ship.GetComponent<Piece>();
+            return piece != null && !string.IsNullOrEmpty(piece.m_name)
+                ? Localization.instance.Localize(piece.m_name) : "boat";
+        }
+
         private static readonly Dictionary<Ship, float> _helmTime = new Dictionary<Ship, float>();
+        private static readonly Dictionary<Ship, float> _lashTime = new Dictionary<Ship, float>();
 
         /// <summary>Pilot's client, every physics step at the helm with a gangway down: after the delay, raise it.</summary>
         internal static void PilotAtHelm(Ship ship, float dt)
@@ -106,6 +226,30 @@ namespace SailTrim
             if (t < Plugin.GangwayRetractDelay.Value) { _helmTime[ship] = t; return; }
             _helmTime.Remove(ship);
             RaiseAll(ship, true);
+        }
+
+        /// <summary>
+        /// Pilot's client, every physics step at the helm of a boat with someone else's plank across it: after
+        /// the same delay, ask for that plank to come up. This boat cannot cast itself off, because the gangway
+        /// is not its own, and a crew held alongside with no way to get under way would be caught there.
+        /// </summary>
+        internal static void LashedAtHelm(Ship ship, float dt)
+        {
+            ZDOID from = LashedFrom(ship);
+            if (from.IsNone()) { _lashTime.Remove(ship); return; }
+            if (!_lashTime.TryGetValue(ship, out float t)) t = 0f;
+            t += dt;
+            if (t < Plugin.GangwayRetractDelay.Value) { _lashTime[ship] = t; return; }
+            _lashTime.Remove(ship);
+            var go = ZNetScene.instance != null ? ZNetScene.instance.FindInstance(from) : null;
+            var other = go != null ? go.GetComponent<Ship>() : null;
+            if (other == null || other.m_nview == null || !other.m_nview.IsValid()) return;
+            ZDOID us = ship.m_nview.GetZDO().m_uid;
+            bool any = false;
+            foreach (int side in Sides)
+                if (other.m_nview.GetZDO().GetZDOID(LashKey(side)) == us) { Request(other, side, 2); any = true; }
+            var p = Player.m_localPlayer;
+            if (any && p != null) p.Message(MessageHud.MessageType.TopLeft, "Gangway up: cast off alongside");
         }
 
         internal static void RaiseAll(Ship ship, bool message)
@@ -839,6 +983,10 @@ namespace SailTrim
         private Transform _brow, _browLeaf;
         private float _browDrop = 0.6f, _browLen = 1.1f;
         private readonly List<Collider> _mine = new List<Collider>();
+        // The boat this plank is lying on, and the pairs struck out so that it does not lean on it.
+        private Ship _lashedTo;
+        private float _lashIgnoreAt;
+        private readonly List<Collider> _lashIgnored = new List<Collider>();
         private GameObject _brackets;
         private bool _timbered;
         private GameObject _lashing;
@@ -1149,7 +1297,11 @@ namespace SailTrim
                 return Localization.instance.Localize($"Gangway brackets ({Gangway.SideName(_side)})\n[<color=yellow><b>$KEY_Use</b></color>] Fit the gangway");
             }
             if (Gangway.Down(_ship, _side))
-                return Localization.instance.Localize($"Gangway ({Gangway.SideName(_side)}), down\n[<color=yellow><b>$KEY_Use</b></color>] Raise");
+            {
+                var onto = Gangway.LashTarget(_ship, _side);
+                string where = onto != null ? ", across to the " + Gangway.ShipName(onto) : ", down";
+                return Localization.instance.Localize($"Gangway ({Gangway.SideName(_side)}){where}\n[<color=yellow><b>$KEY_Use</b></color>] Raise");
+            }
             return Localization.instance.Localize($"Gangway ({Gangway.SideName(_side)}), stowed\n[<color=yellow><b>$KEY_Use</b></color>] Lower");
         }
 
@@ -1197,13 +1349,24 @@ namespace SailTrim
         private bool Lower(Humanoid user)
         {
             EnsureDeck();
-            if (!FindRest(out float angle, out float _, out float _))
+            if (!FindRest(out float angle, out float _, out float _, out Ship onto))
             {
                 user.Message(MessageHud.MessageType.Center, "Nothing within reach to rest it on");
                 return false;
             }
             _restAngle = angle;
-            Gangway.Request(_ship, _side, 1);
+            // It came down on another boat's deck rather than on the shore: the two are lashed alongside and both
+            // hold where they lie. Nothing here decides whether the plank reaches; the plank decides that by
+            // landing, exactly as it does on a dock.
+            if (onto != null && (!Plugin.GangwayLashShips.Value || onto.m_nview == null || !onto.m_nview.IsValid()))
+                onto = null;
+            ZDOID target = onto != null ? onto.m_nview.GetZDO().m_uid : ZDOID.None;
+            Gangway.Request(_ship, _side, 1, target);
+            if (onto != null)
+            {
+                user.Message(MessageHud.MessageType.TopLeft, "Gangway down onto the " + Gangway.ShipName(onto) + ": both boats held");
+                return true;
+            }
             user.Message(MessageHud.MessageType.TopLeft, "Gangway down");
             // One press does the dock: a cleat in reach with no boat on it takes this one.
             if (Plugin.GangwayTiesCleat.Value && !Mooring.IsMoored(_ship) && Cleat.AutoTie(_ship))
@@ -1326,11 +1489,12 @@ namespace SailTrim
             _probeCount++;
         }
 
-        private bool FindRest(out float angle, out float groundY, out float dist)
+        private bool FindRest(out float angle, out float groundY, out float dist, out Ship onto)
         {
             angle = 0f;
             groundY = 0f;
             dist = 0f;
+            onto = null;
             float max = Mathf.Max(5f, Plugin.GangwayMaxAngle.Value);
             // Not the sea, and not people: a gangway rests on something solid, or it does not go down at all.
             int mask = ~LayerMask.GetMask("Water", "WaterVolume", "water", "character", "character_net",
@@ -1340,11 +1504,12 @@ namespace SailTrim
             float shallowest = float.MaxValue;
             for (float d = 1f; d <= Length + 0.01f; d += 0.4f)
             {
-                float a = AngleOnto(d, max, mask, out float g);
+                float a = AngleOnto(d, max, mask, out float g, out Ship s);
                 if (float.IsNaN(a) || a >= shallowest) continue;
                 shallowest = a;
                 groundY = g;
                 dist = d;
+                onto = s;
             }
             if (shallowest == float.MaxValue) return false;
             angle = Mathf.Clamp(shallowest, -20f, max);
@@ -1355,21 +1520,28 @@ namespace SailTrim
         /// The angle at which the plank, this far out from its hinge, would come down onto whatever is under it.
         /// The plank's reach shortens as it tilts, so where it lands moves: two passes settle it.
         /// </summary>
-        private float AngleOnto(float d, float max, int mask, out float groundY)
+        private float AngleOnto(float d, float max, int mask, out float groundY, out Ship onto)
         {
             groundY = 0f;
+            onto = null;
             float a = 0f;
             for (int pass = 0; pass < 3; pass++)
             {
                 Vector3 p = PointAt(d, a);
                 var hits = Physics.RaycastAll(p + Vector3.up * 1.5f, Vector3.down, 6f, mask, QueryTriggerInteraction.Ignore);
                 float top = float.NegativeInfinity;
+                Ship found = null;
                 foreach (var h in hits)
                 {
                     if (h.collider.transform.IsChildOf(_ship.transform)) continue;  // the boat's own timber, not the shore
                     if (h.point.y > p.y + 0.4f) continue;                            // something overhead, not underfoot
-                    if (h.point.y > top) top = h.point.y;
+                    if (h.point.y <= top) continue;
+                    top = h.point.y;
+                    // Another hull is ground like any other, and the deck of a boat moored alongside is the one
+                    // piece of ground that would sail away: whatever the plank lands on, we remember whose it is.
+                    found = h.collider.GetComponentInParent<Ship>();
                 }
+                onto = found;
                 if (float.IsNegativeInfinity(top)) return float.NaN;
                 groundY = top;
                 float next = Mathf.Asin(Mathf.Clamp((_mount.position.y - top) / d, -1f, 1f)) * Mathf.Rad2Deg;
@@ -1378,6 +1550,41 @@ namespace SailTrim
                 a = next;
             }
             return a;
+        }
+
+        /// <summary>
+        /// A plank lying on another boat must not lean on it. Our body is kinematic, and a kinematic body
+        /// overlapping a floating one shoves it with everything it has -- the same thing that put every hull on
+        /// its beam ends until the boat's own colliders were struck out. So the pairs come out while the plank is
+        /// across, and go back in when it comes up, or the two hulls would pass through each other afterwards.
+        /// Once a second, because a boat sailing up alongside brings its colliders with it.
+        /// </summary>
+        private void UpdateLashIgnore(bool down)
+        {
+            if (Time.time < _lashIgnoreAt) return;
+            _lashIgnoreAt = Time.time + 1f;
+            SetLashIgnore(down ? Gangway.LashTarget(_ship, _side) : null);
+        }
+
+        private void SetLashIgnore(Ship other)
+        {
+            if (_lashedTo != other)
+            {
+                foreach (var c in _lashIgnored)
+                {
+                    if (c == null) continue;
+                    foreach (var own in _mine) if (own != null) Physics.IgnoreCollision(own, c, false);
+                }
+                _lashIgnored.Clear();
+                _lashedTo = other;
+            }
+            if (other == null) return;
+            foreach (var c in other.GetComponentsInChildren<Collider>(true))
+            {
+                if (c == null || _mine.Contains(c) || _lashIgnored.Contains(c)) continue;
+                foreach (var own in _mine) if (own != null) Physics.IgnoreCollision(own, c, true);
+                _lashIgnored.Add(c);
+            }
         }
 
         /// <summary>Where the plank is, this far out from the hinge, at this angle.</summary>
@@ -1659,15 +1866,17 @@ namespace SailTrim
                 if (down)
                 {
                     EnsureDeck();
-                    if (FindRest(out float a0, out float g0, out float d0))
+                    if (FindRest(out float a0, out float g0, out float d0, out Ship _))
                     {
                         PushProbe(g0, true);
                         _restDist = d0;
                         _restAngle = a0;
                     }
                     else { _restDist = 0f; _restAngle = Plugin.GangwayMaxAngle.Value; }
+                    _lashIgnoreAt = 0f;
                 }
             }
+            UpdateLashIgnore(down);
 
             // Down, the plank follows whatever it rests on: the boat still lifts and rolls on the swell even
             // held at its spot, and a gangway that did not ride with it would hang in the air or sink into the dock.
@@ -1676,7 +1885,7 @@ namespace SailTrim
                 if (Time.time >= _nextProbe)
                 {
                     _nextProbe = Time.time + 0.08f;
-                    if (FindRest(out float _, out float g, out float d))
+                    if (FindRest(out float _, out float g, out float d, out Ship _))
                     {
                         PushProbe(g, false);
                         _restDist = d;

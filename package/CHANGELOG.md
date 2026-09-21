@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.0
+
+- A gangway can come down on another boat. If the plank reaches a deck rather than the shore, it lands on it, and the two boats are then lashed alongside: both hold where they lie and both stop, exactly as a gangway onto a dock holds the one boat. Walk across, load the other hold, raft up for the night. Taking the helm of either boat raises the plank and frees them both. `GangwayLashShips` turns it off.
+
 ## 1.8.0
 
 - **The Gangway.** A plank hinged at the rail that you walk over between the deck and the dock, so a load of metal no longer has to be climbed over the side, encumbered you cannot jump at all, which is the whole reason it exists. Craft one at the workbench (10 fine wood, 4 iron nails), so it arrives about when the longship does, and fit it to the brackets on the rail of any hull but the raft, one to a side; it stays with the boat. It is three boards hinged end to end, planked in the hull's own timber and strapped with iron beams: stowed they fold back on one another and stand lashed against the rail, and lowering unfolds them, swings the plank out over the side and sets it down on whatever is under it, dock, shore, log, or a beam halfway out, and keeps it there as the boat works in the swell. An inboard ramp swings down off the rail with it so you can walk up from the deck, and folds away inside the planking when it is not wanted, taking no deck at all.

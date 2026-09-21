@@ -159,12 +159,14 @@ namespace SailTrim
             var st = SailTrimShip.Get(ship);
             if (st == null) return true;
 
-            // Tied to a cleat, or a gangway still down: taking the helm casts off / raises it after a moment.
+            // Tied to a cleat, or a gangway still down, or another boat's gangway across this one: taking the
+            // helm casts off, or asks for the plank to come up, after a moment.
             // Until then the rudder turns and nothing else.
-            if (Mooring.IsMoored(ship) || Gangway.AnyDown(ship))
+            if (Mooring.IsMoored(ship) || Gangway.AnyDown(ship) || Gangway.LashedAlongside(ship))
             {
                 if (Mooring.IsMoored(ship)) Mooring.PilotAtHelm(ship, Time.fixedDeltaTime);
                 Gangway.PilotAtHelm(ship, Time.fixedDeltaTime);
+                Gangway.LashedAtHelm(ship, Time.fixedDeltaTime);
                 if (!Plugin.ManualTrim.Value)
                 {
                     ship.ApplyControlls(new Vector3(moveDir.x, 0f, 0f));

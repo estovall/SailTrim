@@ -167,6 +167,15 @@ ties that cleat on as well, so one press does the dock. You work it from on boar
 after two seconds (`GangwayRetractDelay`). `GangwayEnabled`, `GangwayLength`, `GangwayMaxAngle`,
 `GangwaySwingTime`, `GangwayTiesCleat` and its costs are in the config.
 
+### Lashing alongside (1.9.0)
+
+Bring a boat up beside another and lower the gangway onto its deck. Nothing declares that you meant to: if the
+plank reaches, it lands, the same as it lands on a dock. When it lands on a deck the two boats are lashed
+alongside and both hold where they lie, so the plank stays put between them and you can walk across, shift
+cargo, or raft up for the night. Taking the helm of either boat raises the plank after the usual couple of
+seconds and frees them both, so nobody is ever held alongside by someone else's gangway with no way out.
+`GangwayLashShips` turns it off.
+
 ## The cleat (1.6.0)
 
 Build a **Cleat** from the hammer's Misc tab (one bronze): a bronze horn cleat that sits on top of planks or a

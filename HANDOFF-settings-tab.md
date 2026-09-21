@@ -1,6 +1,36 @@
 # SailTrim pick-up notes
 
-## Status, 2026-09-21: 1.8.0 is released
+## Status, 2026-09-21: 1.9.0 is built, installed and unpublished
+
+**Lashing alongside** is the one change in 1.9.0. A gangway lowered onto another boat's deck now lands on it and
+the two boats are lashed: both hold where they lie and both stop, as a gangway onto a dock stops the one boat.
+Taking the helm of either raises the plank and frees them both. `GangwayLashShips` (default true) turns it off.
+Built, packaged at `releases/SailTrim-1.9.0.zip` and copied into Max's Flotilla profile. **Not published to
+Hexium and not play-tested**: it waits on Max sailing two boats together, exactly as 1.7.0's crew weight waits
+on a crew.
+
+How it is put together, because none of it is obvious from one file:
+
+- Landing was already possible. `GangwayMount.AngleOnto` discards the plank's own boat and accepts anything else
+  as ground, so another hull always answered the probe; what was missing was any notion of whose deck it was.
+  It now carries the `Ship` the winning hit belongs to out through `FindRest` to `Lower`.
+- The record lives on both boats' ZDOs: `SailTrim_LashPort` / `SailTrim_LashStbd` on the boat the plank belongs
+  to, `SailTrim_LashedBy` on the boat underneath. **Neither side trusts its own copy.** `Gangway.LashedFrom`
+  reads the other boat's record before it holds, so a plank that has come up releases the boat underneath even
+  if the message never arrived, and a world reload leaves the raft made. The same half-minute grace as the
+  cleat covers "that boat's data is not loaded yet", which is not the same thing as "that boat is gone".
+- Holding is the mooring's, not a new one: `Mooring.FixedStep` treats "a plank is across me" exactly as it
+  treats "my own gangway is down", through `Gangway.LashedAlongside`.
+- **The plank must not lean on the other boat.** Ours is a kinematic body, and a kinematic body overlapping a
+  floating one shoves it with everything it has: the same thing that put every hull on its beam ends until the
+  boat's own colliders were struck out in `IgnoreShip`. `UpdateLashIgnore` strikes out the pairs with the boat
+  it is lying on while it is down, and puts them back when it comes up, or the two hulls would pass through
+  each other afterwards.
+- The `SailTrim_Gangway` RPC now carries the target: `Register<int, int, ZDOID>`. **ZDO keys for ZDOIDs are
+  strings in this build**, not stable hashes: `zdo.Set(int, ZDOID)` does not exist and the compiler's complaint
+  about int-to-string is what that looks like.
+
+## Previously, 2026-09-21: 1.8.0 is released
 
 **The Gangway** is finished, merged and published. `main` is the released 1.8.0, tagged `v1.8.0`; the `gangway`
 branch is merged and kept. Hexium: `Max/SailTrim 1.8.0` (package 1207). Sailing physics is unchanged from 1.7.1,
@@ -13,8 +43,11 @@ already been written down somewhere and no longer followed the code.
 
 ### Still open
 
-- **The dedicated server is on 1.6.2** and will now be refused by 1.8.0 clients (the version check wants an exact
-  match). `releases/SailTrim-1.6.2.zip` is committed; a 1.8.0 build wants putting on it.
+- **The dedicated server is on 1.6.2** and will now be refused by 1.9.0 clients (the version check wants an exact
+  match). `releases/SailTrim-1.9.0.zip` is committed ready for it; 1.6.2 and 1.8.0 are there too.
+- **Lashing alongside is untested in game.** Two things to watch when it is: whether the two hulls fend each
+  other off while both are held, and whether the plank keeps its footing on a deck that is itself rising on the
+  swell (the probe median smooths the ground, which was written for ground that holds still).
 - **Crew weight (1.7.0) has never been tested with a real crew.** It shipped inside 1.8.0 because 1.7.0 and
   1.7.1 were never published separately. Nothing in it should touch solo play.
 - `SurveyKey` ships unbound, but Max's own config still holds `F10` from when that was the default. That is

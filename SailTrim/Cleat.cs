@@ -747,9 +747,10 @@ namespace SailTrim
             var nv = ship.m_nview;
             var zdo = nv.GetZDO();
             ZDOID cleat = zdo.GetZDOID(CleatKey);
-            // A gangway down holds the boat too, so it cannot be shoved out from under someone walking across.
-            // That is all it does: a gangway is not a mooring and does not mend the hull.
-            bool byGangway = Gangway.AnyDown(ship);
+            // A gangway down holds the boat too, so it cannot be shoved out from under someone walking across,
+            // and so does another boat's gangway lying across this one: the plank holds both ends of the raft or
+            // it holds neither. That is all either does: a gangway is not a mooring and does not mend the hull.
+            bool byGangway = Gangway.AnyDown(ship) || Gangway.LashedAlongside(ship);
             bool byCleat = !cleat.IsNone();
             if (!byCleat && !byGangway) return;
             if (byCleat && (!_checkAt.TryGetValue(ship, out float at) || Time.time > at))
