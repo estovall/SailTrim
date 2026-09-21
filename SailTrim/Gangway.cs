@@ -245,6 +245,88 @@ namespace SailTrim
 
         internal static Material WoodMaterialPublic() => WoodMaterial();
 
+        // Per hull: a Drakkar's timber is not a Karve's.
+        private static readonly Dictionary<string, Material> _shipTimber = new Dictionary<string, Material>();
+        private static bool _loggedProps;
+
+        /// <summary>
+        /// The boat's own timber, not a building's. A building piece's material varies itself by where it stands,
+        /// so that two walls side by side do not look stamped from one mould; that variation is a function of
+        /// world position, which is a constant for a house and a different number every frame for a boat. The
+        /// gangway wore a wall's material and re-rolled its shading each frame as the hull moved under it. A
+        /// ship's material cannot do that, because ships move, so we take the one the hull itself wears.
+        /// </summary>
+        internal static Material ShipTimber(Ship ship)
+        {
+            if (ship == null) return null;
+            string key = ship.name ?? "";
+            if (_shipTimber.TryGetValue(key, out var had) && had != null) return had;
+            Material best = null;
+            foreach (var r in ship.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                var m = r.sharedMaterial;
+                if (m == null || m.shader == null) continue;
+                string n = m.name.ToLowerInvariant();
+                if (n.Contains("worn") || n.Contains("broken") || n.Contains("watermask") || n.Contains("default-material")) continue;
+                if (n.Contains("wood")) { best = m; break; }
+                if (best == null && n.Contains("ship")) best = m;
+            }
+            if (best == null) return null;
+            var made = new Material(best) { name = best.name + " (SailTrim gangway)" };
+            Tame(made);
+            _shipTimber[key] = made;
+            Plugin.Log.LogInfo($"SailTrim: {key} gangway timber from the hull's own {best.name} ({best.shader.name})");
+            return made;
+        }
+
+        /// <summary>
+        /// Turn off any world-position variation the shader offers, and say in the log what it offered, so the
+        /// next thing to try is a name from a list rather than a guess.
+        /// </summary>
+        private static void Tame(Material m)
+        {
+            var sh = m.shader;
+            if (sh == null) return;
+            var names = new List<string>();
+            try
+            {
+                int n = sh.GetPropertyCount();
+                for (int i = 0; i < n; i++)
+                {
+                    string prop = sh.GetPropertyName(i);
+                    names.Add(prop);
+                    string low = prop.ToLowerInvariant();
+                    // A local-space triplanar is the same look without the dependence on where the thing is.
+                    if (low.Contains("triplanarlocal") || low.Contains("localpos"))
+                    {
+                        m.SetFloat(prop, 1f);
+                        Plugin.Log.LogInfo($"SailTrim: gangway timber {prop} set to local space");
+                    }
+                }
+            }
+            catch { }
+            if (!_loggedProps && names.Count > 0)
+            {
+                _loggedProps = true;
+                Plugin.Log.LogInfo("SailTrim: gangway shader " + sh.name + " properties: " + string.Join(", ", names.ToArray()));
+            }
+        }
+
+        /// <summary>Put the hull's timber on everything we built for it.</summary>
+        internal static void UseShipTimber(Transform root, Ship ship)
+        {
+            if (root == null || !Plugin.GangwayShipTimber.Value) return;
+            var mat = ShipTimber(ship);
+            if (mat == null) return;
+            foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                var arr = r.sharedMaterials;
+                if (arr == null) continue;
+                for (int i = 0; i < arr.Length; i++) arr[i] = mat;
+                r.sharedMaterials = arr;
+            }
+        }
+
         /// <summary>
         /// The walkway, laid from the game's own wooden floor pieces end to end with a beam down each edge, the way
         /// the buoy is put together from a barrel and a banner. Real parts rather than a mesh of our own: a game
@@ -563,6 +645,7 @@ namespace SailTrim
         private float _browDrop = 0.6f, _browLen = 1.1f;
         private readonly List<Collider> _mine = new List<Collider>();
         private GameObject _brackets;
+        private bool _timbered;
         private float _ignoreAt;
         private int _stowDir = 1;      // +1 lies forward along the rail, -1 aft
         private bool _stowChosen;
@@ -1206,6 +1289,11 @@ namespace SailTrim
             {
                 BuildSections();
                 if (_visual != null) _visual.SetActive(fitted);
+            }
+            if (_visual != null && !_timbered)
+            {
+                _timbered = true;
+                Gangway.UseShipTimber(_mount, _ship);
             }
             if (fitted && _visual != null && _box != null) ChooseStowSide();
             if (fitted != _wasFitted)

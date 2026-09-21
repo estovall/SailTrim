@@ -573,3 +573,22 @@ we matched, and it still flashes. Two differences were left, and both are now cl
 
 `hierarchy.txt` now also prints each renderer's **layer** and each body's **kinematic/interpolation**, so the
 next run shows whether the interpolation actually matches and whether our visuals are on the boat's mesh layer.
+
+## Gangway: the flashing was a building's material on a moving object
+
+Max worked this out: a building piece's material varies itself by **where it stands**, so that two walls side by
+side do not look stamped from one mould. That variation is a function of world position — a constant for a
+house, and a different number every frame for a boat. The gangway was built from copies of `wood_floor` and wore
+`woodwall`, a wall's material, so it re-rolled its own shading every frame as the hull moved under it.
+
+It explains everything the measurements had already ruled out: not geometry (`coincident pairs: 0`), not
+non-uniform scale (the boat's own planks have one and are steady), not shadow acne (it flashed with casting
+off), not probes or motion vectors (matched, still flashed). A material cannot be diffed against another
+material by looking at its name.
+
+`Gangway.ShipTimber(ship)` now takes the material the **hull itself** wears, per hull, and puts it on everything
+we build. A ship's material cannot depend on world position, because ships move. `Tame()` additionally switches
+any `triplanar local` style property it finds to local space and **logs the shader's full property list**, so if
+anything still varies there is a list of names to work from rather than a guess.
+
+`10. Gangway / GangwayShipTimber` turns it off, for comparison.
