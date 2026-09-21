@@ -137,7 +137,6 @@ namespace SailTrim
         internal static ConfigEntry<bool> GangwayTiesCleat;
         internal static ConfigEntry<int> GangwayFineWoodCost;
         internal static ConfigEntry<int> GangwayIronNailCost;
-        internal static ConfigEntry<bool> GangwayShipTimber;
         internal static ConfigEntry<bool> GangwayPlainTimber;
         internal static ConfigEntry<KeyCode> SurveyKey;
         internal static ConfigEntry<int> SurveyWidth;
@@ -524,8 +523,6 @@ namespace SailTrim
             GangwayIronNailCost = Config.Bind("10. Gangway", "GangwayIronNailCost", 4,
                 new ConfigDescription("Iron nails to craft one gangway. 0 for none.", new AcceptableValueRange<int>(0, 50)));
 
-            GangwayShipTimber = Config.Bind("10. Gangway", "GangwayShipTimber", false,
-                "Finish the gangway in the plain timber the hull wears instead of the iron-strapped darkwood it is built from. The ironwork suits what it costs to make, so this is off by default.");
             GangwayPlainTimber = Config.Bind("11. Development", "GangwayPlainTimber", false,
                 "Build the gangway from plain planks of our own rather than copies of the game's wooden floor. Slower to look at but it answers whether a rendering fault is in the copied model or in the game's shader.");
             SurveyKey = Config.Bind("11. Development", "SurveyKey", KeyCode.F10,

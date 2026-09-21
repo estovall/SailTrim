@@ -720,3 +720,25 @@ fresh timber, and against the finished gangway it only made it a colour nothing 
 
 The edge beams come down from 20 cm to 11. Letting them keep the source beam's full cross-section was right in
 principle and too much in fact: an edge on a walkway, not a balk of timber laid along it.
+
+## Gangway: a stale config value, not a bad material lookup
+
+`woodiron_beam` was found, the meshes were right, and the beams were still the wrong colour. The survey said why
+in one line:
+
+```
+edgeR/high  mesh=default_SailTrim/704  mat=ship_wood (SailTrim gangway)/Custom/Piece
+```
+
+The iron beam was wearing the *planking's* material. `SettleMaterials` had a `GangwayShipTimber` switch meaning
+"the hull's timber over the ironwork too", and the config file on disk still held `GangwayShipTimber = true`
+from when that was the default. **Changing a default in code does not change a value already written to a config
+file**, so every run since painted the ship timber straight over the ironwork.
+
+The switch is gone. The planking takes the hull's timber, the ironwork keeps its own, and there is no setting to
+go stale. A setting nobody needs is a setting that can only ever be wrong.
+
+Worth remembering when a fix "doesn't take": check `BepInEx\config\com.maxst.sailtrim.cfg` before re-reading the
+code. The survey's `mat=` field is what caught it.
+
+`coincident pairs` is back to **0** on all six mounts, so the measured leaf lift fixed the brow's leaves.

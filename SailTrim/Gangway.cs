@@ -344,13 +344,16 @@ namespace SailTrim
         internal static void SettleMaterials(Transform root, Ship ship)
         {
             if (root == null) return;
+            // The planking takes the hull's timber; the ironwork keeps its own. There used to be a switch to
+            // put the hull's timber over everything, and it painted out the iron beams the moment they started
+            // working -- not because the default was wrong but because a value already written to a config file
+            // does not change when the default does. A setting nobody needs is a setting that can only go stale.
             Material plain = ShipTimber(ship);
-            bool everything = Plugin.GangwayShipTimber.Value;   // the hull's timber over the ironwork too
             foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
             {
                 var arr = r.sharedMaterials;
                 if (arr == null) continue;
-                bool planking = everything || IsPlanking(r.transform);
+                bool planking = IsPlanking(r.transform);
                 bool changed = false;
                 for (int i = 0; i < arr.Length; i++)
                 {
