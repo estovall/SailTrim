@@ -840,6 +840,10 @@ namespace SailTrim
         private float _leafLo = -0.22f, _leafHi = 0.1f;
         private float LiftKerbs => Mathf.Max(0.05f, 2f * _leafHi + 0.02f);      // leaf one to leaf two
         private float LiftPlanks => Mathf.Max(0.05f, -2f * _leafLo + 0.02f);    // leaf two to leaf three
+        // The brow is built before the plank and is narrower, so it measures its own rather than borrowing the
+        // plank's. They come out the same today, which is exactly when a borrowed figure goes unnoticed.
+        private float _browHi = 0.1f;
+        private float BrowLift => Mathf.Max(0.05f, 2f * _browHi + 0.02f);
 
         /// <summary>How far the built thing reaches above and below its own origin.</summary>
         private static bool MeshSpan(Transform root, out float lo, out float hi)
@@ -1437,6 +1441,7 @@ namespace SailTrim
             _stepCol.size = new Vector3(_browLen, 0.1f, BrowWidth);
             _mine.Add(_stepCol);
 
+            if (MeshSpan(a.transform, out float _, out float bhi)) _browHi = bhi;
             _brow = a.transform;
             _browLeaf = bLeaf.transform;
             _step.SetActive(_wasFitted);
@@ -1461,7 +1466,7 @@ namespace SailTrim
             float folded = 1f - Mathf.Clamp01(down);
             if (_browLeaf != null)
             {
-                _browLeaf.localPosition = new Vector3(_browLen * 0.5f, LiftKerbs * folded, 0f);
+                _browLeaf.localPosition = new Vector3(_browLen * 0.5f, BrowLift * folded, 0f);
                 _browLeaf.localRotation = Quaternion.Euler(0f, 0f, folded * FoldAngle);
             }
             bool solid = down > 0.8f;
