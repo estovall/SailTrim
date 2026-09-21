@@ -1,5 +1,12 @@
 # Valheim Sail Trim mod: handoff brief
 
+> **Read `HANDOFF-settings-tab.md` first.** This file is the original brief from before anything was written and
+> is kept for the intent behind the sailing model. The handoff file carries the current state: what is released,
+> what is still open, how to build, deploy and publish from a fresh machine, and the reasoning behind the parts
+> that were hard. As of 2026-09-21 the released version is **1.8.0** and the mod has grown a cleat, a buoy and a
+> gangway on top of the sail trimming described below.
+
+
 Drop this file into the mod's project folder as `CLAUDE.md` (or paste it as the first prompt in Claude Code).
 
 ## Goal

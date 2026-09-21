@@ -1,3 +1,67 @@
+# SailTrim pick-up notes
+
+## Status, 2026-09-21: 1.8.0 is released
+
+**The Gangway** is finished, merged and published. `main` is the released 1.8.0, tagged `v1.8.0`; the `gangway`
+branch is merged and kept. Hexium: `Max/SailTrim 1.8.0` (package 1207). Sailing physics is unchanged from 1.7.1,
+`SailTrimShip.cs` byte-identical to the previous main.
+
+**Read the "Gangway" sections at the bottom of this file before touching that feature.** They are written as
+causes, not as a list of changes, because most of the time went into the same few mistakes wearing different
+hats: something of ours counted as part of the boat, a figure assumed instead of measured, or a value that had
+already been written down somewhere and no longer followed the code.
+
+### Still open
+
+- **The dedicated server is on 1.6.2** and will now be refused by 1.8.0 clients (the version check wants an exact
+  match). `releases/SailTrim-1.6.2.zip` is committed; a 1.8.0 build wants putting on it.
+- **Crew weight (1.7.0) has never been tested with a real crew.** It shipped inside 1.8.0 because 1.7.0 and
+  1.7.1 were never published separately. Nothing in it should touch solo play.
+- `SurveyKey` ships unbound, but Max's own config still holds `F10` from when that was the default. That is
+  deliberate for him and harmless; the point to remember is that **a default changed in code does not change a
+  value already written to a config file**. That cost two play-test rounds once already, when a switch left true
+  in the config painted the hull's timber over the gangway's ironwork.
+
+## Picking this up on another machine
+
+- Repo `C:\Users\maxst\dev\SailTrim`, game `C:\Program Files (x86)\Steam\steamapps\common\Valheim`.
+- Build: `dotnet build SailTrim/SailTrim.csproj -c Release`. Output lands at `SailTrim/bin/Release/SailTrim.dll`
+  with no target-framework subfolder. Deploy by copying it over `BepInEx\plugins\SailTrim.dll`; the game locks
+  that file while it is running.
+- **Check the build succeeded before copying.** Piping `dotnet build` through `tail` hides a failure's exit code,
+  and a stale DLL then gets deployed and play-tested as though it were the fix. That has happened here.
+- Publishing: `publish-mod.ps1 -Zip <absolute path> -Author Max -Categories vehicles,mechanics,user-interface`.
+  It wants `hexium-token.txt` beside it (gitignored): copy it from
+  `C:\Users\maxst\OneDrive\Documents\Hexium_API_Key.txt`, run, delete. Never print the key. The manifest
+  description has a hard **256 character** limit and a longer one is refused at submission.
+- Game APIs: decompile rather than remember, with
+  `ilspycmd -t <Type> "<Valheim>/valheim_Data/Managed/assembly_valheim.dll"`.
+- **Prefab names: read them out of the bundles, do not guess.** They are on disk:
+  `grep -ria -o "<stem>[a-z_0-9]*" valheim_Data/StreamingAssets/SoftRef/Bundles/ | sed 's/.*://' | sort -u`.
+  Two play-test rounds went on guessing at the Wood Iron Beam, which this answers in seconds. Note also that a
+  piece's build-menu label and its prefab name are different things: `piece_woodironbeam` is the label,
+  `woodiron_beam` is the prefab.
+
+### The survey tool (`SailTrim/Survey.cs`)
+
+Set `11. Development / SurveyKey` to a key and press it near some boats. It writes into
+`BepInEx\cache\SailTrim\survey\`:
+
+- `survey.txt` - per boat the float collider and hull bounds, and per mount the rail found, the deck drop and the
+  rest angle, plus a **section across the beam** (`profile`), and a **swing** table that walks the gangway
+  through its travel running `Physics.ComputePenetration` against the hull at each step.
+- `hierarchy.txt` - every transform of every boat and of our own rig, with mesh, vertex count, own size, scale,
+  material, shader, probe usage, motion vectors, shadows, layer and body/interpolation, then a **coincidence
+  report** naming any two of our own meshes that share a place.
+- Images of each boat from several angles, and a frame at each step of the swing.
+
+This is what makes the work possible without being at the keyboard, and it is worth extending rather than
+squinting at screenshots. Nearly every fix below came from a number in one of those two files. Some examples of
+what that looked like in practice: the same Karve reading its rail at 0.92 m on one side and 1.56 m on the other
+said the section was being cut in world space on a boat that is never level; `coincident pairs: 0` said the
+flicker was not geometry at all and saved days of moving things apart; `mat=ship_wood` on an iron beam said the
+material lookup was right and something downstream was painting over it.
+
 # Pick-up notes (history)
 
 **Status 2026-09-17 (later): everything below is released as 1.5.0** (Hexium `1.5.0.zip`, branch `spill-tack` merged into
