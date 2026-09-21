@@ -353,3 +353,26 @@ boards rather than one), which stows six metres as two. `Apply` now runs three m
 overlap: unfold (0 to 0.4 of the travel), swing out from along the rail (0.35 to 0.7), lower onto its rest (0.7 to
 1), over `GangwaySwingTime`, raised from 1.6 to 2.4 s to cover all three. The walkable collider only appears past
 0.6 of the travel, and stowed the collider is one section long and 0.5 m tall to match the folded stack.
+
+## Gangway: surveying the boats (F10)
+
+Placement has to be judged by eye, hull by hull, and I cannot see the screen. So the mod now photographs
+itself. `SailTrim/Survey.cs` binds **F10** (`11. Development / SurveyKey`, `SurveyWidth` 768): press it with
+boats about and every `Ship` within 80 m is rendered from four angles into
+`BepInEx\cache\SailTrim\survey\`, named `<Hull>_<state>_<view>.png` where state is bare / stowed / down and
+view is beam, quarter, astern, mount. Beside them `survey.txt` records, per boat, the float collider and hull
+bounds, and per mount the rail position the raycast actually found, the per-hull correction applied, the deck
+drop, the deploy fraction and the rest angle. A picture on its own says "that looks wrong"; the numbers say by
+how much.
+
+The camera is `Camera.CopyFrom` the game's own, so fog, layers and the rendering path match what the player
+sees; it is moved to frame the subject's renderer bounds from a direction in the ship's own frame and rendered
+once to a `RenderTexture`. Nothing runs unless the key is pressed.
+
+`Gangway.PlacementFor(Ship)` is the correction table: `Z` (how far aft of amidships, as a fraction of the half
+length), `Inset` (extra metres inboard of the measured rail edge) and `Rise` (extra metres above the rail top).
+It starts at the config default for every hull with the three hull branches empty, waiting for the pictures.
+The rail itself is still measured by ray — these are only the adjustments on top.
+
+**Before release, set `SurveyKey` back to `KeyCode.None`.** F10 is a convenience for this iteration, not
+something a published mod should be taking from players.

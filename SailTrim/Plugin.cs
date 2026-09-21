@@ -137,6 +137,8 @@ namespace SailTrim
         internal static ConfigEntry<bool> GangwayTiesCleat;
         internal static ConfigEntry<int> GangwayFineWoodCost;
         internal static ConfigEntry<int> GangwayIronNailCost;
+        internal static ConfigEntry<KeyCode> SurveyKey;
+        internal static ConfigEntry<int> SurveyWidth;
         internal static ConfigEntry<bool> BuoyLight;
         internal static ConfigEntry<bool> BuoyPins;
 
@@ -520,6 +522,12 @@ namespace SailTrim
             GangwayIronNailCost = Config.Bind("10. Gangway", "GangwayIronNailCost", 4,
                 new ConfigDescription("Iron nails to craft one gangway. 0 for none.", new AcceptableValueRange<int>(0, 50)));
 
+            SurveyKey = Config.Bind("11. Development", "SurveyKey", KeyCode.F10,
+                "Photographs every boat within 80 m from fixed angles into BepInEx/cache/SailTrim/survey, with a text file of what each gangway measured. For working on the mod; None to turn it off.");
+            SurveyWidth = Config.Bind("11. Development", "SurveyWidth", 768,
+                new ConfigDescription("Width of a survey picture, in pixels. Height is nine sixteenths of it.",
+                    new AcceptableValueRange<int>(256, 1920)));
+
             BuoyEnabled = Config.Bind("9. Buoy", "BuoyEnabled", true,
                 "Adds the Buoy build piece (hammer, Misc; 6 wood, 2 resin, no workbench). Placed on open water like a boat, it floats and holds its spot: channel markers, race marks.");
             BuoyLight = Config.Bind("9. Buoy", "BuoyLight", true, "The buoy's lantern burns at night.");
@@ -654,6 +662,7 @@ namespace SailTrim
         private void Update()
         {
             SailTrimNet.ClientUpdate();
+            Survey.Update();
             if (!Enabled.Value) { _wasPiloting = false; return; }
 
             var player = Player.m_localPlayer;

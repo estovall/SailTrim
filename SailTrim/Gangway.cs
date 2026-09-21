@@ -130,6 +130,28 @@ namespace SailTrim
             return n.IndexOf("raft", StringComparison.OrdinalIgnoreCase) < 0;
         }
 
+        /// <summary>
+        /// Where the hinge sits on a given hull. The rail itself is measured by ray, which gets the plank onto the
+        /// timber; these are the corrections on top of that, arrived at by looking at each boat, because the hulls
+        /// differ in where the mast, the shrouds and the benches leave room for a plank to lie.
+        /// </summary>
+        internal struct Placement
+        {
+            public float Z;       // fraction of the half length aft of the float collider's centre
+            public float Inset;   // extra metres inboard of the measured rail edge
+            public float Rise;    // extra metres above the measured rail top
+        }
+
+        internal static Placement PlacementFor(Ship ship)
+        {
+            var p = new Placement { Z = Plugin.GangwayMountZ.Value, Inset = 0f, Rise = 0f };
+            string n = (ship != null ? ship.name : "") ?? "";
+            if (n.IndexOf("Ashlands", StringComparison.OrdinalIgnoreCase) >= 0) { }      // Drakkar
+            else if (n.IndexOf("VikingShip", StringComparison.OrdinalIgnoreCase) >= 0) { } // Longship
+            else if (n.IndexOf("Karve", StringComparison.OrdinalIgnoreCase) >= 0) { }
+            return p;
+        }
+
         /// <summary>Ship.Awake: a mount at each rail, amidships. They show and hide themselves from the boat's state.</summary>
         internal static void OnShipAwake(Ship ship)
         {
@@ -141,7 +163,8 @@ namespace SailTrim
             float halfBeam = fc.size.x * 0.5f;
             float halfLen = fc.size.z * 0.5f;
             // Aft of amidships, to keep the plank clear of the mast and its shrouds.
-            float z = centre.z - halfLen * Plugin.GangwayMountZ.Value;
+            Placement place = PlacementFor(ship);
+            float z = centre.z - halfLen * place.Z;
 
             foreach (int side in Sides)
             {
@@ -154,7 +177,7 @@ namespace SailTrim
                 var plank = new GameObject("plank");
                 plank.transform.SetParent(go.transform, false);
                 var mount = plank.AddComponent<GangwayMount>();
-                mount.Init(ship, side, go.transform);
+                mount.Init(ship, side, go.transform, place);
             }
             Plugin.Log.LogInfo($"SailTrim: {ship.name} gangway mounts at +-{halfBeam:0.0} m, z {z:0.0}");
         }
@@ -412,14 +435,24 @@ namespace SailTrim
         private int _probeCount;
         private float _restVel;
         private bool _wasFitted, _wasDown;
+        private Gangway.Placement _place;
+        private Vector3 _railLocal;   // where the rail was found, before the per-hull correction
+
+        /// <summary>What this mount worked out for itself, for the survey notes.</summary>
+        internal string Describe()
+        {
+            return $"rail(measured) {_railLocal}, inset {_place.Inset:0.00}, rise {_place.Rise:0.00}, " +
+                   $"deckDrop {_deckDrop:0.00}, deploy {_deploy:0.00}, rest {_restAngle:0.0} deg, length {Length:0.0}";
+        }
 
         private float Length => Mathf.Max(1.5f, Plugin.GangwayLength.Value);
 
-        internal void Init(Ship ship, int side, Transform mount)
+        internal void Init(Ship ship, int side, Transform mount, Gangway.Placement place)
         {
             _ship = ship;
             _side = side;
             _mount = mount;
+            _place = place;
             transform.localPosition = Vector3.zero;
             _box = gameObject.AddComponent<BoxCollider>();
             _box.center = new Vector3(Length * 0.5f, -0.05f, 0f);
@@ -678,8 +711,10 @@ namespace SailTrim
             }
             if (!float.IsNaN(found))
             {
-                // A hand's breadth inboard of the edge, so the hinge sits on the rail rather than over the water.
-                _mount.localPosition = new Vector3(sign * (found - 0.12f), foundY + 0.05f, start.z);
+                // A hand's breadth inboard of the edge, so the hinge sits on the rail rather than over the water,
+                // plus whatever this hull needs on top of that.
+                _railLocal = new Vector3(sign * found, foundY, start.z);
+                _mount.localPosition = new Vector3(sign * (found - 0.12f - _place.Inset), foundY + 0.05f + _place.Rise, start.z);
                 Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} rail at x {sign * found:0.00}, y {foundY:0.00}, {_deckDrop:0.00} m above the deck (guess was {start.x:0.00}, {start.y:0.00})");
             }
             else Plugin.Log.LogWarning($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} found no rail, kept the guess {start.x:0.00}, {start.y:0.00}");
