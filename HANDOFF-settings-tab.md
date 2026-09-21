@@ -650,3 +650,18 @@ names are wrong. It logs what it picked.
 
 The brackets were the worst offender — a 2 m floor squashed to 0.22 x 0.12 x 0.14, which is a beam's ironwork
 smeared into a stripe. They are a chunky stub cut from the beam now, near its own cross-section.
+
+**Correction: darkwood was the wrong piece.** What was wanted is the **Wood Iron Beam** (`wood_ibeam`), and only
+on the edges. There are two sources now:
+
+- `TimberSource()` — `wood_floor`, the planking you walk on, finished afterwards in the hull's own timber, which
+  is the combination that looked right on the water.
+- `IronBeamSource()` — `wood_ibeam`, for the edge beams and the rail brackets, keeping its own material.
+
+`SettleMaterials` tells them apart by name (`IsPlanking`: anything under a `deck*` object), so the hull's timber
+goes on the planking and the beam keeps its ironwork. `GangwayShipTimber` now means "the hull's timber over the
+ironwork too".
+
+The edge beams keep the beam's **own cross-section**, shrunk uniformly if it is thicker than 20 cm, rather than
+being squashed to a fixed 10 cm kerb on two axes. Squashing one axis and not the other is what smears straps and
+rivets into stripes — the same mistake as the brackets, in a different place.

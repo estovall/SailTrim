@@ -327,6 +327,14 @@ namespace SailTrim
             }
         }
 
+        /// <summary>Planking is anything cut as a deck tile; the rest is ironwork and keeps its own finish.</summary>
+        private static bool IsPlanking(Transform t)
+        {
+            for (var p = t; p != null; p = p.parent)
+                if (p.name.StartsWith("deck", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
         /// <summary>
         /// Settle the materials on everything we built. Copies already carry our own instances, so telling them
         /// they are on a moving object is safe and is all most of them need. Only if the hull's plain timber is
@@ -335,15 +343,17 @@ namespace SailTrim
         internal static void SettleMaterials(Transform root, Ship ship)
         {
             if (root == null) return;
-            Material plain = Plugin.GangwayShipTimber.Value ? ShipTimber(ship) : null;
+            Material plain = ShipTimber(ship);
+            bool everything = Plugin.GangwayShipTimber.Value;   // the hull's timber over the ironwork too
             foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
             {
                 var arr = r.sharedMaterials;
                 if (arr == null) continue;
+                bool planking = everything || IsPlanking(r.transform);
                 bool changed = false;
                 for (int i = 0; i < arr.Length; i++)
                 {
-                    if (plain != null) { arr[i] = plain; changed = true; }
+                    if (planking && plain != null) { arr[i] = plain; changed = true; }
                     else if (arr[i] != null) Tame(arr[i]);
                 }
                 if (changed) r.sharedMaterials = arr;
@@ -366,8 +376,8 @@ namespace SailTrim
 
             bool built = false;
             string beamName = null;
-            // Iron-strapped timber: the gangway costs fine wood and iron nails, and ought to look like it. The
-            // plain wooden floor it used to be built from looked like a bit of somebody's house.
+            // The walking surface is plain planking, finished in the hull's own timber. The ironwork is the Wood
+            // Iron Beam, and it belongs on the edges, where a real gangway is strapped.
             var floorSrc = TimberSource(out string floorName);
             if (floorSrc != null)
             {
@@ -397,10 +407,10 @@ namespace SailTrim
                 }
                 else if (first != null) UnityEngine.Object.Destroy(first);
             }
-            var beamSrc = built ? Models.FindFirst(db, out beamName, "wood_beam", "wood_beam_1", "wood_pole") : null;
+            var beamSrc = built ? IronBeamSource(out beamName) : null;
             if (beamSrc != null)
             {
-                const float Kerb = 0.1f;   // a kerb down each edge, not a second plank
+                const float MaxEdge = 0.2f;   // as thick as the beam, up to a lip you can still step over
                 foreach (float sz in new[] { -1f, 1f })
                 {
                     var part = Models.CopyVisual(beamSrc, root.transform, sz < 0f ? "edgeL" : "edgeR", out var b, true);
@@ -412,8 +422,15 @@ namespace SailTrim
                     Vector3 sz3 = b.size;
                     int longAxis = (sz3.x >= sz3.y && sz3.x >= sz3.z) ? 0 : (sz3.y >= sz3.z ? 1 : 2);
                     if (sz3[longAxis] < 0.05f) continue;
-                    Vector3 scale = new Vector3(Kerb / Mathf.Max(0.01f, sz3.x), Kerb / Mathf.Max(0.01f, sz3.y), Kerb / Mathf.Max(0.01f, sz3.z));
+                    // Stretch it along the walkway, and take its cross-section down the same amount in both of
+                    // the other two. An iron beam squashed to a tenth of its depth on one axis and not the other
+                    // is an iron beam with its straps and rivets smeared into stripes.
+                    int a1 = (longAxis + 1) % 3, a2 = (longAxis + 2) % 3;
+                    float thick = Mathf.Max(sz3[a1], sz3[a2]);
+                    float shrink = thick > MaxEdge ? MaxEdge / thick : 1f;
+                    Vector3 scale = new Vector3(shrink, shrink, shrink);
                     scale[longAxis] = length / sz3[longAxis];
+                    float edge = thick * shrink;
                     Quaternion rot = longAxis == 0 ? Quaternion.identity
                                    : longAxis == 1 ? Quaternion.Euler(0f, 0f, -90f)   // +Y along the walkway
                                                    : Quaternion.Euler(0f, 90f, 0f);   // +Z along the walkway
@@ -425,7 +442,7 @@ namespace SailTrim
                     // deck's were the same plane for the whole two metres, and the renderer had no way to choose
                     // between them: that is the flicker down the length of the plank.
                     b = Models.ScaleInto(part, scale, b);
-                    Models.Place(part, b, anchor, new Vector3(0f, Kerb * 0.5f - 0.01f, sz * (width * 0.5f - Kerb)), Vector3.one, rot);
+                    Models.Place(part, b, anchor, new Vector3(0f, edge * 0.5f - 0.02f, sz * (width * 0.5f - edge * 0.5f)), Vector3.one, rot);
                 }
             }
             if (!built)
@@ -443,41 +460,58 @@ namespace SailTrim
 
         /// <summary>One tread of the steps, cut from the same floor piece the walkway is laid from.</summary>
         /// <summary>
-        /// The timber everything is cut from. A material is painted for the mesh it ships with -- the ironwork on
-        /// a darkwood beam is where it is because the beam's uvs put it there -- so the piece and its material
-        /// have to be taken together, and whatever is cut from it kept near its own proportions.
+        /// The planking. Plain boards, because that is what you walk on; the hull's own timber goes over them
+        /// afterwards, which is the finish that looked right on the water.
         /// </summary>
         internal static GameObject TimberSource(out string name)
         {
             name = "plain";
             if (Plugin.GangwayPlainTimber.Value) return null;
             var src = Models.FindFirst(ObjectDB.instance, out name,
-                "darkwood_beam", "darkwood_beam_26", "darkwood_beam_45", "darkwood_pole",
-                "wood_beam", "wood_floor", "wood_floor_1x1", "piece_woodfloor");
-            if (src == null)
-            {
-                // Anything the world calls darkwood will do; the names above are only the likely ones.
-                var scene = ZNetScene.instance;
-                if (scene != null && scene.m_prefabs != null)
-                    foreach (var p in scene.m_prefabs)
-                        if (p != null && p.name.StartsWith("darkwood", StringComparison.OrdinalIgnoreCase)
-                            && p.GetComponentInChildren<MeshRenderer>(true) != null)
-                        { name = p.name; return p; }
-            }
+                "wood_floor", "wood_floor_1x1", "piece_woodfloor");
             if (src != null && !_loggedTimber)
             {
                 _loggedTimber = true;
-                Plugin.Log.LogInfo("SailTrim: gangway cut from " + name);
+                Plugin.Log.LogInfo("SailTrim: gangway planking cut from " + name);
             }
             return src;
         }
 
-        private static bool _loggedTimber;
+        /// <summary>
+        /// The Wood Iron Beam, for the edges and the fittings. A material is painted for the mesh it ships with --
+        /// the straps and rivets are where they are because that beam's uvs put them there -- so the piece and its
+        /// material are taken together and kept near the beam's own cross-section.
+        /// </summary>
+        internal static GameObject IronBeamSource(out string name)
+        {
+            name = "plain";
+            if (Plugin.GangwayPlainTimber.Value) return null;
+            var src = Models.FindFirst(ObjectDB.instance, out name,
+                "wood_ibeam", "wood_ibeam_1", "iron_beam", "wood_beam", "wood_beam_1", "wood_pole");
+            if (src == null)
+            {
+                // Whatever the world calls it; the names above are only the likely ones.
+                var scene = ZNetScene.instance;
+                if (scene != null && scene.m_prefabs != null)
+                    foreach (var p in scene.m_prefabs)
+                        if (p != null && p.name.IndexOf("ibeam", StringComparison.OrdinalIgnoreCase) >= 0
+                            && p.GetComponentInChildren<MeshRenderer>(true) != null)
+                        { name = p.name; src = p; break; }
+            }
+            if (src != null && !_loggedBeam)
+            {
+                _loggedBeam = true;
+                Plugin.Log.LogInfo("SailTrim: gangway ironwork cut from " + name);
+            }
+            return src;
+        }
+
+        private static bool _loggedTimber, _loggedBeam;
 
         internal static GameObject BuildTread(Transform parent, string name, Vector3 size, Vector3 centre, int layer)
         {
             if (Models.Headless || parent == null) return null;
-            var src = TimberSource(out _);
+            var src = IronBeamSource(out _);
             if (src == null)
             {
                 var mat0 = WoodMaterial();
