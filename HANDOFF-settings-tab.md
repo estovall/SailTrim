@@ -685,3 +685,25 @@ The rope was sized from the leaf thickness — three leaves of 0.22 stacked by t
 edge beams sitting on top of them, so it ran straight through the ironwork. `BuildLashings` now waits until the
 bundle is genuinely folded (`_wasFitted && _deploy <= 0.001`) and measures it: every mesh under the visual, its
 eight corners into the plank's own space, encapsulated. The rope is then drawn round *that*, 7 cm proud of it.
+
+**Correction again: `woodiron_beam`.** `piece_woodironbeam` is the *localisation token* — what the build menu
+calls it — not the prefab name. Both sit side by side in the bundles and I asked `ZNetScene` for the wrong one,
+so it fell through to `wood_beam` a second time. Listing every `woodiron*` string in the bundles settles it:
+
+```
+grep -ria -o "woodiron[a-z_0-9]*" valheim_Data/StreamingAssets/SoftRef/Bundles/ | sed 's/.*://' | sort -u
+  woodiron_beam   woodiron_pole   woodironbeam   woodironbeam_26   woodironbeam_45
+```
+
+The sweep now also matches `woodiron`, and if it finds nothing it **logs every prefab with "iron" in its name**,
+so a wrong guess costs a line of log rather than a round of play-testing.
+
+## Gangway: the leaf lift has to be measured too
+
+`coincident pairs` went from 0 to **4** — the brow's two leaves, their edge beams touching. The fold lift was a
+fixed 0.17 m, which cleared a bare plank but not a plank with a thick beam down each edge, so folding one leaf
+onto the other put the two kerbs in the same place. `MeshHeight()` measures a built leaf and `_leafLift` is set
+from it, so the fold clears whatever the leaf actually turned out to be. The stowed collider follows the same
+number.
+
+A constant that encodes the size of something else is a constant that goes wrong the moment that thing changes.

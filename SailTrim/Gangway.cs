@@ -486,11 +486,12 @@ namespace SailTrim
         {
             name = "plain";
             if (Plugin.GangwayPlainTimber.Value) return null;
-            // piece_woodironbeam, as the game's own bundles spell it. The first guesses at the name were wrong and
-            // the list ended in wood_beam, so the search found plain timber and never reached the sweep that would
-            // have found the right thing: a fallback listed beside what it is a fallback for is not a fallback.
+            // woodiron_beam. piece_woodironbeam is the localisation token -- what the build menu calls it --
+            // and not what the prefab is called; both appear in the bundles side by side and the first is the
+            // wrong one to ask ZNetScene for.
             var src = Models.FindFirst(ObjectDB.instance, out name,
-                "piece_woodironbeam", "piece_woodironbeam_26", "piece_woodironbeam_45", "wood_ibeam", "iron_beam");
+                "woodiron_beam", "woodiron_beam_26", "woodiron_beam_45", "woodiron_pole",
+                "piece_woodironbeam", "wood_ibeam", "iron_beam");
             if (src == null)
             {
                 var scene = ZNetScene.instance;
@@ -498,11 +499,23 @@ namespace SailTrim
                     foreach (var p in scene.m_prefabs)
                     {
                         if (p == null || p.GetComponentInChildren<MeshRenderer>(true) == null) continue;
-                        string pn = p.name;
-                        if (pn.IndexOf("ironbeam", StringComparison.OrdinalIgnoreCase) < 0
-                            && pn.IndexOf("ibeam", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                        name = pn; src = p; break;
+                        string pn = (p.name ?? "").ToLowerInvariant();
+                        if (pn.IndexOf("woodiron", StringComparison.Ordinal) < 0
+                            && pn.IndexOf("ironbeam", StringComparison.Ordinal) < 0
+                            && pn.IndexOf("iron_beam", StringComparison.Ordinal) < 0
+                            && pn.IndexOf("ibeam", StringComparison.Ordinal) < 0) continue;
+                        name = p.name; src = p; break;
                     }
+                // Whatever happens, say what there was to choose from, so a wrong name is a one-line fix and not
+                // another round of looking at it.
+                if (src == null && scene != null && scene.m_prefabs != null)
+                {
+                    var seen = new List<string>();
+                    foreach (var p in scene.m_prefabs)
+                        if (p != null && p.name.IndexOf("iron", StringComparison.OrdinalIgnoreCase) >= 0 && seen.Count < 40)
+                            seen.Add(p.name);
+                    Plugin.Log.LogWarning("SailTrim: no iron beam found. Prefabs with 'iron' in the name: " + string.Join(", ", seen.ToArray()));
+                }
             }
             if (src == null) src = Models.FindFirst(ObjectDB.instance, out name, "wood_beam", "wood_beam_1", "wood_pole");
             if (src != null && !_loggedBeam)
@@ -756,6 +769,30 @@ namespace SailTrim
         private GameObject _brackets;
         private bool _timbered;
         private GameObject _lashing;
+        // How far each folded leaf must stand clear of the one below it, measured off a leaf once it is built.
+        // A fixed figure was right until the edge beams got thicker, and then the leaves folded into each other.
+        private float _leafLift = LeafLift;
+
+        /// <summary>How tall the built thing is, in its own space.</summary>
+        private static float MeshHeight(Transform root)
+        {
+            bool any = false;
+            Bounds bb = new Bounds();
+            foreach (var mf in root.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var m = mf.sharedMesh;
+                if (m == null) continue;
+                Bounds lb = m.bounds;
+                for (int c = 0; c < 8; c++)
+                {
+                    Vector3 corner = lb.center + Vector3.Scale(lb.extents,
+                        new Vector3((c & 1) == 0 ? -1 : 1, (c & 2) == 0 ? -1 : 1, (c & 4) == 0 ? -1 : 1));
+                    Vector3 pt = root.InverseTransformPoint(mf.transform.TransformPoint(corner));
+                    if (!any) { bb = new Bounds(pt, Vector3.zero); any = true; } else bb.Encapsulate(pt);
+                }
+            }
+            return any ? bb.size.y : 0f;
+        }
         private float _ignoreAt;
         private int _stowDir = 1;      // +1 lies forward along the rail, -1 aft
         private bool _stowChosen;
@@ -863,8 +900,8 @@ namespace SailTrim
                     _box.size = new Vector3(Length, 0.12f, 0.84f);
                     break;
                 case 1: // folded and stowed: one section long, three leaves thick
-                    _box.center = new Vector3(Length / 6f, LeafLift, 0f);
-                    _box.size = new Vector3(Length / 3f, LeafLift * 2f + 0.16f, 0.84f);
+                    _box.center = new Vector3(Length / 6f, _leafLift, 0f);
+                    _box.size = new Vector3(Length / 3f, _leafLift * 2f + 0.16f, 0.84f);
                     break;
                 default: // a bare rail: a small post standing above it, clear of the hull
                     _box.center = new Vector3(0.05f, 0.3f, 0f);
@@ -926,7 +963,7 @@ namespace SailTrim
             // Folded, each leaf stands clear of the one under it. Folded flat about a shared hinge they were three
             // slabs in one plane, and the renderer had to choose between them every pixel: they crawled with z-fighting.
             float folded = 1f - unfold;
-            float lift = LeafLift * folded;
+            float lift = _leafLift * folded;
             float fold = folded * FoldAngle;
             float seg = Length / 3f;
             if (_seg2 != null) { _seg2.localPosition = new Vector3(seg, lift, 0f); _seg2.localRotation = Quaternion.Euler(0f, 0f, fold); }
@@ -985,6 +1022,7 @@ namespace SailTrim
                 var v = sec.transform.Find("visual");
                 if (v != null) v.localPosition = new Vector3(Joint, 0f, 0f);
             }
+            _leafLift = Mathf.Max(LeafLift, MeshHeight(s1.transform) + 0.03f);
             _visual = s1; _seg2 = s2.transform; _seg3 = s3.transform;
         }
 
@@ -1330,7 +1368,7 @@ namespace SailTrim
             float folded = 1f - Mathf.Clamp01(down);
             if (_browLeaf != null)
             {
-                _browLeaf.localPosition = new Vector3(_browLen * 0.5f, LeafLift * folded, 0f);
+                _browLeaf.localPosition = new Vector3(_browLen * 0.5f, _leafLift * folded, 0f);
                 _browLeaf.localRotation = Quaternion.Euler(0f, 0f, folded * FoldAngle);
             }
             bool solid = down > 0.8f;
