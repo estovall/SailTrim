@@ -707,3 +707,16 @@ from it, so the fold clears whatever the leaf actually turned out to be. The sto
 number.
 
 A constant that encodes the size of something else is a constant that goes wrong the moment that thing changes.
+
+## Gangway: a rope round a rectangle
+
+The lashing was an ellipse and the bundle is a rectangle, so it stood off the flats and cut through the corners
+— sunk into the timber at four places on every loop. It is a **superellipse** now (`|y|^4 + |z|^4 = 1`, which is
+one `sqrt` per axis), so it lies along the flats and turns the corners. 32 segments rather than 20, and the
+clearance drops from 7 cm to 5 because it no longer has to bridge the corner.
+
+The rope also went back to the world's own colour. Darkening it to 55% was a guess made to separate it from
+fresh timber, and against the finished gangway it only made it a colour nothing else in the game is.
+
+The edge beams come down from 20 cm to 11. Letting them keep the source beam's full cross-section was right in
+principle and too much in fact: an edge on a walkway, not a balk of timber laid along it.

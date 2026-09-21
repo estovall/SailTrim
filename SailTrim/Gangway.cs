@@ -410,7 +410,7 @@ namespace SailTrim
             var beamSrc = built ? IronBeamSource(out beamName) : null;
             if (beamSrc != null)
             {
-                const float MaxEdge = 0.2f;   // as thick as the beam, up to a lip you can still step over
+                const float MaxEdge = 0.11f;  // an edge on a walkway, not a balk of timber laid along it
                 foreach (float sz in new[] { -1f, 1f })
                 {
                     var part = Models.CopyVisual(beamSrc, root.transform, sz < 0f ? "edgeL" : "edgeR", out var b, true);
@@ -1407,30 +1407,34 @@ namespace SailTrim
             }
             if (!any) return;
 
-            float ry = bb.extents.y + 0.07f;
-            float rz = bb.extents.z + 0.07f;
+            float ry = bb.extents.y + 0.05f;
+            float rz = bb.extents.z + 0.05f;
             var mb = new Models.MeshBuilder();
             foreach (float t0 in new[] { 0.24f, 0.72f })
             {
                 float x0 = bb.min.x + bb.size.x * t0;
                 var path = new List<Vector3>();
-                for (int i = 0; i <= 20; i++)
+                for (int i = 0; i <= 32; i++)
                 {
-                    float a = Mathf.Lerp(-Mathf.PI, Mathf.PI, i / 20f);
-                    path.Add(new Vector3(x0, bb.center.y + Mathf.Cos(a) * ry, bb.center.z + Mathf.Sin(a) * rz));
+                    // A rounded rectangle, because the bundle is a rectangle. An ellipse round it stands off the
+                    // flats and cuts the corners, which is a rope sunk into the timber at four places.
+                    float a = Mathf.Lerp(-Mathf.PI, Mathf.PI, i / 32f);
+                    float c = Mathf.Cos(a), sn = Mathf.Sin(a);
+                    float y = Mathf.Sign(c) * Mathf.Sqrt(Mathf.Abs(c)) * ry;
+                    float z = Mathf.Sign(sn) * Mathf.Sqrt(Mathf.Abs(sn)) * rz;
+                    path.Add(new Vector3(x0, bb.center.y + y, bb.center.z + z));
                 }
-                mb.Sweep(path, 0.05f, 8);
+                mb.Sweep(path, 0.045f, 8);
             }
             _lashing = Models.MeshPart(transform, "lashing", mb.Build("SailTrim_GangwayLashing"), mat);
             if (_lashing != null)
             {
-                // Its own instance, darkened a shade: hemp against fresh timber is nearly the same colour, and
-                // the same colour at the same depth is no lashing at all.
+                // The world's own rope, told it is on a moving object and otherwise left alone. Darkening it by
+                // a guessed fraction only made it a colour nothing else in the game is.
                 var r = _lashing.GetComponent<MeshRenderer>();
                 if (r != null && r.sharedMaterial != null)
                 {
                     var mine = new Material(r.sharedMaterial) { name = r.sharedMaterial.name + " (SailTrim lashing)" };
-                    if (mine.HasProperty("_Color")) mine.SetColor("_Color", mine.GetColor("_Color") * 0.55f);
                     Gangway.TameMaterial(mine);
                     r.sharedMaterial = mine;
                 }
