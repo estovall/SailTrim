@@ -304,3 +304,21 @@ stem. Note the plank mesh is built once from `GangwayLength` at load, so changin
    its ray meets and stops, so the hull's own collider always won and the mount was never hoverable. The unfitted
    mount is now a small post standing proud of the rail; stowed it covers the inboard 1.5 m of the plank;
    deployed it is the full walkable plank (`SetCollider(0|1|2)` / `RefreshCollider`).
+
+**Second in-game try (Max): it deploys and you can stand on it, but four faults.**
+1. *Black plank.* The procedural `Models.Standard` material rendered black on the ship (it was fine in the icon).
+   Not chased: the plank now wears the game's own material off the FineWood item, which is lit like everything
+   else and is the light timber it should be. The procedural one is only a fallback. Logged on first use.
+2. *Mount hung in the air beside the boat.* It was placed at the float collider's half-beam, and that box is
+   wider than the deck. `EnsureDeck` now feels inward from outside the hull in 8 cm steps and takes the first
+   place a downward ray lands on the boat as the rail edge, then sits a hand's breadth inboard of it.
+3. *It rested on the sea.* The water layers are out of the `FindRest` mask now, so a gangway with nothing solid
+   under it refuses to go down, which is right.
+4. *You had to climb the rail to get on it*, which is the one thing a loaded player cannot do, so the feature did
+   nothing. `EnsureStep` builds a ramp from the deck up to the hinge, its height measured per hull (probes inboard
+   and takes the lowest top surface, so a bench does not fool it), its slope kept walkable (run >= 2.2x the rise).
+`GangwayMountZ` was added so placement along the hull can be tuned without a rebuild; the log now prints the rail
+x, y and the deck drop for every mount on every hull.
+
+**Still to do:** Max suggested the plank fold into three for stowing, which would also stop six metres of timber
+lying the length of the rail. Left until placement is settled, since folding only changes the stowed look.

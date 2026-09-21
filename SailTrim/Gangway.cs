@@ -142,7 +142,7 @@ namespace SailTrim
             float halfBeam = fc.size.x * 0.5f;
             float halfLen = fc.size.z * 0.5f;
             // Aft of amidships, to keep the plank clear of the mast and its shrouds.
-            float z = centre.z - halfLen * 0.2f;
+            float z = centre.z - halfLen * Plugin.GangwayMountZ.Value;
 
             foreach (int side in Sides)
             {
@@ -180,16 +180,38 @@ namespace SailTrim
             return _plankMesh;
         }
 
+        /// <summary>
+        /// The plank wears the game's own fine wood, taken off the item it is built from. A material of the
+        /// game's is lit the way everything else is, and it is the light timber a gangway should be; a material
+        /// we build ourselves has to guess at the shader variants this build actually ships.
+        /// </summary>
         private static Material WoodMaterial()
         {
             if (_woodMat != null) return _woodMat;
+            var db = ObjectDB.instance;
+            if (db != null)
+            {
+                foreach (var name in new[] { "FineWood", "RoundLog", "Wood" })
+                {
+                    var p = db.GetItemPrefab(name);
+                    if (p == null) continue;
+                    foreach (var r in p.GetComponentsInChildren<MeshRenderer>(true))
+                        if (r.sharedMaterial != null && r.sharedMaterial.shader != null)
+                        {
+                            _woodMat = r.sharedMaterial;
+                            Plugin.Log.LogInfo($"SailTrim: gangway timber from {name} ({_woodMat.name}, {_woodMat.shader.name})");
+                            return _woodMat;
+                        }
+                }
+            }
             if (Models.StandardTemplate == null) return null;
-            var tex = Models.NoiseTexture(new Color(0.42f, 0.30f, 0.18f), 0.10f, 4711, 0.35f);
-            _woodMat = Models.Standard(tex, 0f, 0.12f);
+            _woodMat = Models.Standard(Models.NoiseTexture(new Color(0.78f, 0.62f, 0.40f), 0.18f, 4711, 0.5f), 0f, 0.1f);
             return _woodMat;
         }
 
         /// <summary>Hangs the plank model on a mount (needs a world's ObjectDB for the material).</summary>
+        internal static Material WoodMaterialPublic() => WoodMaterial();
+
         internal static GameObject BuildVisual(Transform parent)
         {
             if (Models.Headless || parent == null) return null;
@@ -341,6 +363,8 @@ namespace SailTrim
         private float _deploy;
         private bool _walkable;
         private bool _deckFound;
+        private float _deckDrop = 0.6f;   // rail top above the deck at this mount, measured per hull
+        private GameObject _step;
         private float _nextProbe;
         private bool _wasFitted, _wasDown;
 
@@ -511,24 +535,55 @@ namespace SailTrim
         {
             if (_deckFound || _ship == null || _mount == null) return;
             _deckFound = true;
-            float ceiling = _mount.position.y + 1.6f;
-            Vector3 from = _mount.position + Vector3.up * 2f;
-            var hits = Physics.RaycastAll(from, Vector3.down, 4f, ~0, QueryTriggerInteraction.Ignore);
-            float best = float.NegativeInfinity;
-            foreach (var h in hits)
+            Vector3 start = _mount.localPosition;
+            float sign = Mathf.Sign(start.x == 0f ? _side : start.x);
+            float found = float.NaN, foundY = 0f;
+            // Feel inward from outside the boat: the first place a ray down lands on the boat is the rail edge.
+            // The float collider the mount was guessed from is a box round the hull and wider than the deck, which
+            // is why an unfitted mount hung in the air beside the boat.
+            for (float ax = Mathf.Abs(start.x) + 1f; ax > 0.4f; ax -= 0.08f)
             {
-                if (h.collider == _box || !h.collider.transform.IsChildOf(_ship.transform)) continue;
-                // Anything well above the rail is the rig, not the deck.
-                if (h.point.y > ceiling) continue;
-                if (h.point.y > best) best = h.point.y;
+                Vector3 from = _ship.transform.TransformPoint(new Vector3(sign * ax, start.y + 2f, start.z));
+                var hits = Physics.RaycastAll(from, Vector3.down, 4.5f, ~0, QueryTriggerInteraction.Ignore);
+                float top = float.NegativeInfinity;
+                foreach (var h in hits)
+                {
+                    if (h.collider == _box || !h.collider.transform.IsChildOf(_ship.transform)) continue;
+                    if (h.point.y > top) top = h.point.y;
+                }
+                if (top > float.NegativeInfinity)
+                {
+                    found = ax;
+                    foundY = _ship.transform.InverseTransformPoint(new Vector3(from.x, top, from.z)).y;
+                    break;
+                }
             }
-            float before = _mount.localPosition.y;
-            if (best > float.NegativeInfinity)
+            // How far the rail stands above the deck here: probe inboard and take the lowest top surface we find,
+            // which is the deck rather than a bench or a chest standing on it.
+            if (!float.IsNaN(found))
             {
-                Vector3 p = _mount.position; p.y = best + 0.05f;
-                _mount.position = p;
+                float deck = float.PositiveInfinity;
+                foreach (float f in new[] { 0.75f, 0.55f, 0.35f })
+                {
+                    Vector3 from = _ship.transform.TransformPoint(new Vector3(sign * found * f, start.y + 2f, start.z));
+                    var hits = Physics.RaycastAll(from, Vector3.down, 4.5f, ~0, QueryTriggerInteraction.Ignore);
+                    float top = float.NegativeInfinity;
+                    foreach (var h in hits)
+                    {
+                        if (h.collider == _box || !h.collider.transform.IsChildOf(_ship.transform)) continue;
+                        if (h.point.y > top) top = h.point.y;
+                    }
+                    if (top > float.NegativeInfinity) deck = Mathf.Min(deck, _ship.transform.InverseTransformPoint(new Vector3(from.x, top, from.z)).y);
+                }
+                if (!float.IsInfinity(deck)) _deckDrop = Mathf.Clamp(foundY - deck, 0.15f, 1.6f);
             }
-            Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} rail y {before:0.00} -> {_mount.localPosition.y:0.00}" + (best > float.NegativeInfinity ? "" : " (nothing found, kept the guess)"));
+            if (!float.IsNaN(found))
+            {
+                // A hand's breadth inboard of the edge, so the hinge sits on the rail rather than over the water.
+                _mount.localPosition = new Vector3(sign * (found - 0.12f), foundY + 0.05f, start.z);
+                Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} rail at x {sign * found:0.00}, y {foundY:0.00}, {_deckDrop:0.00} m above the deck (guess was {start.x:0.00}, {start.y:0.00})");
+            }
+            else Plugin.Log.LogWarning($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} found no rail, kept the guess {start.x:0.00}, {start.y:0.00}");
         }
 
         /// <summary>
@@ -540,7 +595,9 @@ namespace SailTrim
         {
             angle = 0f;
             float max = Mathf.Max(5f, Plugin.GangwayMaxAngle.Value);
-            int mask = ~LayerMask.GetMask("character", "character_net", "character_ghost", "character_trigger", "viewblock");
+            // Not the sea, and not people: a gangway rests on something solid, or it does not go down at all.
+            int mask = ~LayerMask.GetMask("Water", "WaterVolume", "water", "character", "character_net",
+                                          "character_ghost", "character_trigger", "viewblock", "weapon", "smoke");
             for (float a = -20f; a <= max + 0.01f; a += 1.5f)
             {
                 Vector3 tip = TipAt(a);
@@ -554,12 +611,54 @@ namespace SailTrim
             return false;
         }
 
+        /// <summary>
+        /// A ramp from the deck up to the hinge. Without it the gangway starts at the top of the rail, which you
+        /// would have to climb to reach, and climbing is the one thing a loaded player cannot do. It is a child of
+        /// the mount, not of the plank, so it stays put while the plank swings.
+        /// </summary>
+        private void EnsureStep()
+        {
+            if (_step != null || _mount == null || !_deckFound) return;
+            float drop = _deckDrop;
+            float run = Mathf.Max(0.9f, drop * 2.2f);   // a slope you can walk up with a full load
+            float len = Mathf.Sqrt(run * run + drop * drop);
+            float pitch = Mathf.Atan2(drop, run) * Mathf.Rad2Deg;
+
+            _step = new GameObject("step");
+            _step.transform.SetParent(_mount, false);
+            _step.layer = gameObject.layer;
+            // Down and inboard from the hinge, tilted to meet the deck.
+            _step.transform.localPosition = new Vector3(-run * 0.5f, -drop * 0.5f, 0f);
+            _step.transform.localRotation = Quaternion.Euler(0f, 0f, -pitch);
+
+            var col = _step.AddComponent<BoxCollider>();
+            col.center = new Vector3(0f, -0.05f, 0f);
+            col.size = new Vector3(len + 0.1f, 0.12f, 0.9f);
+
+            var mat = Gangway.WoodMaterialPublic();
+            if (!Models.Headless && mat != null)
+            {
+                var mb = new Models.MeshBuilder();
+                mb.Box(new Vector3(0f, -0.05f, 0f), new Vector3(len, 0.1f, 0.9f));
+                // A tread every so often, so it reads as a step and not a slide.
+                int treads = Mathf.Max(2, Mathf.RoundToInt(len / 0.35f));
+                for (int i = 1; i < treads; i++)
+                {
+                    float x = -len * 0.5f + len * i / treads;
+                    mb.Box(new Vector3(x, 0.02f, 0f), new Vector3(0.06f, 0.05f, 0.86f));
+                }
+                Models.MeshPart(_step.transform, "visual", mb.Build("SailTrim_GangwayStep"), mat);
+            }
+            _step.SetActive(_wasFitted);
+        }
+
         // ------------------------------------------------------------------
         private void Update()
         {
             if (_ship == null || _ship.m_nview == null || !_ship.m_nview.IsValid()) return;
             // The rail height needs physics, which Awake does not have, so it is measured on the first frame.
             EnsureDeck();
+            EnsureStep();
             bool fitted = Gangway.Fitted(_ship, _side);
             bool down = fitted && Gangway.Down(_ship, _side);
 
@@ -572,6 +671,7 @@ namespace SailTrim
             {
                 _wasFitted = fitted;
                 if (_visual != null) _visual.SetActive(fitted);
+                if (_step != null) _step.SetActive(fitted);
                 if (!fitted) _deploy = 0f;
                 RefreshCollider();
             }

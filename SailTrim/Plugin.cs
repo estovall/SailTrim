@@ -129,6 +129,7 @@ namespace SailTrim
         internal static ConfigEntry<bool> BuoyEnabled;
         internal static ConfigEntry<bool> GangwayEnabled;
         internal static ConfigEntry<float> GangwayLength;
+        internal static ConfigEntry<float> GangwayMountZ;
         internal static ConfigEntry<float> GangwayMaxAngle;
 
         internal static ConfigEntry<float> GangwaySwingTime;
@@ -500,6 +501,9 @@ namespace SailTrim
             GangwayLength = Config.Bind("10. Gangway", "GangwayLength", 6f,
                 new ConfigDescription("How long the plank is, in metres. At six metres and the standard slope limit the far end can sit about three and a half metres below the rail, which covers most docks and a shelving beach. Stowed it lies along the rail, so a longer plank wants a longer boat.",
                     new AcceptableValueRange<float>(1.5f, 10f)));
+            GangwayMountZ = Config.Bind("10. Gangway", "GangwayMountZ", 0.2f,
+                new ConfigDescription("Where along the boat the gangway sits, as a fraction of half the hull's length aft of amidships. 0 is amidships, 0.5 is halfway to the stern. Nudge it if the plank fouls the rigging on a particular hull.",
+                    new AcceptableValueRange<float>(-0.6f, 0.6f)));
             GangwayMaxAngle = Config.Bind("10. Gangway", "GangwayMaxAngle", 35f,
                 new ConfigDescription("Steepest slope the gangway will rest at, in degrees. Anything steeper is refused: carrying a load you could not walk up it anyway.",
                     new AcceptableValueRange<float>(10f, 60f)));
