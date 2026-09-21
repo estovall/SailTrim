@@ -130,8 +130,8 @@ namespace SailTrim
         internal static ConfigEntry<bool> GangwayEnabled;
         internal static ConfigEntry<float> GangwayLength;
         internal static ConfigEntry<float> GangwayMaxAngle;
-        internal static ConfigEntry<float> GangwayStowAngle;
-        internal static ConfigEntry<float> GangwaySwingRate;
+
+        internal static ConfigEntry<float> GangwaySwingTime;
         internal static ConfigEntry<float> GangwayRetractDelay;
         internal static ConfigEntry<bool> GangwayTiesCleat;
         internal static ConfigEntry<int> GangwayFineWoodCost;
@@ -497,18 +497,15 @@ namespace SailTrim
                 new ConfigDescription("A tied-up boat mends itself: this percent of its full health per minute (the dock knocks it about between tides). 0 = off.", new AcceptableValueRange<float>(0f, 100f)));
             GangwayEnabled = Config.Bind("10. Gangway", "GangwayEnabled", true,
                 "Adds the Gangway: a plank of fine wood and iron nails you craft at the workbench and fit to a boat's rail (any hull but the raft, one a side). Lower it to walk between the deck and the dock with a load you could not climb with.");
-            GangwayLength = Config.Bind("10. Gangway", "GangwayLength", 3f,
-                new ConfigDescription("How long the plank is, in metres. Longer reaches further but is heavier to look at.",
-                    new AcceptableValueRange<float>(1.5f, 8f)));
+            GangwayLength = Config.Bind("10. Gangway", "GangwayLength", 6f,
+                new ConfigDescription("How long the plank is, in metres. At six metres and the standard slope limit the far end can sit about three and a half metres below the rail, which covers most docks and a shelving beach. Stowed it lies along the rail, so a longer plank wants a longer boat.",
+                    new AcceptableValueRange<float>(1.5f, 10f)));
             GangwayMaxAngle = Config.Bind("10. Gangway", "GangwayMaxAngle", 35f,
                 new ConfigDescription("Steepest slope the gangway will rest at, in degrees. Anything steeper is refused: carrying a load you could not walk up it anyway.",
                     new AcceptableValueRange<float>(10f, 60f)));
-            GangwayStowAngle = Config.Bind("10. Gangway", "GangwayStowAngle", -78f,
-                new ConfigDescription("Where the plank sits when it is stowed, in degrees from straight out over the side. -78 stands it up against the rail; nearer 0 lays it out flat.",
-                    new AcceptableValueRange<float>(-90f, 0f)));
-            GangwaySwingRate = Config.Bind("10. Gangway", "GangwaySwingRate", 45f,
-                new ConfigDescription("How fast the plank swings up and down, in degrees per second.",
-                    new AcceptableValueRange<float>(10f, 200f)));
+            GangwaySwingTime = Config.Bind("10. Gangway", "GangwaySwingTime", 1.6f,
+                new ConfigDescription("Seconds for the whole movement: the plank swings out from along the rail, then lowers onto what it rests on.",
+                    new AcceptableValueRange<float>(0.2f, 8f)));
             GangwayRetractDelay = Config.Bind("10. Gangway", "GangwayRetractDelay", 2f,
                 new ConfigDescription("Seconds at the helm before a gangway that is still down comes up by itself.",
                     new AcceptableValueRange<float>(0f, 10f)));

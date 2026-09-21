@@ -331,10 +331,12 @@ namespace SailTrim
         private BoxCollider _box;
         private GameObject _visual;
 
-        // Degrees below horizontal: 0 is straight out over the side, negative lifts the far end.
-        private float StowedAngle => Plugin.GangwayStowAngle.Value;
-        private float _angle = -78f;
-        private float _restAngle = -78f;
+        // Degrees below horizontal: 0 is straight out over the side, positive drops the far end.
+        private float _restAngle;
+        // 0 stowed, 1 down. The first half swings the plank out from along the rail, the second half lowers it:
+        // one number so the two run into each other instead of stepping.
+        private float _deploy;
+        private bool _walkable;
         private bool _deckFound;
         private float _nextProbe;
         private bool _wasFitted, _wasDown;
@@ -352,17 +354,17 @@ namespace SailTrim
             _box.size = new Vector3(Length, 0.12f, 0.84f);
             // The layer the hull uses, so it hovers, blocks and carries a player exactly as the deck does.
             gameObject.layer = HullLayer(ship);
-            SetFitted(false);
-            Apply(Plugin.GangwayStowAngle.Value);
+            SetCollider(false);
+            Apply(0f);
         }
 
         /// <summary>
         /// Unfitted, all that is here is a small patch of rail to interact with; fitted, the collider is the plank
         /// you walk on. The object itself always stays active, because its own Update is what watches the boat's state.
         /// </summary>
-        private void SetFitted(bool fitted)
+        private void SetCollider(bool full)
         {
-            if (fitted)
+            if (full)
             {
                 _box.center = new Vector3(Length * 0.5f, -0.05f, 0f);
                 _box.size = new Vector3(Length, 0.12f, 0.84f);
@@ -370,9 +372,8 @@ namespace SailTrim
             else
             {
                 _box.center = new Vector3(0.1f, -0.05f, 0f);
-                _box.size = new Vector3(0.45f, 0.3f, 0.7f);
+                _box.size = new Vector3(0.6f, 0.4f, 0.8f);
             }
-            if (_visual != null && _visual.activeSelf != fitted) _visual.SetActive(fitted);
         }
 
         private static int HullLayer(Ship ship)
@@ -383,10 +384,22 @@ namespace SailTrim
             return piece >= 0 ? piece : ship.gameObject.layer;
         }
 
-        private void Apply(float angle)
+        /// <summary>
+        /// Stowed, the plank lies flat along the rail pointing forward, which is where you would actually stow six
+        /// metres of timber and keeps it clear of the shrouds, the mast and the steering oar. Deployed, it is
+        /// square out over the side on its hinge. Between the two it swings out, then drops.
+        /// </summary>
+        private void Apply(float deploy)
         {
-            _angle = angle;
-            transform.localRotation = Quaternion.Euler(0f, 0f, -angle);
+            _deploy = deploy;
+            float swing = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(deploy * 2f));
+            float drop = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(deploy * 2f - 1f));
+            float yaw = Mathf.Lerp(-90f * _side, 0f, swing);
+            float angle = Mathf.Lerp(0f, _restAngle, drop);
+            transform.localRotation = Quaternion.Euler(0f, yaw, 0f) * Quaternion.Euler(0f, 0f, -angle);
+            // Only a plank that is out over the side is something to walk on; stowed it is just a rail.
+            bool walk = deploy > 0.5f;
+            if (walk != _walkable) { _walkable = walk; SetCollider(walk); }
         }
 
         /// <summary>Where the far end of the plank would be at this angle.</summary>
@@ -536,7 +549,8 @@ namespace SailTrim
             if (fitted != _wasFitted)
             {
                 _wasFitted = fitted;
-                SetFitted(fitted);
+                if (_visual != null) _visual.SetActive(fitted);
+                if (!fitted) { _deploy = 0f; SetCollider(false); }
             }
             if (!fitted) return;
 
@@ -548,15 +562,14 @@ namespace SailTrim
 
             // Down, the plank follows whatever it rests on: the boat still lifts and rolls on the swell even
             // held at its spot, and a gangway that did not ride with it would hang in the air or sink into the dock.
-            if (down && Time.time >= _nextProbe)
+            if (down && _deploy > 0.5f && Time.time >= _nextProbe)
             {
                 _nextProbe = Time.time + 0.1f;
                 if (FindRest(out float a)) _restAngle = a;
             }
 
-            float target = down ? _restAngle : StowedAngle;
-            float rate = Mathf.Max(5f, Plugin.GangwaySwingRate.Value);
-            Apply(Mathf.MoveTowards(_angle, target, rate * Time.deltaTime));
+            float span = Mathf.Max(0.2f, Plugin.GangwaySwingTime.Value);
+            Apply(Mathf.MoveTowards(_deploy, down ? 1f : 0f, Time.deltaTime / span));
         }
     }
 }

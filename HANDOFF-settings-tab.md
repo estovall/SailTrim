@@ -282,6 +282,15 @@ board (separate from the cleat); lowering it within reach of a free cleat ties t
 - Version left at 1.7.1 on purpose: the dev build still matches the server.
 
 **Untested in game.** Watch for: the mount position (the log prints beam and z per hull; the rail height comes
-from the raycast), whether a 3 m plank stowed at -78 deg looks right or wants `GangwayStowAngle` nearer 0,
+from the raycast), how the stow along the rail sits on each hull (see below),
 whether the icon and dropped model render, whether the recipe shows at the workbench, and above all whether you
 can actually walk up it while encumbered without falling through the join.
+
+**Length 6 m (Max's call), and the stow changed with it.** A six-metre plank stood on end at the rail would be a
+spar taller than the mast, among the shrouds. It now stows lying flat along the rail pointing forward, clear of
+the mast, the shrouds and the steering oar, and deploying is one blended movement over `GangwaySwingTime` (1.6 s):
+the first half swings it out from fore-and-aft to square over the side, the second half lowers it onto its rest.
+The full walkable collider only exists past the half-way point; stowed it is a small patch of rail, so six metres
+of plank never blocks the deck. `GangwayStowAngle` and `GangwaySwingRate` are gone, replaced by `GangwaySwingTime`.
+Watch on the Karve, the shortest hull: the mount is 20% aft of amidships, so six metres forward reaches about the
+stem. Note the plank mesh is built once from `GangwayLength` at load, so changing that config wants a restart.
