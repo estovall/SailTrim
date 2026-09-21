@@ -311,8 +311,9 @@ namespace SailTrim
                     // where it stands; one that moves may not, and the game says so with _MoveableObject. It is
                     // why the hull's own timber never flickered and a wall's did. With it set, any material the
                     // game has can be worn by something that moves.
-                    if (low.Contains("moveableobject") || low.Contains("movableobject")
-                        || low.Contains("triplanarlocal") || low.Contains("localpos"))
+                    // Only the flag the game itself names for this. Forcing the triplanar sampling local as
+                    // well was a guess piled on top of a fix, and a guess that changes how a material looks.
+                    if (low.Contains("moveableobject") || low.Contains("movableobject"))
                     {
                         m.SetFloat(prop, 1f);
                         Plugin.Log.LogInfo($"SailTrim: gangway material {prop} set for a moving object");
@@ -445,6 +446,27 @@ namespace SailTrim
                     Models.Place(part, b, anchor, new Vector3(0f, edge * 0.5f - 0.02f, sz * (width * 0.5f - edge * 0.5f)), Vector3.one, rot);
                 }
             }
+            if (built && beamSrc != null && !_loggedBeamMats)
+            {
+                _loggedBeamMats = true;
+                var srcNames = new List<string>();
+                foreach (var r in beamSrc.GetComponentsInChildren<MeshRenderer>(true))
+                    foreach (var m in r.sharedMaterials)
+                        srcNames.Add((r.gameObject.name ?? "?") + ":" + (m == null ? "null" : m.name));
+                var ourNames = new List<string>();
+                var edge = root.transform.Find("edgeR");
+                if (edge != null)
+                    foreach (var r in edge.GetComponentsInChildren<MeshRenderer>(true))
+                    {
+                        var mf = r.GetComponent<MeshFilter>();
+                        int subs = mf != null && mf.sharedMesh != null ? mf.sharedMesh.subMeshCount : -1;
+                        var names = new List<string>();
+                        foreach (var m in r.sharedMaterials) names.Add(m == null ? "null" : m.name);
+                        ourNames.Add((r.gameObject.name ?? "?") + ":" + string.Join("+", names.ToArray()) + " submeshes=" + subs);
+                    }
+                Plugin.Log.LogInfo("SailTrim: beam source wears " + string.Join(", ", srcNames.ToArray())
+                                 + " | our copy wears " + string.Join(", ", ourNames.ToArray()));
+            }
             if (!built)
             {
                 var mat = WoodMaterial();
@@ -526,7 +548,7 @@ namespace SailTrim
             return src;
         }
 
-        private static bool _loggedTimber, _loggedBeam;
+        private static bool _loggedTimber, _loggedBeam, _loggedBeamMats;
 
         internal static GameObject BuildTread(Transform parent, string name, Vector3 size, Vector3 centre, int layer)
         {
