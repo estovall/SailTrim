@@ -14,7 +14,7 @@ namespace SailTrim
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.7.1";
+        public const string VERSION = "1.8.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -525,7 +525,7 @@ namespace SailTrim
 
             GangwayPlainTimber = Config.Bind("11. Development", "GangwayPlainTimber", false,
                 "Build the gangway from plain planks of our own rather than copies of the game's wooden floor. Slower to look at but it answers whether a rendering fault is in the copied model or in the game's shader.");
-            SurveyKey = Config.Bind("11. Development", "SurveyKey", KeyCode.F10,
+            SurveyKey = Config.Bind("11. Development", "SurveyKey", KeyCode.None,
                 "Photographs every boat within 80 m from fixed angles into BepInEx/cache/SailTrim/survey, with a text file of what each gangway measured. For working on the mod; None to turn it off.");
             SurveyWidth = Config.Bind("11. Development", "SurveyWidth", 768,
                 new ConfigDescription("Width of a survey picture, in pixels. Height is nine sixteenths of it.",
