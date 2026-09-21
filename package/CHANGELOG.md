@@ -2,7 +2,7 @@
 
 ## Unreleased (branch gangway)
 
-- The Gangway: a plank hinged at the rail that you walk over between the deck and the dock, so a load of metal no longer has to be climbed over the side. Craft one at the workbench (10 fine wood, 4 iron nails), so it comes in about when the longship does and interact with the rail of any hull but the raft to fit it, one to a side; it stays with the boat. Stowed it lies flat along the rail; lowering swings it out over the side and down onto whatever is under it, dock, shore or log, and keeps resting there as the boat works in the swell. While it is down the boat holds its spot the way a moored boat does, though unlike a cleat it does not mend the hull, and lowering it within reach of a cleat with no boat on it ties that cleat on as well. You work it from on board. Taking the helm raises it after two seconds.
+- The Gangway: a plank hinged at the rail that you walk over between the deck and the dock, so a load of metal no longer has to be climbed over the side. Craft one at the workbench (10 fine wood, 4 iron nails), so it comes in about when the longship does and interact with the rail of any hull but the raft to fit it, one to a side; it stays with the boat. It is three boards hinged end to end: stowed they fold back on one another and lie along the rail, and lowering unfolds them, swings the ramp out over the side and sets it down on whatever is under it, dock, shore or log, and keeps resting there as the boat works in the swell. While it is down the boat holds its spot the way a moored boat does, though unlike a cleat it does not mend the hull, and lowering it within reach of a cleat with no boat on it ties that cleat on as well. You work it from on board. Taking the helm raises it after two seconds.
 
 ## 1.7.1
 

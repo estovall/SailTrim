@@ -345,3 +345,11 @@ lying the length of the rail. Left until placement is settled, since folding onl
    "stairs" are now real timber. The item's own model and its icon come from the same builder.
    Note a game material needs the UVs of the mesh it ships with: our procedural mesh sampled the atlas into mud,
    which is the other half of why it looked wrong. Use CopyVisual for anything that wants a game texture.
+
+**Folding (Max asked for it next).** The ramp is three sections hinged end to end, each a third of `GangwayLength`,
+built by `BuildSections`: section 2 hangs off the outboard end of section 1 and section 3 off section 2, so each
+folds back over the one before it. Stowed they sit at +-168 deg (a shade under flat, so the stack reads as three
+boards rather than one), which stows six metres as two. `Apply` now runs three movements in order with a little
+overlap: unfold (0 to 0.4 of the travel), swing out from along the rail (0.35 to 0.7), lower onto its rest (0.7 to
+1), over `GangwaySwingTime`, raised from 1.6 to 2.4 s to cover all three. The walkable collider only appears past
+0.6 of the travel, and stowed the collider is one section long and 0.5 m tall to match the folded stack.

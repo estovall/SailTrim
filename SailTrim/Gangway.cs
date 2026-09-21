@@ -391,13 +391,15 @@ namespace SailTrim
         private int _side;
         private Transform _mount;      // the hinge point at the rail
         private BoxCollider _box;
-        private GameObject _visual;
+        private GameObject _visual;         // the first section; the others hang off it
+        private Transform _seg2, _seg3;     // hinged end to end, so six metres stows as two
 
         // Degrees below horizontal: 0 is straight out over the side, positive drops the far end.
         private float _restAngle;
         // 0 stowed, 1 down. The first half swings the plank out from along the rail, the second half lowers it:
         // one number so the two run into each other instead of stepping.
         private float _deploy;
+        private const float FoldAngle = 168f;
         private bool _walkable;
         private bool _deckFound;
         private float _deckDrop = 0.6f;   // rail top above the deck at this mount, measured per hull
@@ -453,9 +455,9 @@ namespace SailTrim
                     _box.center = new Vector3(Length * 0.5f, -0.05f, 0f);
                     _box.size = new Vector3(Length, 0.12f, 0.84f);
                     break;
-                case 1: // stowed along the rail: the inboard end of it, enough to look at and take hold of
-                    _box.center = new Vector3(0.75f, -0.02f, 0f);
-                    _box.size = new Vector3(1.5f, 0.3f, 0.84f);
+                case 1: // folded and stowed along the rail: one section long, and the stack is taller than a plank
+                    _box.center = new Vector3(Length / 6f, 0.1f, 0f);
+                    _box.size = new Vector3(Length / 3f, 0.5f, 0.84f);
                     break;
                 default: // a bare rail: a small post standing above it, clear of the hull
                     _box.center = new Vector3(0.05f, 0.3f, 0f);
@@ -464,7 +466,7 @@ namespace SailTrim
             }
         }
 
-        private void RefreshCollider() => SetCollider(!_wasFitted ? 0 : (_deploy > 0.5f ? 2 : 1));
+        private void RefreshCollider() => SetCollider(!_wasFitted ? 0 : (_deploy > 0.6f ? 2 : 1));
 
         /// <summary>The layer the boat's visible meshes are on, which is not the layer of its colliders.</summary>
         private static int VisualLayer(Ship ship)
@@ -490,14 +492,52 @@ namespace SailTrim
         private void Apply(float deploy)
         {
             _deploy = deploy;
-            float swing = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(deploy * 2f));
-            float drop = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(deploy * 2f - 1f));
+            // In order, with a little overlap so they run into one another: unfold the sections, swing the whole
+            // thing out from along the rail, then lower it onto what it rests on.
+            float unfold = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(deploy / 0.4f));
+            float swing = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((deploy - 0.35f) / 0.35f));
+            float drop = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((deploy - 0.7f) / 0.3f));
+
             float yaw = Mathf.Lerp(-90f * _side, 0f, swing);
             float angle = Mathf.Lerp(0f, _restAngle, drop);
             transform.localRotation = Quaternion.Euler(0f, yaw, 0f) * Quaternion.Euler(0f, 0f, -angle);
-            // Only a plank that is out over the side is something to walk on; stowed it is just a rail.
-            bool walk = deploy > 0.5f;
+
+            // Folded back on itself, a shade under flat so the three lie in a visible stack rather than in one plane.
+            float fold = (1f - unfold) * FoldAngle;
+            if (_seg2 != null) _seg2.localRotation = Quaternion.Euler(0f, 0f, fold);
+            if (_seg3 != null) _seg3.localRotation = Quaternion.Euler(0f, 0f, -fold);
+
+            // Only a ramp that is out over the side and unfolded is something to walk on.
+            bool walk = deploy > 0.6f;
             if (walk != _walkable) { _walkable = walk; RefreshCollider(); }
+        }
+
+        /// <summary>
+        /// Three sections hinged end to end, the way a real boarding ramp is made, so six metres of timber stows
+        /// as two. Each section hangs off the outboard end of the one before it and folds back over it.
+        /// </summary>
+        private void BuildSections()
+        {
+            if (_visual != null || Models.Headless) return;
+            int layer = VisualLayer(_ship);
+            float seg = Length / 3f;
+
+            var s1 = new GameObject("section1");
+            s1.transform.SetParent(transform, false);
+            if (Gangway.BuildWalkway(s1.transform, "visual", seg, 0.84f, layer) == null)
+            { UnityEngine.Object.Destroy(s1); return; }
+
+            var s2 = new GameObject("section2");
+            s2.transform.SetParent(s1.transform, false);
+            s2.transform.localPosition = new Vector3(seg, 0f, 0f);
+            Gangway.BuildWalkway(s2.transform, "visual", seg, 0.84f, layer);
+
+            var s3 = new GameObject("section3");
+            s3.transform.SetParent(s2.transform, false);
+            s3.transform.localPosition = new Vector3(seg, 0f, 0f);
+            Gangway.BuildWalkway(s3.transform, "visual", seg, 0.84f, layer);
+
+            _visual = s1; _seg2 = s2.transform; _seg3 = s3.transform;
         }
 
         /// <summary>Where the far end of the plank would be at this angle.</summary>
@@ -742,7 +782,7 @@ namespace SailTrim
 
             if (_visual == null)
             {
-                _visual = Gangway.BuildWalkway(transform, "visual", Length, 0.84f, VisualLayer(_ship));
+                BuildSections();
                 if (_visual != null) _visual.SetActive(fitted);
             }
             if (fitted != _wasFitted)

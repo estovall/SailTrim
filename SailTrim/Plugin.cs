@@ -507,8 +507,8 @@ namespace SailTrim
             GangwayMaxAngle = Config.Bind("10. Gangway", "GangwayMaxAngle", 35f,
                 new ConfigDescription("Steepest slope the gangway will rest at, in degrees. Anything steeper is refused: carrying a load you could not walk up it anyway.",
                     new AcceptableValueRange<float>(10f, 60f)));
-            GangwaySwingTime = Config.Bind("10. Gangway", "GangwaySwingTime", 1.6f,
-                new ConfigDescription("Seconds for the whole movement: the plank swings out from along the rail, then lowers onto what it rests on.",
+            GangwaySwingTime = Config.Bind("10. Gangway", "GangwaySwingTime", 2.4f,
+                new ConfigDescription("Seconds for the whole movement: the three sections unfold, the ramp swings out from along the rail, then it lowers onto what it rests on.",
                     new AcceptableValueRange<float>(0.2f, 8f)));
             GangwayRetractDelay = Config.Bind("10. Gangway", "GangwayRetractDelay", 2f,
                 new ConfigDescription("Seconds at the helm before a gangway that is still down comes up by itself.",
