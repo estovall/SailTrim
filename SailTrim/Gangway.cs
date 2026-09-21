@@ -768,6 +768,23 @@ namespace SailTrim
         internal Ship Ship;
     }
 
+    /// <summary>
+    /// What you actually look at and press Use on: a patch sitting exactly on the brackets, which answers for the
+    /// mount. The mount's own collider could not do this job. It is the plank -- it swings out over the side and
+    /// lies along the rail when stowed, so the place to interact moved a metre away from the fitting it belongs
+    /// to; and it is solid, so while nothing was fitted there was an invisible block on the rail to walk into.
+    /// </summary>
+    internal class GangwayHandle : MonoBehaviour, Hoverable, Interactable
+    {
+        internal GangwayMount Mount;
+
+        public string GetHoverName() => Mount != null ? Mount.GetHoverName() : "";
+        public float GetHoverOffset() => 0f;
+        public string GetHoverText() => Mount != null ? Mount.GetHoverText() : "";
+        public bool Interact(Humanoid user, bool hold, bool alt) => Mount != null && Mount.Interact(user, hold, alt);
+        public bool UseItem(Humanoid user, ItemDrop.ItemData item) => Mount != null && Mount.UseItem(user, item);
+    }
+
     internal class GangwayMount : MonoBehaviour, Hoverable, Interactable
     {
         private Ship _ship;
@@ -897,11 +914,12 @@ namespace SailTrim
             var rb = gameObject.AddComponent<Rigidbody>();
             rb.isKinematic = true;
             rb.useGravity = false;
-            // However the boat is smoothed between physics steps, ours must be smoothed the same way. A hull
-            // interpolated toward the next step carries our visuals with it as its children, while our own body
-            // writes its pose only on the step itself: the two disagree by a fraction of a frame, every frame,
-            // and a normal-mapped surface shifting by a millimetre relights itself completely.
-            rb.interpolation = ship != null && ship.m_body != null ? ship.m_body.interpolation : RigidbodyInterpolation.None;
+            // Never interpolate. Our bodies are moved by being children of the boat, not by the physics engine,
+            // and interpolation makes Unity write the body's own physics pose over the transform every frame --
+            // a pose that never changes, because we never call MovePosition. The boat then sails away and leaves
+            // the collider hanging where it was first built. This was set to match the hull while chasing the
+            // shading flicker, which turned out to be the material; the reason was wrong and so was the change.
+            rb.interpolation = RigidbodyInterpolation.None;
             gameObject.AddComponent<GangwayFooting>().Ship = ship;
             _rb = rb;
             SetCollider(0);
@@ -938,6 +956,11 @@ namespace SailTrim
         private void SetCollider(int mode)
         {
             if (_box == null) return;
+            // Unfitted there is no plank, so there is nothing to stand on and nothing to bump into. The patch on
+            // the brackets is what you interact with, and it is not solid.
+            bool on = mode != 0;
+            if (_box.enabled != on) _box.enabled = on;
+            if (!on) return;
             switch (mode)
             {
                 case 2: // the plank you walk on
@@ -948,9 +971,7 @@ namespace SailTrim
                     _box.center = new Vector3(Length / 6f, _leafLift, 0f);
                     _box.size = new Vector3(Length / 3f, _leafLift * 2f + 0.16f, 0.84f);
                     break;
-                default: // a bare rail: a small post standing above it, clear of the hull
-                    _box.center = new Vector3(0.05f, 0.3f, 0f);
-                    _box.size = new Vector3(0.5f, 0.66f, 0.9f);
+                default:
                     break;
             }
         }
@@ -1370,7 +1391,7 @@ namespace SailTrim
             var rb = _step.AddComponent<Rigidbody>();
             rb.isKinematic = true;
             rb.useGravity = false;
-            rb.interpolation = _ship != null && _ship.m_body != null ? _ship.m_body.interpolation : RigidbodyInterpolation.None;
+            rb.interpolation = RigidbodyInterpolation.None;   // see the note on the plank's body
             _step.AddComponent<GangwayFooting>().Ship = _ship;
 
             // Two leaves, so that a ramp long enough to walk up folds into something short enough to stand
@@ -1509,6 +1530,16 @@ namespace SailTrim
             _brackets = new GameObject("brackets");
             _brackets.transform.SetParent(_mount, false);
             int layer = VisualLayer(_ship);
+            // Something to look at, on the piece layer the game's own ladders and benches use: hoverable, and
+            // you walk through it rather than into it.
+            var patch = _brackets.AddComponent<BoxCollider>();
+            patch.center = new Vector3(-0.02f, 0.10f, 0f);
+            patch.size = new Vector3(0.42f, 0.42f, 0.98f);
+            int soft = LayerMask.NameToLayer("piece_nonsolid");
+            _brackets.layer = soft >= 0 ? soft : gameObject.layer;
+            _brackets.AddComponent<GangwayHandle>().Mount = this;
+            _mine.Add(patch);
+
             foreach (float sz in new[] { -1f, 1f })
                 Gangway.BuildTread(_brackets.transform, sz < 0f ? "bracketL" : "bracketR",
                                    // Chunky, because it is a stub cut from a beam. Squashed to a wafer the
@@ -1584,7 +1615,7 @@ namespace SailTrim
                 if (!fitted) _deploy = 0f;
                 RefreshCollider();
             }
-            if (!fitted) return;
+            if (!fitted) { Apply(0f); return; }
 
             if (down != _wasDown)
             {

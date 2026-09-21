@@ -192,7 +192,8 @@ namespace SailTrim
                     sb.Append(" body=").Append(body.isKinematic ? "kinematic" : "dynamic")
                       .Append('/').Append(body.interpolation);
                 if (col != null)
-                    sb.Append(" col=").Append(col.GetType().Name).Append(col.isTrigger ? "(trigger)" : "")
+                    sb.Append(" col=").Append(col.GetType().Name)
+                      .Append(col is BoxCollider bx ? $"[c{V(bx.center)} s{V(bx.size)}]" : "").Append(col.isTrigger ? "(trigger)" : "")
                       .Append(col.enabled ? "" : "[off]").Append(" layer=").Append(LayerMask.LayerToName(t.gameObject.layer));
                 sb.AppendLine();
             }

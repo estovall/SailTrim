@@ -799,3 +799,28 @@ worse than not doing it at all.
 
 The brackets move from 8 cm inboard of the hinge to 2, and the Karve's mount takes `Inset = -0.07` to sit a hair
 further out on its rail.
+
+## Gangway: what you interact with must not be the plank
+
+`hierarchy.txt`, on the Drakkar:
+
+```
+SailTrim_Gangway_P @(-5.84,3.60,-0.85)
+  plank        @(-5.34,3.93,0.25)  col=BoxCollider
+```
+
+The mount is in one place and the collider a metre and ten away. The interaction collider **was** the plank, and
+the plank moves: out over the side when deployed, and along the rail to the stow position when not. So the place
+to press Use was never where the brackets are. It was also **solid and invisible while nothing was fitted** — a
+block on the rail to walk into, which is the second half of the same mistake.
+
+`GangwayHandle` now carries the hover and the interaction, on a collider that sits on the brackets, on
+**`piece_nonsolid`** — the layer the game's own ladders and benches use, so it is hoverable and you walk through
+it rather than into it. The plank's collider goes back to being only what you stand on, and is **disabled
+entirely when nothing is fitted**.
+
+The lesson: the thing you look at and the thing that moves should not be the same collider.
+
+**Also reverted:** `rb.interpolation` back to `None` on our kinematic bodies. Matching the hull was done while
+chasing the shading flicker, which turned out to be the material; interpolation makes Unity write the body's own
+physics pose over the transform every frame, and that pose never changes because we never call `MovePosition`.
