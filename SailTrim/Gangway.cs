@@ -149,7 +149,10 @@ namespace SailTrim
             var p = new Placement { Z = Plugin.GangwayMountZ.Value, Inset = 0f, Rise = 0f, Step = true, ZOffset = -0.85f };
             string n = (ship != null ? ship.name : "") ?? "";
             if (n.IndexOf("Ashlands", StringComparison.OrdinalIgnoreCase) >= 0)
-                p.Step = false;   // the Drakkar's own hull already climbs to the rail here
+            {
+                p.Step = false;    // the Drakkar's own hull already climbs to the rail here
+                p.Inset = -0.18f;  // and its rail is broad enough to carry the brackets further out
+            }
             else if (n.IndexOf("VikingShip", StringComparison.OrdinalIgnoreCase) >= 0) { } // Longship
             else if (n.IndexOf("Karve", StringComparison.OrdinalIgnoreCase) >= 0) { }
             return p;
@@ -928,17 +931,21 @@ namespace SailTrim
         /// <summary>The top of the boat's own timber at this spot on the deck plan, in the boat's frame.</summary>
         private float TopOfShip(float localX, float localZ, float aroundY)
         {
+            // Down the boat's own mast, not the world's. Cast straight down in world space, a heeled boat gives a
+            // section through a slanted column of hull: the same Karve read its rail at 0.92 on one side and 1.56
+            // on the other, and differently again on the next boat, purely from how it happened to be lying.
             Vector3 from = _ship.transform.TransformPoint(new Vector3(localX, aroundY + 6f, localZ));
-            var hits = Physics.RaycastAll(from, Vector3.down, 12f, ~0, QueryTriggerInteraction.Ignore);
+            Vector3 dir = -_ship.transform.up;
+            var hits = Physics.RaycastAll(from, dir, 12f, ~0, QueryTriggerInteraction.Ignore);
             float top = float.NegativeInfinity;
             foreach (var h in hits)
             {
                 if (_mine.Contains(h.collider)) continue;
                 if (!h.collider.transform.IsChildOf(_ship.transform)) continue;
-                if (h.point.y > top) top = h.point.y;
+                float y = _ship.transform.InverseTransformPoint(h.point).y;
+                if (y > top) top = y;
             }
-            if (float.IsNegativeInfinity(top)) return top;
-            return _ship.transform.InverseTransformPoint(new Vector3(from.x, top, from.z)).y;
+            return top;
         }
 
         /// <summary>
@@ -1098,8 +1105,9 @@ namespace SailTrim
         {
             if (_brow == null) return;
             float reach = Mathf.Rad2Deg * Mathf.Asin(Mathf.Clamp01(_browDrop / Mathf.Max(0.01f, _browLen)));
-            // +90 stands it up against the rail, -reach lays it down onto the deck.
-            float z = Mathf.Lerp(90f, -reach, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(down)));
+            // -90 hangs it straight down inside the planking, -reach lays it out onto the deck. It never rises
+            // above horizontal: folded up above the rail it was the first thing you saw of the boat.
+            float z = Mathf.Lerp(-90f, -reach, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(down)));
             _brow.localRotation = Quaternion.Euler(0f, 180f, 0f) * Quaternion.Euler(0f, 0f, z);
 
             float folded = 1f - Mathf.Clamp01(down);

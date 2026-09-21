@@ -120,7 +120,9 @@ namespace SailTrim
                 go.AddComponent<MeshFilter>().sharedMesh = use;
                 var mr = go.AddComponent<MeshRenderer>();
                 mr.sharedMaterials = r.sharedMaterials;
-                mr.shadowCastingMode = ShadowCastingMode.On;
+                // A thin plank self-shadowing at a grazing angle is acne, and the shadow cascades shift with the
+                // camera every frame, so it reads as the whole surface flashing between lit and dark.
+                mr.shadowCastingMode = bake ? ShadowCastingMode.Off : ShadowCastingMode.On;
                 var b = use.bounds;
                 for (int i = 0; i < 8; i++)
                 {
@@ -148,6 +150,9 @@ namespace SailTrim
                 if (verts.Length == 0) return null;
                 var norms = mesh.normals;
                 var uvs = mesh.uv;
+                var uv2 = mesh.uv2;
+                var cols = mesh.colors;
+                var tans = mesh.tangents;
 
                 // The renderer's own slice of the batch, in mesh space.
                 Matrix4x4 w2l = r.transform.worldToLocalMatrix;
@@ -165,6 +170,9 @@ namespace SailTrim
                 var outV = new List<Vector3>();
                 var outN = new List<Vector3>();
                 var outU = new List<Vector2>();
+                var outU2 = new List<Vector2>();
+                var outC = new List<Color>();
+                var outTan = new List<Vector4>();
                 var subs = new List<List<int>>();
                 bool any = false;
                 for (int sm = 0; sm < mesh.subMeshCount; sm++)
@@ -184,6 +192,16 @@ namespace SailTrim
                                 outV.Add(m.MultiplyPoint3x4(verts[vi]));
                                 if (norms.Length == verts.Length) outN.Add(m.MultiplyVector(norms[vi]).normalized);
                                 if (uvs.Length == verts.Length) outU.Add(uvs[vi]);
+                                // A game shader reads more than position and uv: vertex colour carries wear and
+                                // snow, the tangent carries the normal map. Dropping them lights the surface from
+                                // nowhere in particular.
+                                if (uv2.Length == verts.Length) outU2.Add(uv2[vi]);
+                                if (cols.Length == verts.Length) outC.Add(cols[vi]);
+                                if (tans.Length == verts.Length)
+                                {
+                                    Vector3 td = m.MultiplyVector(new Vector3(tans[vi].x, tans[vi].y, tans[vi].z)).normalized;
+                                    outTan.Add(new Vector4(td.x, td.y, td.z, tans[vi].w));
+                                }
                             }
                             outT.Add(ni);
                         }
@@ -197,6 +215,9 @@ namespace SailTrim
                 baked.SetVertices(outV);
                 if (outN.Count == outV.Count) baked.SetNormals(outN);
                 if (outU.Count == outV.Count) baked.SetUVs(0, outU);
+                if (outU2.Count == outV.Count) baked.SetUVs(1, outU2);
+                if (outC.Count == outV.Count) baked.SetColors(outC);
+                if (outTan.Count == outV.Count) baked.SetTangents(outTan);
                 baked.subMeshCount = subs.Count;
                 for (int sm = 0; sm < subs.Count; sm++) baked.SetTriangles(subs[sm], sm);
                 if (outN.Count != outV.Count) baked.RecalculateNormals();

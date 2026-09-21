@@ -495,3 +495,27 @@ onto ledges, they jump** — and a loaded player cannot jump, which is the entir
 The step is now a **brow**: a ramp at a walkable 34 degrees, hinged just inside the rail, that folds in two
 against the rail when stowed so it takes no deck except while being walked on. Two leaves, because a ramp long
 enough to walk up is too long to stand against a rail unfolded.
+
+## Gangway: the hull's section must be read in the hull's frame
+
+`TopOfShip` cast straight down in world space. A boat at anchor is never level, so the "section across the beam"
+was a section through a slanted column of hull, and it changed with however the boat happened to be lying. The
+same Karve read its rail at 0.92 m on one side and 1.56 m on the other; the next Karve read 1.80 m. Every number
+downstream — rail position, deck drop, the length of the brow — was built on that. It now casts along
+`-ship.transform.up` and converts the hit with `InverseTransformPoint`, so the section is a real section.
+
+This is worth remembering for anything else that measures a boat: a raycast in world space asks a question about
+the world, not about the boat.
+
+## Gangway: the flashing is being narrowed down, not yet solved
+
+Two candidates were removed this round and one test added:
+
+- **Shadow casting is off** on every baked copy. A thin plank self-shadowing at a grazing angle is acne, and the
+  cascades shift with the camera every frame, which would read as the surface flashing between lit and dark.
+- **The bake now keeps every channel** — uv2, vertex colour and tangents, not just position, normal and uv. A
+  game shader reads vertex colour for wear and snow and the tangent for its normal map; without them it lights
+  the surface from nowhere in particular.
+- **`Coincident()`** reports any two of our own meshes whose bounds centres are within 3 cm, by path, in
+  `hierarchy.txt`. If two surfaces really are in one plane this names them; if it reports zero, the cause is
+  material or lighting and not geometry at all.

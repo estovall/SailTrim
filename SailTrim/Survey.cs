@@ -88,6 +88,7 @@ namespace SailTrim
                 tree.AppendLine();
                 tree.AppendLine("=== " + ship.name.Replace("(Clone)", "") + " ===");
                 DumpTree(ship, ship.transform, tree, 0);
+                Coincident(ship, tree);
             }
             File.WriteAllText(Path.Combine(Dir, "hierarchy.txt"), tree.ToString());
             Plugin.Log.LogInfo($"SailTrim: survey wrote {shots} image(s) to {Dir}");
@@ -151,7 +152,7 @@ namespace SailTrim
         /// </summary>
         private static void DumpTree(Ship ship, Transform t, StringBuilder sb, int depth)
         {
-            if (depth > 6) return;
+            if (depth > 12) return;
             var mf = t.GetComponent<MeshFilter>();
             var mr = t.GetComponent<MeshRenderer>();
             var col = t.GetComponent<Collider>();
@@ -182,6 +183,34 @@ namespace SailTrim
         }
 
         private static string V(Vector3 v) => $"({v.x:0.00},{v.y:0.00},{v.z:0.00})";
+
+        /// <summary>
+        /// Any two of our own meshes sitting in the same place. Two surfaces in one plane is what "there are two
+        /// models inside each other" actually looks like, and it is not something a screenshot settles.
+        /// </summary>
+        private static void Coincident(Ship ship, StringBuilder sb)
+        {
+            var ours = new List<MeshRenderer>();
+            foreach (var m in ship.GetComponentsInChildren<GangwayMount>(true))
+                if (m.transform.parent != null) ours.AddRange(m.transform.parent.GetComponentsInChildren<MeshRenderer>(true));
+            int found = 0;
+            for (int i = 0; i < ours.Count; i++)
+                for (int j = i + 1; j < ours.Count; j++)
+                {
+                    if (Vector3.Distance(ours[i].bounds.center, ours[j].bounds.center) > 0.03f) continue;
+                    if (Vector3.Distance(ours[i].bounds.size, ours[j].bounds.size) > 0.05f) continue;
+                    sb.AppendLine($"  COINCIDENT {Trail(ours[i].transform)} and {Trail(ours[j].transform)} at {V(ours[i].bounds.center)}");
+                    found++;
+                }
+            sb.AppendLine("  coincident pairs among our own meshes: " + found);
+        }
+
+        private static string Trail(Transform t)
+        {
+            string s = t.name;
+            for (var p = t.parent; p != null && p.GetComponent<Ship>() == null; p = p.parent) s = p.name + "/" + s;
+            return s;
+        }
 
         /// <summary>The numbers each mount worked out for itself, so a picture can be turned into a correction.</summary>
         private static void Describe(Ship ship, StringBuilder notes)
