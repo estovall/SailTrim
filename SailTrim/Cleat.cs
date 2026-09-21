@@ -533,6 +533,9 @@ namespace SailTrim
         {
             if (c == null || !c.enabled || c.isTrigger) return false;
             if (ship.m_mastObject != null && c.transform.IsChildOf(ship.m_mastObject.transform)) return false;
+            // Not the boat's own fittings. A lowered gangway reaches for the dock, so it is nearer the cleat than
+            // the hull is, and the rope was being made fast to it instead of to the boat.
+            if (c.GetComponentInParent<GangwayPart>() != null) return false;
             if (c is MeshCollider mc) return mc.convex;
             return c is BoxCollider || c is SphereCollider || c is CapsuleCollider;
         }

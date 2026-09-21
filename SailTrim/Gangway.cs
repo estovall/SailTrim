@@ -203,6 +203,7 @@ namespace SailTrim
             {
                 var go = new GameObject(side < 0 ? "SailTrim_Gangway_P" : "SailTrim_Gangway_S");
                 go.transform.SetParent(ship.transform, false);
+                go.AddComponent<GangwayPart>();
                 go.transform.localPosition = new Vector3(centre.x + side * halfBeam, centre.y + 1f, z);
                 // Port is the same rig mirrored: within a mount, +X is always outboard.
                 go.transform.localRotation = side < 0 ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity;
@@ -766,6 +767,16 @@ namespace SailTrim
     internal class GangwayFooting : MonoBehaviour
     {
         internal Ship Ship;
+    }
+
+    /// <summary>
+    /// Marks everything belonging to a gangway. It hangs on the mount, so anything under it answers to
+    /// GetComponentInParent: the plank, the brow, the brackets and their colliders alike. The cleat asks the boat
+    /// for its nearest hull collider to lead its rope to, and a lowered gangway reaching for the dock is nearer
+    /// than the hull -- so the boat was being tied to its own gangway.
+    /// </summary>
+    internal class GangwayPart : MonoBehaviour
+    {
     }
 
     /// <summary>

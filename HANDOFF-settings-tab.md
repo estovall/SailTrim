@@ -842,3 +842,17 @@ larger of them, so the first pair stood a hand's breadth apart for nothing. `Mes
 top and bottom and the two lifts are worked out separately.
 
 Measuring the *height* of a thing that folds tells you less than measuring where its top and bottom are.
+
+## Cleat: the boat was being tied to its own gangway
+
+`CleatPiece.HullCollider` accepts any enabled, non-trigger box or convex collider parented to the ship, and that
+is how the rope finds the nearest point of the hull to lead to. A lowered gangway is a box collider parented to
+the ship that **reaches out toward the dock**, so it is nearer the cleat than the hull is, and the rope was made
+fast to it.
+
+`GangwayPart` marks the mount, so everything under it — plank, brow, brackets, treads — answers to
+`GetComponentInParent`, and `HullCollider` refuses the lot. It fixes `DistanceToHull` at the same time, which is
+what `AutoTie` uses to choose a cleat.
+
+Worth remembering when adding anything else to a ship: several things in this mod ask a boat for "its"
+colliders, and they mean the hull.
