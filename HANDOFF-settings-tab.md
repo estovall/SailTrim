@@ -200,3 +200,44 @@ Max: slower, start sooner; the cloth was getting dragged through the mast.
   yard passed square, yanking the pinned foot across the mast. Now `_streamDir` is the apparent wind, turned at most
   45 deg/s, and the swing-out is reduced to 30% while the stream points fore-and-aft (at the mast).
 - Physics re-verified identical to `main`.
+
+## Update 2026-09-21: 1.6.x and 1.7.x
+
+Published on Hexium: **1.6.2** (`https://cdn.hexium.gg/upload/1207/1.6.2.zip`). The server zip is also committed
+at `releases/SailTrim-1.6.2.zip`, and the server needs it: the cleat holds a boat when no player is nearby.
+The note for the server session is `Downloads\SAILTRIM-1.6.0-SERVER-NOTE.md` (still accurate except the version).
+
+**Not published, awaiting Max's sailing test: 1.7.0 and 1.7.1.** Both are built, committed and installed in his
+Gale profile. Publish them together once he has sailed with crew aboard.
+
+### 1.6.0 to 1.6.2, shipped
+- **Cleat** (`Cleat.cs`): bronze horn cleat, hammer Misc tab, procedural mesh on a copy of a game Standard
+  material. Tie a boat within `CleatRange` (10 m); the rope is a verlet line that collides with the world and
+  ends at the nearest point of the hull; a cleat-hitch mesh appears on the horn while tied. A moored boat holds
+  its spot and heading (`Mooring`, ZDO keys `SailTrim_Cleat` / `MoorPos` / `MoorYaw`, RPC `SailTrim_Moor`),
+  mends itself (`MoorRepairPerMinute`), and casts off a second after you take the helm (`CastOffDelay`).
+- **Buoy** (`Buoy.cs`): built from the game's own barrel, wood pole, banner (re-dyed) and lantern; water piece,
+  `m_distant`, floats to its anchor (`SailTrim_Anchor`), seven colours (`SailTrim_Color`) with map pins.
+- Buoys and cleats take no damage at all (`WearNTear.Damage` / `RPC_Damage` / `ApplyDamage` prefixes). Note
+  `m_noSupportWear` and `m_noRoofWear` are inverted: true turns that wear **on**, which is what broke buoys.
+- **1.6.2**: moorings survive a world reload. Neither side unties because the other's ZDO has not loaded yet;
+  a cleat that is really gone frees the boat after 30 s.
+- Models and icons are rendered from the game's own prefabs (`Models.cs`) into `BepInEx\cache\SailTrim\*.png`.
+  Dropping a `preview.request` file there (one prefab name per line) renders candidates on the next world load.
+  `Shader.Find("Standard")` renders **magenta** in this build: clone a game material instead
+  (`Models.StandardTemplate`). The main-menu ObjectDB has no items, so models and icons build from a world's.
+
+### 1.7.0 and 1.7.1, built and unpublished
+- **Crew weight**: anyone standing on deck shifts the boat (`SailTrimShip.ApplyCrewWeight`). Sitting crew, the
+  mast hold-fast and the helmsman are excluded via `Player.IsAttached()`. Applied as a real moment, so ship size
+  scales itself through inertia. `CrewWeight` (0.35) and `CrewMass` (90) are in `4. Heel`, server-synced.
+  Crew on deck are told which rail to stand on (`SailTrimHud.CrewWeightHint`, `CrewWeightHints`).
+  Design rule Max set: **no change may only nerf sailing**; each must give skill an upside that beats vanilla.
+  Here the upside is that a flatter boat loses less drive.
+- **1.7.1**: an empty boat furls for real (`SailTrimShip.StowIfEmpty`). The mod's own sail amount used to survive
+  the boat being left, so it looked furled and then sailed off the moment you stepped back aboard.
+
+### Ideas discussed, not started
+Tow lines (a craftable tow rope between two boats), an anchor, loaded boats riding lower, rudder authority that
+depends on water flow, swell that you surf down and pay for climbing, coastal set and drift. Max wants all of it
+to feel vanilla and official, and each idea must carry its own upside.
