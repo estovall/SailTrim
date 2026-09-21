@@ -43,8 +43,11 @@ already been written down somewhere and no longer followed the code.
 
 ### Still open
 
-- **The dedicated server is on 1.6.2** and will now be refused by 1.9.0 clients (the version check wants an exact
-  match). `releases/SailTrim-1.9.0.zip` is committed ready for it; 1.6.2 and 1.8.0 are there too.
+- **The dedicated server is on 1.8.0** (Max, 2026-09-21) and will refuse 1.9.0 clients: the version check wants
+  an exact match, so the server and every client move together or not at all. `releases/SailTrim-1.9.0.zip` is
+  committed ready for the box; 1.6.2 and 1.8.0 are there too. Max's own profile is deliberately back on 1.8.0
+  so he can play tonight, and goes to 1.9.0 when the server does. **Check which version his profile holds
+  before assuming a play-test covered the newest code.**
 - **Lashing alongside is untested in game.** Two things to watch when it is: whether the two hulls fend each
   other off while both are held, and whether the plank keeps its footing on a deck that is itself rising on the
   swell (the probe median smooths the ground, which was written for ground that holds still).
