@@ -245,8 +245,7 @@ namespace SailTrim
 
         internal static Material WoodMaterialPublic() => WoodMaterial();
 
-        // Per hull: a Drakkar's timber is not a Karve's.
-        private static readonly Dictionary<string, Material> _shipTimber = new Dictionary<string, Material>();
+        private static Material _timber;
         private static bool _loggedProps;
 
         /// <summary>
@@ -258,25 +257,35 @@ namespace SailTrim
         /// </summary>
         internal static Material ShipTimber(Ship ship)
         {
-            if (ship == null) return null;
-            string key = ship.name ?? "";
-            if (_shipTimber.TryGetValue(key, out var had) && had != null) return had;
+            if (_timber != null) return _timber;
+            // The longship's timber on every hull. Taking each hull's own was the tidier idea and it only worked
+            // on one of them: our planks carry the wooden floor's uvs, and only the longship's material reads
+            // them as timber. One material that looks right on all three beats three that do not.
+            var scene = ZNetScene.instance;
+            Material best = Timber(scene != null ? scene.GetPrefab("VikingShip") : null)
+                         ?? Timber(ship != null ? ship.gameObject : null);
+            if (best == null) return null;
+            _timber = new Material(best) { name = best.name + " (SailTrim gangway)" };
+            Tame(_timber);
+            Plugin.Log.LogInfo($"SailTrim: gangway timber {best.name} ({best.shader.name})");
+            return _timber;
+        }
+
+        /// <summary>The soundest wood material on a hull: not a worn or broken variant, not the water mask.</summary>
+        private static Material Timber(GameObject hull)
+        {
+            if (hull == null) return null;
             Material best = null;
-            foreach (var r in ship.GetComponentsInChildren<MeshRenderer>(true))
+            foreach (var r in hull.GetComponentsInChildren<MeshRenderer>(true))
             {
                 var m = r.sharedMaterial;
                 if (m == null || m.shader == null) continue;
                 string n = m.name.ToLowerInvariant();
                 if (n.Contains("worn") || n.Contains("broken") || n.Contains("watermask") || n.Contains("default-material")) continue;
-                if (n.Contains("wood")) { best = m; break; }
+                if (n.Contains("wood")) return m;
                 if (best == null && n.Contains("ship")) best = m;
             }
-            if (best == null) return null;
-            var made = new Material(best) { name = best.name + " (SailTrim gangway)" };
-            Tame(made);
-            _shipTimber[key] = made;
-            Plugin.Log.LogInfo($"SailTrim: {key} gangway timber from the hull's own {best.name} ({best.shader.name})");
-            return made;
+            return best;
         }
 
         /// <summary>

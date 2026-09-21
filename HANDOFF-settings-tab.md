@@ -592,3 +592,9 @@ any `triplanar local` style property it finds to local space and **logs the shad
 anything still varies there is a list of names to work from rather than a guess.
 
 `10. Gangway / GangwayShipTimber` turns it off, for comparison.
+
+**Correction:** taking *each* hull's own timber was the tidier idea and it only worked on one of them — the
+Longship looked right, the Karve and the Drakkar came out broken. Our planks carry the wooden floor's uvs, and
+only the Longship's material reads them as timber. `ShipTimber` now pulls `VikingShip` out of `ZNetScene` once
+and uses that material on every hull, falling back to the boat at hand only if the prefab cannot be found. One
+material that looks right on all three beats three that do not.
