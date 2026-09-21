@@ -322,3 +322,9 @@ x, y and the deck drop for every mount on every hull.
 
 **Still to do:** Max suggested the plank fold into three for stowing, which would also stop six metres of timber
 lying the length of the rail. Left until placement is settled, since folding only changes the stowed look.
+
+5. *It shivered, jumping every frame.* The rest angle came straight from one raycast and was applied as-is, and
+   the correction from tip height to degrees used a hard-coded factor of 6 that amplified the noise. Now: the
+   correction is derived from the plank's own length (`asin(dy / Length)`), probes go into a five-deep ring and
+   the plank steers for the **median**, and `_restAngle` is `SmoothDamp`ed toward it over 0.35 s. Max's call that
+   a tip slightly inside the dock beats a shivering plank, so it aims 1 deg past what it reads.

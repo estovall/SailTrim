@@ -366,6 +366,11 @@ namespace SailTrim
         private float _deckDrop = 0.6f;   // rail top above the deck at this mount, measured per hull
         private GameObject _step;
         private float _nextProbe;
+        // The probe is noisy: the boat lifts and rolls under it and a ray can catch an edge. Keep the last few
+        // readings and steer for the middle one, then move smoothly toward that, rather than following each frame.
+        private readonly float[] _probes = new float[5];
+        private int _probeCount;
+        private float _restVel;
         private bool _wasFitted, _wasDown;
 
         private float Length => Mathf.Max(1.5f, Plugin.GangwayLength.Value);
@@ -591,6 +596,23 @@ namespace SailTrim
         /// thing its far end meets, which is what a plank let down on its hinge does. Nothing within
         /// GangwayMaxAngle means nothing it could rest on that you could still climb carrying a load.
         /// </summary>
+        /// <summary>The middle of the last few readings: one ray catching an edge cannot move the plank.</summary>
+        private float ProbeMedian()
+        {
+            int n = Mathf.Min(_probeCount, _probes.Length);
+            var a = new float[n];
+            System.Array.Copy(_probes, a, n);
+            System.Array.Sort(a);
+            return a[n / 2];
+        }
+
+        private void PushProbe(float a, bool reset)
+        {
+            if (reset) { for (int i = 0; i < _probes.Length; i++) _probes[i] = a; _probeCount = _probes.Length; return; }
+            _probes[_probeCount % _probes.Length] = a;
+            _probeCount++;
+        }
+
         private bool FindRest(out float angle)
         {
             angle = 0f;
@@ -604,7 +626,9 @@ namespace SailTrim
                 if (Physics.Raycast(tip + Vector3.up * 0.5f, Vector3.down, out var hit, 0.75f, mask, QueryTriggerInteraction.Ignore))
                 {
                     if (hit.collider.transform.IsChildOf(_ship.transform)) continue; // the boat's own rail, not the shore
-                    angle = Mathf.Clamp(a + (tip.y - hit.point.y) * 6f, -20f, max);
+                    // How much further to drop to put the tip on what the ray found, from the plank's own length.
+                    float correction = Mathf.Asin(Mathf.Clamp((tip.y - hit.point.y) / Length, -1f, 1f)) * Mathf.Rad2Deg;
+                    angle = Mathf.Clamp(a + correction, -20f, max);
                     return true;
                 }
             }
@@ -680,15 +704,29 @@ namespace SailTrim
             if (down != _wasDown)
             {
                 _wasDown = down;
-                if (down) { EnsureDeck(); if (!FindRest(out _restAngle)) _restAngle = Plugin.GangwayMaxAngle.Value; }
+                if (down)
+                {
+                    EnsureDeck();
+                    if (!FindRest(out float a0)) a0 = Plugin.GangwayMaxAngle.Value;
+                    PushProbe(a0, true);
+                    _restAngle = a0;
+                    _restVel = 0f;
+                }
             }
 
             // Down, the plank follows whatever it rests on: the boat still lifts and rolls on the swell even
             // held at its spot, and a gangway that did not ride with it would hang in the air or sink into the dock.
-            if (down && _deploy > 0.5f && Time.time >= _nextProbe)
+            if (down && _deploy > 0.5f)
             {
-                _nextProbe = Time.time + 0.1f;
-                if (FindRest(out float a)) _restAngle = a;
+                if (Time.time >= _nextProbe)
+                {
+                    _nextProbe = Time.time + 0.08f;
+                    if (FindRest(out float a)) PushProbe(a, false);
+                }
+                // A touch beyond where it reads, so the tip sits on what it rests on rather than hovering over it.
+                // A little of the tip inside the dock is better than a plank that shivers.
+                float want = ProbeMedian() + 1f;
+                _restAngle = Mathf.SmoothDamp(_restAngle, want, ref _restVel, 0.35f, 90f, Time.deltaTime);
             }
 
             float span = Mathf.Max(0.2f, Plugin.GangwaySwingTime.Value);
