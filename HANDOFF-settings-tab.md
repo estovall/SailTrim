@@ -608,3 +608,32 @@ the bundle however it happens to be leaning without any pose maths of their own.
 the gangway starts to travel: a lashing on a plank swinging out over the side would be a lashing holding
 nothing. `RopeMaterial()` returns null before the world's prefabs are up, so the build is retried each frame
 until it takes.
+
+## Gangway: `_MoveableObject` is the whole answer
+
+The shader property list that `Tame()` logged settles it:
+
+```
+Custom/Piece: _TriplanarFoldout, _TriplanarMap, _TriplanarLocalPos, _TriplanarScale, _ColorFoldout,
+_MainTex, _Color, ... _NoiseTex, _ValueNoise, _RippleDistance, _RippleFreq, _ValueNoiseVertex,
+_MiscFoldout, _Cull, _AddRain, _AddSnow, _MoveableObject
+```
+
+**`_MoveableObject`.** The game has a flag for exactly this. A piece that stands still may vary itself by where
+it stands; a piece that moves may not, and Valheim says which is which with that float. It is why `ship_wood`
+never flickered and `woodwall` did — nothing to do with the material being "a ship's", only with the flag.
+
+`Tame()` now sets it on every material we use, which means **we are no longer restricted to the hull's timber**:
+any material the game has can be worn by something that moves. Forcing the hull's plain timber on everything is
+now just an option (`GangwayShipTimber`, off by default).
+
+## Gangway: iron-strapped timber
+
+It costs fine wood and iron nails and used to look like a piece of somebody's floor. It is built from
+`darkwood_beam` now — Valheim's iron-banded timber — and `BuildWalkway` lays the piece out **at its own size in
+both directions** rather than stretching one of it to fit: a beam stretched to the width of a walkway is a beam
+with its ironwork smeared across it. Falls back through `wood_beam` to `wood_floor` if darkwood is not found.
+
+The lashings stand 8.5 cm clear of the bundle instead of 4.5, are twice the thickness, and get their own
+instance of the rope material darkened to 55%. Hemp against fresh timber is nearly the same colour, and the same
+colour at the same depth is no lashing at all.

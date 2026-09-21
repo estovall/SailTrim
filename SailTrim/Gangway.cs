@@ -292,6 +292,8 @@ namespace SailTrim
         /// Turn off any world-position variation the shader offers, and say in the log what it offered, so the
         /// next thing to try is a name from a list rather than a guess.
         /// </summary>
+        internal static void TameMaterial(Material m) => Tame(m);
+
         private static void Tame(Material m)
         {
             var sh = m.shader;
@@ -305,11 +307,15 @@ namespace SailTrim
                     string prop = sh.GetPropertyName(i);
                     names.Add(prop);
                     string low = prop.ToLowerInvariant();
-                    // A local-space triplanar is the same look without the dependence on where the thing is.
-                    if (low.Contains("triplanarlocal") || low.Contains("localpos"))
+                    // Custom/Piece carries its own flag for this. A piece that stands still may vary itself by
+                    // where it stands; one that moves may not, and the game says so with _MoveableObject. It is
+                    // why the hull's own timber never flickered and a wall's did. With it set, any material the
+                    // game has can be worn by something that moves.
+                    if (low.Contains("moveableobject") || low.Contains("movableobject")
+                        || low.Contains("triplanarlocal") || low.Contains("localpos"))
                     {
                         m.SetFloat(prop, 1f);
-                        Plugin.Log.LogInfo($"SailTrim: gangway timber {prop} set to local space");
+                        Plugin.Log.LogInfo($"SailTrim: gangway material {prop} set for a moving object");
                     }
                 }
             }
@@ -321,18 +327,26 @@ namespace SailTrim
             }
         }
 
-        /// <summary>Put the hull's timber on everything we built for it.</summary>
-        internal static void UseShipTimber(Transform root, Ship ship)
+        /// <summary>
+        /// Settle the materials on everything we built. Copies already carry our own instances, so telling them
+        /// they are on a moving object is safe and is all most of them need. Only if the hull's plain timber is
+        /// asked for does anything get replaced.
+        /// </summary>
+        internal static void SettleMaterials(Transform root, Ship ship)
         {
-            if (root == null || !Plugin.GangwayShipTimber.Value) return;
-            var mat = ShipTimber(ship);
-            if (mat == null) return;
+            if (root == null) return;
+            Material plain = Plugin.GangwayShipTimber.Value ? ShipTimber(ship) : null;
             foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
             {
                 var arr = r.sharedMaterials;
                 if (arr == null) continue;
-                for (int i = 0; i < arr.Length; i++) arr[i] = mat;
-                r.sharedMaterials = arr;
+                bool changed = false;
+                for (int i = 0; i < arr.Length; i++)
+                {
+                    if (plain != null) { arr[i] = plain; changed = true; }
+                    else if (arr[i] != null) Tame(arr[i]);
+                }
+                if (changed) r.sharedMaterials = arr;
             }
         }
 
@@ -352,22 +366,41 @@ namespace SailTrim
 
             bool built = false;
             string beamName = null;
+            // Iron-strapped timber: the gangway costs fine wood and iron nails, and ought to look like it. The
+            // plain wooden floor it used to be built from looked like a bit of somebody's house.
             string floorName = "plain";
             var floorSrc = Plugin.GangwayPlainTimber.Value ? null
-                         : Models.FindFirst(db, out floorName, "wood_floor", "wood_floor_1x1", "piece_woodfloor");
+                         : Models.FindFirst(db, out floorName,
+                             "darkwood_beam", "darkwood_beam_26", "darkwood_beam_45", "darkwood_pole",
+                             "wood_beam", "wood_floor", "wood_floor_1x1", "piece_woodfloor");
+            if (floorSrc == null) floorName = "plain";
             if (floorSrc != null)
             {
-                int n = Mathf.Max(1, Mathf.RoundToInt(length / 2f));
-                float seg = length / n;
-                for (int k = 0; k < n; k++)
+                // Lay the piece out at its own size in both directions rather than stretching one of it to fit.
+                // A beam stretched to the width of a walkway is a beam with its ironwork smeared across it.
+                var first = Models.CopyVisual(floorSrc, root.transform, "deck0_0", out var b0, true);
+                if (first != null && b0.size.x > 0.05f && b0.size.z > 0.02f)
                 {
-                    var part = Models.CopyVisual(floorSrc, root.transform, "deck" + k, out var b, true);
-                    if (part == null || b.size.x < 0.05f || b.size.z < 0.05f) continue;
-                    var scale = new Vector3(seg / b.size.x, 1f, width / b.size.z);
-                    b = Models.ScaleInto(part, scale, b);
-                    Models.Place(part, b, new Vector3(0f, 1f, 0.5f), new Vector3(k * seg, 0f, 0f), Vector3.one, Quaternion.identity);
-                    built = true;
+                    int nx = Mathf.Max(1, Mathf.RoundToInt(length / b0.size.x));
+                    int nz = Mathf.Max(1, Mathf.RoundToInt(width / b0.size.z));
+                    float sx = length / nx, sz = width / nz;
+                    var scale = new Vector3(sx / b0.size.x, 1f, sz / b0.size.z);
+                    for (int i = 0; i < nx; i++)
+                        for (int j = 0; j < nz; j++)
+                        {
+                            GameObject part;
+                            Bounds b;
+                            if (i == 0 && j == 0) { part = first; b = b0; }
+                            else part = Models.CopyVisual(floorSrc, root.transform, "deck" + i + "_" + j, out b, true);
+                            if (part == null) continue;
+                            b = Models.ScaleInto(part, scale, b);
+                            Models.Place(part, b, new Vector3(0f, 1f, 0.5f),
+                                         new Vector3(i * sx, 0f, (j + 0.5f) * sz - width * 0.5f),
+                                         Vector3.one, Quaternion.identity);
+                            built = true;
+                        }
                 }
+                else if (first != null) UnityEngine.Object.Destroy(first);
             }
             var beamSrc = built ? Models.FindFirst(db, out beamName, "wood_beam", "wood_beam_1", "wood_pole") : null;
             if (beamSrc != null)
@@ -1252,8 +1285,10 @@ namespace SailTrim
             const float Thick = 0.22f;
             float top = LeafLift * 2f;
             float midY = (top - Thick) * 0.5f;
-            float ry = (top + Thick) * 0.5f + 0.045f;
-            float rz = 0.42f + 0.045f;
+            // Standing well clear of the timber, so it reads as a rope round a bundle and not a stripe painted
+            // on one. Drawn tight to the wood it was the same colour at the same depth and disappeared into it.
+            float ry = (top + Thick) * 0.5f + 0.085f;
+            float rz = 0.42f + 0.085f;
 
             float seg = Length / 3f;
             var mb = new Models.MeshBuilder();
@@ -1265,9 +1300,22 @@ namespace SailTrim
                     float a = Mathf.Lerp(-Mathf.PI, Mathf.PI, i / 16f);
                     path.Add(new Vector3(x0, midY + Mathf.Cos(a) * ry, Mathf.Sin(a) * rz));
                 }
-                mb.Sweep(path, 0.022f, 6);
+                mb.Sweep(path, 0.045f, 8);
             }
             _lashing = Models.MeshPart(transform, "lashing", mb.Build("SailTrim_GangwayLashing"), mat);
+            if (_lashing != null)
+            {
+                // Its own instance, darkened a shade: hemp against fresh timber is nearly the same colour, and
+                // the same colour at the same depth is no lashing at all.
+                var r = _lashing.GetComponent<MeshRenderer>();
+                if (r != null && r.sharedMaterial != null)
+                {
+                    var mine = new Material(r.sharedMaterial) { name = r.sharedMaterial.name + " (SailTrim lashing)" };
+                    if (mine.HasProperty("_Color")) mine.SetColor("_Color", mine.GetColor("_Color") * 0.55f);
+                    Gangway.TameMaterial(mine);
+                    r.sharedMaterial = mine;
+                }
+            }
             if (_lashing != null)
             {
                 Gangway.SetLayer(_lashing.transform, VisualLayer(_ship));
@@ -1347,7 +1395,7 @@ namespace SailTrim
             if (_visual != null && !_timbered)
             {
                 _timbered = true;
-                Gangway.UseShipTimber(_mount, _ship);
+                Gangway.SettleMaterials(_mount, _ship);
             }
             if (fitted && _visual != null && _box != null) ChooseStowSide();
             if (fitted != _wasFitted)
