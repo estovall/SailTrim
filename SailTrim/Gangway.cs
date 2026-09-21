@@ -410,6 +410,17 @@ namespace SailTrim
     /// game routes hovering to a component on the hit collider's own object, so it has to live here and not on
     /// a parent. The plank's own transform is the hinge; its visual and collider hang off +X, outboard.
     /// </summary>
+    /// <summary>
+    /// Marks a gangway part you can stand on. The plank is its own body so that it cannot shove the boat about
+    /// or prop it up on the dock, but the game works out what carries a passenger from the body under their feet,
+    /// and ours is not the boat. This says which boat it belongs to; Character.UpdateGroundContact is corrected
+    /// with it, so standing on the plank carries you exactly as standing on the deck does.
+    /// </summary>
+    internal class GangwayFooting : MonoBehaviour
+    {
+        internal Ship Ship;
+    }
+
     internal class GangwayMount : MonoBehaviour, Hoverable, Interactable
     {
         private Ship _ship;
@@ -478,6 +489,7 @@ namespace SailTrim
             rb.isKinematic = true;
             rb.useGravity = false;
             rb.interpolation = RigidbodyInterpolation.None;
+            gameObject.AddComponent<GangwayFooting>().Ship = ship;
             _rb = rb;
             SetCollider(0);
             Apply(0f);
@@ -747,21 +759,35 @@ namespace SailTrim
                 // The rail is the highest timber of the hull, so take the outermost place that reaches that height.
                 float high = float.NegativeInfinity;
                 foreach (float y in ys) if (y > high) high = y;
+                int railAt = -1;
                 for (int i = 0; i < xs.Count; i++)
-                    if (ys[i] >= high - 0.12f) { found = xs[i]; foundY = ys[i]; break; }
+                    if (ys[i] >= high - 0.07f) { found = xs[i]; foundY = ys[i]; railAt = i; break; }
+
+                // What you stand on beside the rail is the first level run of deck inboard of it, and the lowest
+                // point of that run. Probing at fixed fractions of the beam and taking the lowest found the
+                // Drakkar's main deck, a metre and a half down, when what is actually alongside the rail there is
+                // a side walkway a hand's breadth below it: the stowed plank ended up buried in the hull.
+                if (railAt >= 0)
+                {
+                    int runStart = railAt, best = -1;
+                    for (int i = railAt + 1; i <= xs.Count; i++)
+                    {
+                        bool broke = i == xs.Count || Mathf.Abs(ys[i] - ys[i - 1]) > 0.06f;
+                        if (!broke) continue;
+                        if (i - runStart >= 7) { best = runStart; break; }
+                        runStart = i;
+                    }
+                    if (best >= 0)
+                    {
+                        float deck = float.PositiveInfinity;
+                        for (int i = best; i < xs.Count && (i == best || Mathf.Abs(ys[i] - ys[i - 1]) <= 0.06f); i++)
+                            deck = Mathf.Min(deck, ys[i]);
+                        if (!float.IsInfinity(deck)) _deckDrop = Mathf.Clamp(foundY - deck, 0.1f, 1.8f);
+                    }
+                }
             }
             // How far the rail stands above the deck here: probe inboard and take the lowest top surface we find,
             // which is the deck rather than a bench or a chest standing on it.
-            if (!float.IsNaN(found))
-            {
-                float deck = float.PositiveInfinity;
-                foreach (float f in new[] { 0.75f, 0.55f, 0.35f })
-                {
-                    float y = TopOfShip(sign * found * f, start.z, start.y);
-                    if (!float.IsNegativeInfinity(y)) deck = Mathf.Min(deck, y);
-                }
-                if (!float.IsInfinity(deck)) _deckDrop = Mathf.Clamp(foundY - deck, 0.15f, 1.8f);
-            }
             if (!float.IsNaN(found))
             {
                 // A hand's breadth inboard of the edge, so the hinge sits on the rail rather than over the water,
@@ -866,27 +892,12 @@ namespace SailTrim
             _stepRb.isKinematic = true;
             _stepRb.useGravity = false;
             _stepRb.interpolation = RigidbodyInterpolation.None;
+            _step.AddComponent<GangwayFooting>().Ship = _ship;
 
             // The ramp is the same timber as the plank, laid from the game's own floor pieces.
             Gangway.BuildWalkway(_step.transform, "visual", len, 0.8f, VisualLayer(_ship));
             _step.SetActive(_wasFitted);
             IgnoreShip();
-        }
-
-        /// <summary>
-        /// The game moves you with whatever you are standing on by adding that body's velocity at your feet.
-        /// A kinematic body has none of its own, so hand it the boat's, or a passenger would be left behind.
-        /// </summary>
-        private void FixedUpdate()
-        {
-            if (_rb == null || _ship == null || _ship.m_body == null) return;
-            _rb.linearVelocity = _ship.m_body.GetPointVelocity(_rb.worldCenterOfMass);
-            _rb.angularVelocity = _ship.m_body.angularVelocity;
-            if (_stepRb != null)
-            {
-                _stepRb.linearVelocity = _ship.m_body.GetPointVelocity(_stepRb.worldCenterOfMass);
-                _stepRb.angularVelocity = _ship.m_body.angularVelocity;
-            }
         }
 
         // ------------------------------------------------------------------

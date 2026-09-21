@@ -376,3 +376,29 @@ The rail itself is still measured by ray — these are only the adjustments on t
 
 **Before release, set `SurveyKey` back to `KeyCode.None`.** F10 is a convenience for this iteration, not
 something a published mod should be taking from players.
+
+## Gangway: what the first survey showed
+
+All three hulls were on their beam ends. The plank has its own kinematic body so that it cannot prop the hull
+up on the dock; that also makes it a separate object wedged inside the boat, and a kinematic body overlapping a
+floating one depenetrates with everything it has. `IgnoreShip()` now strikes out every collider pair between our
+fittings and the ship, redone for twenty seconds because a boat goes on assembling itself after `Awake`.
+
+Setting velocity on a kinematic body is refused in Unity 6 and logs a warning every fixed step, so the passenger
+handoff in `FixedUpdate` never did anything. It is gone. In its place `Character.UpdateGroundContact` gets a
+postfix: `GangwayFooting` marks a part you can stand on and names its boat, and the patch swaps our body for the
+boat's, so `GetPointVelocity` and `GetStandingOnShip` both answer as they do on the deck. Keeping our colliders
+out of the ship's compound matters for more than propping: `Ship` never sets `centerOfMass` or `inertiaTensor`,
+so anything added to its body would move both, and a gangway must not change how a boat sails.
+
+### Reading a hull from its section
+
+`EnsureDeck` samples the whole section across the beam and writes it into the survey notes. Taking the first
+thing a ray downward met put the Drakkar's mount out in the air, because an oar stands further out than the rail.
+It now takes the outermost timber within 7 cm of the highest.
+
+The deck beside the rail is the first level run of at least seven samples inboard of it, and the lowest point of
+that run. Probing at fixed fractions of the beam found the Drakkar's main deck a metre and a half down, when what
+is alongside the rail there is a side walkway a hand's breadth below it — the stowed plank ended up buried in the
+hull. Checked against all three sections: Karve 0.71 m, Longship 0.69 m, Drakkar 0.11 m.
+

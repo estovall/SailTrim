@@ -68,8 +68,12 @@ namespace SailTrim
                 var mount = ship.transform.Find("SailTrim_Gangway_S");
                 if (mount != null)
                 {
-                    var mb = new Bounds(mount.position, Vector3.one * 4.5f);
-                    shots += Shot(ship, mb, stem + "_mount", (ship.transform.right * 1.2f + ship.transform.forward * 0.5f + Vector3.up * 0.5f).normalized, 22f, 1.0f) ? 1 : 0;
+                    // Close enough to see the joinery. The first pass framed four and a half metres and the plank
+                    // was a smudge on the rail.
+                    var mb = new Bounds(mount.position + ship.transform.forward * 0.6f, Vector3.one * 2.8f);
+                    shots += Shot(ship, mb, stem + "_mount", (ship.transform.right * 1.2f + ship.transform.forward * 0.4f + Vector3.up * 0.35f).normalized, 18f, 1.0f) ? 1 : 0;
+                    // And from inboard looking out, which is the view that shows whether it sits on the deck.
+                    shots += Shot(ship, mb, stem + "_inboard", (-ship.transform.right * 1.0f + ship.transform.forward * 0.45f + Vector3.up * 0.8f).normalized, 35f, 1.0f) ? 1 : 0;
                 }
             }
             File.WriteAllText(Path.Combine(Dir, "survey.txt"), notes.ToString());

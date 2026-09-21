@@ -5,6 +5,20 @@ namespace SailTrim
 {
     internal static class Patches
     {
+        // Standing on a gangway is standing on the boat. The game reads the body under your feet to know what
+        // carries you, and a gangway has its own so that it cannot shove the hull or prop it on the dock; without
+        // this it reads a body going nowhere, and a passenger would be left behind by a boat that moved under them.
+        [HarmonyPatch(typeof(Character), "UpdateGroundContact")]
+        [HarmonyPostfix]
+        private static void Character_UpdateGroundContact(Character __instance)
+        {
+            var body = __instance.m_lastGroundBody;
+            if (body == null) return;
+            var footing = body.GetComponent<GangwayFooting>();
+            if (footing != null && footing.Ship != null && footing.Ship.m_body != null)
+                __instance.m_lastGroundBody = footing.Ship.m_body;
+        }
+
         // Attach our per-ship state as soon as the ship exists.
         [HarmonyPatch(typeof(Ship), "Awake")]
         [HarmonyPostfix]
