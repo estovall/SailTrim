@@ -311,9 +311,11 @@ namespace SailTrim
                     // where it stands; one that moves may not, and the game says so with _MoveableObject. It is
                     // why the hull's own timber never flickered and a wall's did. With it set, any material the
                     // game has can be worn by something that moves.
-                    // Only the flag the game itself names for this. Forcing the triplanar sampling local as
-                    // well was a guess piled on top of a fix, and a guess that changes how a material looks.
-                    if (low.Contains("moveableobject") || low.Contains("movableobject"))
+                    // Both: _MoveableObject is the flag the game names for this, and a triplanar sampled in
+                    // world space is the same trap by another route. Dropping the second one was a wrong guess --
+                    // the beams were the wrong colour because a stale config value was painting over them.
+                    if (low.Contains("moveableobject") || low.Contains("movableobject")
+                        || low.Contains("triplanarlocal") || low.Contains("localpos"))
                     {
                         m.SetFloat(prop, 1f);
                         Plugin.Log.LogInfo($"SailTrim: gangway material {prop} set for a moving object");
@@ -783,7 +785,7 @@ namespace SailTrim
         // readings and steer for the middle one, then move smoothly toward that, rather than following each frame.
         private readonly float[] _probes = new float[5];
         private int _probeCount;
-        private float _restVel;
+        private float _restDist;   // how far out along the plank the thing it rests on was found
         private bool _wasFitted, _wasDown;
         private Gangway.Placement _place;
         private Vector3 _railLocal;   // where the rail was found, before the per-hull correction
@@ -1121,7 +1123,7 @@ namespace SailTrim
         private bool Lower(Humanoid user)
         {
             EnsureDeck();
-            if (!FindRest(out float angle))
+            if (!FindRest(out float angle, out float _, out float _))
             {
                 user.Message(MessageHud.MessageType.Center, "Nothing within reach to rest it on");
                 return false;
@@ -1250,9 +1252,11 @@ namespace SailTrim
             _probeCount++;
         }
 
-        private bool FindRest(out float angle)
+        private bool FindRest(out float angle, out float groundY, out float dist)
         {
             angle = 0f;
+            groundY = 0f;
+            dist = 0f;
             float max = Mathf.Max(5f, Plugin.GangwayMaxAngle.Value);
             // Not the sea, and not people: a gangway rests on something solid, or it does not go down at all.
             int mask = ~LayerMask.GetMask("Water", "WaterVolume", "water", "character", "character_net",
@@ -1262,8 +1266,11 @@ namespace SailTrim
             float shallowest = float.MaxValue;
             for (float d = 1f; d <= Length + 0.01f; d += 0.4f)
             {
-                float a = AngleOnto(d, max, mask);
-                if (!float.IsNaN(a) && a < shallowest) shallowest = a;
+                float a = AngleOnto(d, max, mask, out float g);
+                if (float.IsNaN(a) || a >= shallowest) continue;
+                shallowest = a;
+                groundY = g;
+                dist = d;
             }
             if (shallowest == float.MaxValue) return false;
             angle = Mathf.Clamp(shallowest, -20f, max);
@@ -1274,8 +1281,9 @@ namespace SailTrim
         /// The angle at which the plank, this far out from its hinge, would come down onto whatever is under it.
         /// The plank's reach shortens as it tilts, so where it lands moves: two passes settle it.
         /// </summary>
-        private float AngleOnto(float d, float max, int mask)
+        private float AngleOnto(float d, float max, int mask, out float groundY)
         {
+            groundY = 0f;
             float a = 0f;
             for (int pass = 0; pass < 3; pass++)
             {
@@ -1289,6 +1297,7 @@ namespace SailTrim
                     if (h.point.y > top) top = h.point.y;
                 }
                 if (float.IsNegativeInfinity(top)) return float.NaN;
+                groundY = top;
                 float next = Mathf.Asin(Mathf.Clamp((_mount.position.y - top) / d, -1f, 1f)) * Mathf.Rad2Deg;
                 next = Mathf.Clamp(next, -20f, max);
                 if (Mathf.Abs(next - a) < 0.2f) return next;
@@ -1565,10 +1574,13 @@ namespace SailTrim
                 if (down)
                 {
                     EnsureDeck();
-                    if (!FindRest(out float a0)) a0 = Plugin.GangwayMaxAngle.Value;
-                    PushProbe(a0, true);
-                    _restAngle = a0;
-                    _restVel = 0f;
+                    if (FindRest(out float a0, out float g0, out float d0))
+                    {
+                        PushProbe(g0, true);
+                        _restDist = d0;
+                        _restAngle = a0;
+                    }
+                    else { _restDist = 0f; _restAngle = Plugin.GangwayMaxAngle.Value; }
                 }
             }
 
@@ -1579,12 +1591,22 @@ namespace SailTrim
                 if (Time.time >= _nextProbe)
                 {
                     _nextProbe = Time.time + 0.08f;
-                    if (FindRest(out float a)) PushProbe(a, false);
+                    if (FindRest(out float _, out float g, out float d))
+                    {
+                        PushProbe(g, false);
+                        _restDist = d;
+                    }
                 }
-                // A touch beyond where it reads, so the tip sits on what it rests on rather than hovering over it.
-                // A little of the tip inside the dock is better than a plank that shivers.
-                float want = ProbeMedian() + 1f;
-                _restAngle = Mathf.SmoothDamp(_restAngle, want, ref _restVel, 0.35f, 90f, Time.deltaTime);
+                // Smooth the ground, not the angle. What the plank rests on is a dock or a rock and holds still;
+                // the hinge is the thing that moves, a metre at a time on the swell. Smoothing the angle meant the
+                // plank held the angle that suited the last wave, so every time the boat dropped it drove its far
+                // end into the beach. The ground reading is steadied against a noisy ray, and the angle is worked
+                // out afresh from wherever the hinge is this frame.
+                if (_restDist > 0.1f)
+                {
+                    float want = Mathf.Asin(Mathf.Clamp((_mount.position.y - ProbeMedian()) / _restDist, -1f, 1f)) * Mathf.Rad2Deg;
+                    _restAngle = Mathf.Clamp(want + 0.3f, -20f, Mathf.Max(5f, Plugin.GangwayMaxAngle.Value));
+                }
             }
 
             float span = Mathf.Max(0.2f, Plugin.GangwaySwingTime.Value);

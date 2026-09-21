@@ -742,3 +742,26 @@ Worth remembering when a fix "doesn't take": check `BepInEx\config\com.maxst.sai
 code. The survey's `mat=` field is what caught it.
 
 `coincident pairs` is back to **0** on all six mounts, so the measured leaf lift fixed the brow's leaves.
+
+**Un-reverted:** `Tame()` sets `_TriplanarLocalPos` again alongside `_MoveableObject`. Dropping it was a wrong
+guess — the beams were the wrong colour because of the stale config value, not because of that. A triplanar
+sampled in world space is the same trap as `_MoveableObject` by another route, so a moving object wants both.
+
+## Gangway: burying itself in the swell
+
+The rest angle was smoothed toward its target with a 0.35 s `SmoothDamp`. The smoothing was added to settle a
+noisy ray and it was applied to the wrong quantity: **what the plank rests on is a dock or a rock and holds
+still; the thing that moves is the hinge**, a metre at a time on the swell. Smoothing the angle meant the plank
+held the angle that suited the last wave, so each time the boat dropped it drove its far end into the beach.
+
+`FindRest` now reports *where* the binding contact is — the ground height and how far out along the plank — and
+the median buffer steadies the **ground reading** against ray noise. The angle is then worked out afresh from
+wherever the hinge is this frame:
+
+```csharp
+want = asin((mount.position.y - ProbeMedian()) / _restDist) * Rad2Deg;
+```
+
+No lag on the boat's motion, which is real and must be tracked exactly, and no jitter from the ray, which is
+noise and must not be. The overshoot past contact drops from 1 degree to 0.3 now that it no longer has to cover
+for the lag.
