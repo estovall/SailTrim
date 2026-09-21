@@ -127,6 +127,15 @@ namespace SailTrim
         internal static ConfigEntry<float> CastOffDelay;
         internal static ConfigEntry<float> MoorRepairPerMinute;
         internal static ConfigEntry<bool> BuoyEnabled;
+        internal static ConfigEntry<bool> GangwayEnabled;
+        internal static ConfigEntry<float> GangwayLength;
+        internal static ConfigEntry<float> GangwayMaxAngle;
+        internal static ConfigEntry<float> GangwayStowAngle;
+        internal static ConfigEntry<float> GangwaySwingRate;
+        internal static ConfigEntry<float> GangwayRetractDelay;
+        internal static ConfigEntry<bool> GangwayTiesCleat;
+        internal static ConfigEntry<int> GangwayWoodCost;
+        internal static ConfigEntry<int> GangwayNailCost;
         internal static ConfigEntry<bool> BuoyLight;
         internal static ConfigEntry<bool> BuoyPins;
 
@@ -486,6 +495,30 @@ namespace SailTrim
                 new ConfigDescription("How firmly a moored boat is pulled back to where it was tied (heading too). 0 = only the vanilla empty-boat damping.", new AcceptableValueRange<float>(0f, 5f)));
             MoorRepairPerMinute = Config.Bind("8. Mooring", "MoorRepairPerMinute", 5f,
                 new ConfigDescription("A tied-up boat mends itself: this percent of its full health per minute (the dock knocks it about between tides). 0 = off.", new AcceptableValueRange<float>(0f, 100f)));
+            GangwayEnabled = Config.Bind("10. Gangway", "GangwayEnabled", true,
+                "Adds the Gangway: a plank you craft at the workbench and fit to a boat's rail (any hull but the raft, one a side). Lower it to walk between the deck and the dock with a load you could not climb with.");
+            GangwayLength = Config.Bind("10. Gangway", "GangwayLength", 3f,
+                new ConfigDescription("How long the plank is, in metres. Longer reaches further but is heavier to look at.",
+                    new AcceptableValueRange<float>(1.5f, 8f)));
+            GangwayMaxAngle = Config.Bind("10. Gangway", "GangwayMaxAngle", 35f,
+                new ConfigDescription("Steepest slope the gangway will rest at, in degrees. Anything steeper is refused: carrying a load you could not walk up it anyway.",
+                    new AcceptableValueRange<float>(10f, 60f)));
+            GangwayStowAngle = Config.Bind("10. Gangway", "GangwayStowAngle", -78f,
+                new ConfigDescription("Where the plank sits when it is stowed, in degrees from straight out over the side. -78 stands it up against the rail; nearer 0 lays it out flat.",
+                    new AcceptableValueRange<float>(-90f, 0f)));
+            GangwaySwingRate = Config.Bind("10. Gangway", "GangwaySwingRate", 45f,
+                new ConfigDescription("How fast the plank swings up and down, in degrees per second.",
+                    new AcceptableValueRange<float>(10f, 200f)));
+            GangwayRetractDelay = Config.Bind("10. Gangway", "GangwayRetractDelay", 2f,
+                new ConfigDescription("Seconds at the helm before a gangway that is still down comes up by itself.",
+                    new AcceptableValueRange<float>(0f, 10f)));
+            GangwayTiesCleat = Config.Bind("10. Gangway", "GangwayTiesCleat", true,
+                "Lowering a gangway within CleatRange of a cleat that has no boat on it ties that cleat on as well.");
+            GangwayWoodCost = Config.Bind("10. Gangway", "GangwayWoodCost", 10,
+                new ConfigDescription("Wood to craft one gangway.", new AcceptableValueRange<int>(1, 100)));
+            GangwayNailCost = Config.Bind("10. Gangway", "GangwayNailCost", 4,
+                new ConfigDescription("Bronze nails to craft one gangway. 0 for none.", new AcceptableValueRange<int>(0, 50)));
+
             BuoyEnabled = Config.Bind("9. Buoy", "BuoyEnabled", true,
                 "Adds the Buoy build piece (hammer, Misc; 6 wood, 2 resin, no workbench). Placed on open water like a boat, it floats and holds its spot: channel markers, race marks.");
             BuoyLight = Config.Bind("9. Buoy", "BuoyLight", true, "The buoy's lantern burns at night.");

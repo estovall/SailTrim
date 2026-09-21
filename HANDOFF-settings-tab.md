@@ -241,3 +241,47 @@ Gale profile. Publish them together once he has sailed with crew aboard.
 Tow lines (a craftable tow rope between two boats), an anchor, loaded boats riding lower, rudder authority that
 depends on water flow, swell that you surf down and pay for climbing, coastal set and drift. Max wants all of it
 to feel vanilla and official, and each idea must carry its own upside.
+
+## Update 2026-09-21 (later): branch `gangway`, built and untested in game
+
+Max's ask, agreed in full: a wooden gangway hinged at the rail that drops until it meets something and lets you
+walk between deck and dock while encumbered (a full load of metal cannot jump). His terms: every hull but the
+raft; a craftable fitting you place to upgrade a boat, one a side; auto-retract at the helm but after 2 s, not the
+cleat's 1 s; while down the boat holds its spot like a moored one but does NOT self-heal; you work it from on
+board (separate from the cleat); lowering it within reach of a free cleat ties that cleat on as well.
+
+- `Gangway.cs`. State is one int in the boat's ZDO (`SailTrim_Gangway`, bits: 1 port fitted, 2 stbd fitted,
+  4 port down, 8 stbd down), written by the owner on the `SailTrim_Gangway` RPC (side, action 0 fit / 1 lower /
+  2 raise), the same shape as the mooring.
+- `Gangway.OnShipAwake` (from the `Ship.Awake` postfix) hangs a mount at each rail: x = float collider half-beam,
+  z = 20% aft of amidships to clear the mast and shrouds, y raised to the deck by a one-off downward `RaycastAll`
+  filtered to the boat's own colliders (`EnsureDeck`; Awake is too early, so it runs on first use). The mount's
+  local rotation mirrors port, so inside a mount +X is always outboard. The plank is the mount's child and its
+  own transform is the hinge: `localRotation = Euler(0,0,-angle)`.
+- `GangwayMount` carries the `Hoverable`/`Interactable` and the `BoxCollider`, because the game routes hovering to
+  a component on the hit collider's own object. It is **never deactivated** (its own Update watches the boat's
+  state); unfitted it shrinks to a small patch of rail and hides the visual.
+- Resting angle: `FindRest` sweeps from -20 deg (tip above the hinge, for a dock higher than the rail) down to
+  `GangwayMaxAngle` (35) and takes the first thing the far end meets, which is what a plank let down on its hinge
+  does. It re-runs every 0.1 s while down, so the plank rides the swell instead of hanging in the air or sinking
+  into the dock. Nothing found = refused, because you could not walk up it carrying a load anyway.
+- Walking across needs no work: `Character` adds `m_lastGroundBody.GetPointVelocity(feet)` to your own velocity,
+  which is what makes the deck walkable, and the plank is a child of the boat so it shares the hull's rigidbody.
+  The collider takes the hull's layer for the same reason.
+- The hold: `Mooring.FixedStep` now runs for `byCleat || byGangway`, and the hull repair is gated on `byCleat`
+  alone. `Mooring.HoldHere(ship)` records the spot when a gangway goes down. Taking the helm raises a gangway
+  after `GangwayRetractDelay` (2) via `Gangway.PilotAtHelm`, next to the cleat's `CastOffDelay` (1).
+- Auto-tie: `Cleat.AutoTie(ship)` finds the nearest `CleatPiece` within `CleatRange` with no boat and ties it;
+  `CleatPiece.TieTo`/`HasNoBoat`/`DistanceToHull` are the new internals, and `Tie` now tolerates a null user.
+- The item: a clone of FineWood with cloned `SharedData` (it is a plain class, so a reflection field copy), the
+  stock renderers disabled, our plank mesh as its model and an icon rendered from it; added to `ObjectDB.m_items`
+  + `UpdateRegisters()`, to `ZNetScene`, and a `Recipe` at whatever station an existing workbench recipe uses
+  (10 wood + 4 bronze nails, configurable). `Inventory.GetItem("Gangway")` matches on the shared name.
+- Config section `10. Gangway`: Enabled, Length (3), MaxAngle (35), StowAngle (-78), SwingRate (45),
+  RetractDelay (2), TiesCleat, WoodCost, NailCost. Unsynced, like `8. Mooring` and `9. Buoy`.
+- Version left at 1.7.1 on purpose: the dev build still matches the server.
+
+**Untested in game.** Watch for: the mount position (the log prints beam and z per hull; the rail height comes
+from the raycast), whether a 3 m plank stowed at -78 deg looks right or wants `GangwayStowAngle` nearer 0,
+whether the icon and dropped model render, whether the recipe shows at the workbench, and above all whether you
+can actually walk up it while encumbered without falling through the join.

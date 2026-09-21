@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (branch gangway)
+
+- The Gangway: a plank hinged at the rail that you walk over between the deck and the dock, so a load of metal no longer has to be climbed over the side. Craft one at the workbench (10 wood, 4 bronze nails) and interact with the rail of any hull but the raft to fit it, one to a side; it stays with the boat. Interact again to lower it and it rests on whatever is under it, dock, shore or log, and keeps resting there as the boat works in the swell. While it is down the boat holds its spot the way a moored boat does, though unlike a cleat it does not mend the hull, and lowering it within reach of a cleat with no boat on it ties that cleat on as well. You work it from on board. Taking the helm raises it after two seconds.
+
 ## 1.7.1
 
 - Fixed: stepping off a boat furled the sail to look at but not in fact. The mod kept its own sail amount, so an empty boat sat there apparently furled and then sailed off the moment you stepped back aboard, with the cloth snapping back to where it had been. An empty boat now furls for real and has to be set again, as in vanilla. Loading cargo is no longer a chase.

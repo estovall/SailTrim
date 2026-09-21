@@ -12,6 +12,8 @@ namespace SailTrim
         {
             if (__instance.GetComponent<SailTrimShip>() == null)
                 __instance.gameObject.AddComponent<SailTrimShip>().Init(__instance);
+            try { Gangway.OnShipAwake(__instance); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: gangway mounts: " + e); }
             if (__instance.m_mastObject != null)
             {
                 // Vanilla ships have a "Hold fast" seat at the mast (a Chair somewhere in the ship hierarchy,
@@ -52,6 +54,7 @@ namespace SailTrim
         {
             SailTrimShip.Get(__instance)?.OnShipStart();
             Mooring.OnShipStart(__instance);
+            Gangway.OnShipStart(__instance);
         }
 
         // ---- The cleat: prefab into the world's prefab list and the hammer ----
@@ -61,6 +64,8 @@ namespace SailTrim
         {
             try { Cleat.OnZNetScene(__instance); }
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: cleat registration failed: " + e); }
+            try { Gangway.OnZNetScene(__instance); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: gangway prefab: " + e); }
             try { Buoy.OnZNetScene(__instance, Cleat.EnsureRoot()); }
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: buoy registration failed: " + e); }
         }
@@ -71,6 +76,8 @@ namespace SailTrim
         {
             try { Cleat.OnObjectDb(__instance); }
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: cleat setup failed: " + e); }
+            try { Gangway.OnObjectDb(__instance); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: gangway item: " + e); }
             try { Buoy.OnObjectDb(__instance, Cleat.EnsureRoot()); }
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: buoy setup failed: " + e); }
         }
@@ -81,6 +88,8 @@ namespace SailTrim
         {
             try { Cleat.OnObjectDb(__instance); }
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: cleat setup failed: " + e); }
+            try { Gangway.OnObjectDb(__instance); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: gangway item: " + e); }
             try { Buoy.OnObjectDb(__instance, Cleat.EnsureRoot()); }
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: buoy setup failed: " + e); }
         }
@@ -136,10 +145,12 @@ namespace SailTrim
             var st = SailTrimShip.Get(ship);
             if (st == null) return true;
 
-            // Tied to a cleat: taking the helm casts off after a second. Until then the rudder turns and nothing else.
-            if (Mooring.IsMoored(ship))
+            // Tied to a cleat, or a gangway still down: taking the helm casts off / raises it after a moment.
+            // Until then the rudder turns and nothing else.
+            if (Mooring.IsMoored(ship) || Gangway.AnyDown(ship))
             {
-                Mooring.PilotAtHelm(ship, Time.fixedDeltaTime);
+                if (Mooring.IsMoored(ship)) Mooring.PilotAtHelm(ship, Time.fixedDeltaTime);
+                Gangway.PilotAtHelm(ship, Time.fixedDeltaTime);
                 if (!Plugin.ManualTrim.Value)
                 {
                     ship.ApplyControlls(new Vector3(moveDir.x, 0f, 0f));

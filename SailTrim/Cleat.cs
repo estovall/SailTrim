@@ -230,6 +230,26 @@ namespace SailTrim
             wrapT.gameObject.SetActive(false);
         }
 
+        /// <summary>
+        /// A cleat in reach with no boat on it takes this one. Lowering a gangway alongside a dock ties the boat
+        /// up as well, so one press does the whole job.
+        /// </summary>
+        internal static bool AutoTie(Ship ship)
+        {
+            if (!Plugin.CleatEnabled.Value || ship == null) return false;
+            CleatPiece best = null;
+            float bestD = Plugin.CleatRange.Value;
+            foreach (var c in Object.FindObjectsByType<CleatPiece>(FindObjectsSortMode.None))
+            {
+                if (c == null || !c.HasNoBoat) continue;
+                float d = c.DistanceToHull(ship);
+                if (d < bestD) { bestD = d; best = c; }
+            }
+            if (best == null) return false;
+            best.TieTo(ship);
+            return true;
+        }
+
         /// <summary>ZNetScene is up (a world is loading): the prefab must be known before any cleat ZDO arrives.</summary>
         internal static void OnZNetScene(ZNetScene scene)
         {
@@ -332,6 +352,23 @@ namespace SailTrim
             return true;
         }
 
+        internal bool HasNoBoat => Boat.IsNone();
+
+        /// <summary>How near this cleat the boat's hull comes.</summary>
+        internal float DistanceToHull(Ship ship)
+        {
+            if (ship == null) return float.MaxValue;
+            Vector3 from = Top;
+            float d = float.MaxValue;
+            foreach (var c in ship.GetComponentsInChildren<Collider>())
+                if (HullCollider(ship, c)) d = Mathf.Min(d, Vector3.Distance(c.ClosestPoint(from), from));
+            if (d == float.MaxValue) d = Vector3.Distance(ship.transform.position, from);
+            return d;
+        }
+
+        /// <summary>Tie up with nobody's hands on it (a gangway going down alongside).</summary>
+        internal void TieTo(Ship ship) => Tie(ship, null);
+
         private void Tie(Ship ship, Humanoid user)
         {
             var shipView = ship.m_nview;
@@ -341,7 +378,7 @@ namespace SailTrim
             _tieTime = Time.time;
             // To the boat's owner, who runs its physics and writes its ZDO.
             shipView.InvokeRPC(Mooring.RpcName, _nview.GetZDO().m_uid, true);
-            user.Message(MessageHud.MessageType.TopLeft, "Tied up " + Localization.instance.Localize(ShipName(ship)));
+            if (user != null) user.Message(MessageHud.MessageType.TopLeft, "Tied up " + Localization.instance.Localize(ShipName(ship)));
         }
 
         /// <summary>The boat's pilot took the helm: let go of it from this end (no message here; the pilot gets one).</summary>
@@ -684,6 +721,16 @@ namespace SailTrim
             }
         }
 
+        /// <summary>Owner: remember the spot to hold the boat at (tying up, or a gangway going down).</summary>
+        internal static void HoldHere(Ship ship)
+        {
+            var nv = ship != null ? ship.m_nview : null;
+            if (nv == null || !nv.IsValid() || !nv.IsOwner() || ship.m_body == null) return;
+            var zdo = nv.GetZDO();
+            zdo.Set(PosHash, ship.m_body.position);
+            zdo.Set(YawHash, ship.transform.eulerAngles.y);
+        }
+
         internal static bool IsMoored(Ship ship)
         {
             var nv = ship != null ? ship.m_nview : null;
@@ -697,8 +744,12 @@ namespace SailTrim
             var nv = ship.m_nview;
             var zdo = nv.GetZDO();
             ZDOID cleat = zdo.GetZDOID(CleatKey);
-            if (cleat.IsNone()) return;
-            if (!_checkAt.TryGetValue(ship, out float at) || Time.time > at)
+            // A gangway down holds the boat too, so it cannot be shoved out from under someone walking across.
+            // That is all it does: a gangway is not a mooring and does not mend the hull.
+            bool byGangway = Gangway.AnyDown(ship);
+            bool byCleat = !cleat.IsNone();
+            if (!byCleat && !byGangway) return;
+            if (byCleat && (!_checkAt.TryGetValue(ship, out float at) || Time.time > at))
             {
                 _checkAt[ship] = Time.time + 1f;
                 var cz = ZDOMan.instance.GetZDO(cleat);
@@ -706,7 +757,7 @@ namespace SailTrim
                 {
                     _cleatMissingSince.Remove(ship);
                     // It no longer claims this boat: let go.
-                    if (cz.GetZDOID(Cleat.BoatKey) != zdo.m_uid) { zdo.Set(CleatKey, ZDOID.None); return; }
+                    if (cz.GetZDOID(Cleat.BoatKey) != zdo.m_uid) { zdo.Set(CleatKey, ZDOID.None); byCleat = false; }
                 }
                 else
                 {
@@ -717,14 +768,15 @@ namespace SailTrim
                     {
                         _cleatMissingSince.Remove(ship);
                         zdo.Set(CleatKey, ZDOID.None);
-                        return;
+                        byCleat = false;
                     }
                 }
+                if (!byCleat && !byGangway) return;
             }
             var body = ship.m_body;
             if (body == null) return;
             // Tied up, the crew sees to the hull: a few percent of its health back every minute, in small steps.
-            if (Plugin.MoorRepairPerMinute.Value > 0f && (!_repairAt.TryGetValue(ship, out float rAt) || Time.time > rAt))
+            if (byCleat && Plugin.MoorRepairPerMinute.Value > 0f && (!_repairAt.TryGetValue(ship, out float rAt) || Time.time > rAt))
             {
                 _repairAt[ship] = Time.time + RepairStep;
                 var wnt = ship.GetComponent<WearNTear>();
