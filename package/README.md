@@ -147,6 +147,26 @@ she lies over and slows. Sitting crew, anyone holding fast at the mast and the h
 not count. The effect is the boat's own physics, which means a karve answers to one person moving and a longship
 hardly notices. Crew on deck are told which rail to be on while she is heeling.
 
+## The gangway (1.8.0)
+
+Craft a **Gangway** at the workbench: 10 fine wood and 4 iron nails, so it comes in about when the longship
+does. Every hull but the raft carries a pair of timber brackets on each rail, near its own boarding ladder;
+stand at them with a gangway in your pack and press E to fit it, one to a side. It stays with the boat.
+
+It is three boards hinged end to end, planked in the hull's own timber and strapped with iron beams. Stowed,
+they fold back on one another and stand lashed against the inside of the rail. Press E again to lower it: the
+boards unfold, the plank swings out over the side and settles on whatever is under it, a dock, the shore, a
+log, or a beam halfway out, and it keeps resting there as the boat works in the swell. An inboard ramp swings
+down off the rail at the same time so you can walk up from the deck without jumping, and folds away inside the
+planking when it is not wanted. Carrying enough metal to be encumbered you cannot jump at all, which is what
+the whole thing is for.
+
+While it is down the boat holds its spot the way a tied-up boat does, so nothing can shove it out from under
+you, though unlike a cleat it does not mend the hull. Lowering it within reach of a cleat with no boat on it
+ties that cleat on as well, so one press does the dock. You work it from on board. Taking the helm raises it
+after two seconds (`GangwayRetractDelay`). `GangwayEnabled`, `GangwayLength`, `GangwayMaxAngle`,
+`GangwaySwingTime`, `GangwayTiesCleat` and its costs are in the config.
+
 ## The cleat (1.6.0)
 
 Build a **Cleat** from the hammer's Misc tab (one bronze): a bronze horn cleat that sits on top of planks or a

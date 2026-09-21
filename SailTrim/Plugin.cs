@@ -14,7 +14,7 @@ namespace SailTrim
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.7.1";
+        public const string VERSION = "1.8.0";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -127,6 +127,19 @@ namespace SailTrim
         internal static ConfigEntry<float> CastOffDelay;
         internal static ConfigEntry<float> MoorRepairPerMinute;
         internal static ConfigEntry<bool> BuoyEnabled;
+        internal static ConfigEntry<bool> GangwayEnabled;
+        internal static ConfigEntry<float> GangwayLength;
+        internal static ConfigEntry<float> GangwayMountZ;
+        internal static ConfigEntry<float> GangwayMaxAngle;
+
+        internal static ConfigEntry<float> GangwaySwingTime;
+        internal static ConfigEntry<float> GangwayRetractDelay;
+        internal static ConfigEntry<bool> GangwayTiesCleat;
+        internal static ConfigEntry<int> GangwayFineWoodCost;
+        internal static ConfigEntry<int> GangwayIronNailCost;
+        internal static ConfigEntry<bool> GangwayPlainTimber;
+        internal static ConfigEntry<KeyCode> SurveyKey;
+        internal static ConfigEntry<int> SurveyWidth;
         internal static ConfigEntry<bool> BuoyLight;
         internal static ConfigEntry<bool> BuoyPins;
 
@@ -486,6 +499,38 @@ namespace SailTrim
                 new ConfigDescription("How firmly a moored boat is pulled back to where it was tied (heading too). 0 = only the vanilla empty-boat damping.", new AcceptableValueRange<float>(0f, 5f)));
             MoorRepairPerMinute = Config.Bind("8. Mooring", "MoorRepairPerMinute", 5f,
                 new ConfigDescription("A tied-up boat mends itself: this percent of its full health per minute (the dock knocks it about between tides). 0 = off.", new AcceptableValueRange<float>(0f, 100f)));
+            GangwayEnabled = Config.Bind("10. Gangway", "GangwayEnabled", true,
+                "Adds the Gangway: a plank of fine wood and iron nails you craft at the workbench and fit to a boat's rail (any hull but the raft, one a side). Lower it to walk between the deck and the dock with a load you could not climb with.");
+            GangwayLength = Config.Bind("10. Gangway", "GangwayLength", 6f,
+                new ConfigDescription("How long the plank is, in metres. At six metres and the standard slope limit the far end can sit about three and a half metres below the rail, which covers most docks and a shelving beach. Stowed it lies along the rail, so a longer plank wants a longer boat.",
+                    new AcceptableValueRange<float>(1.5f, 10f)));
+            GangwayMountZ = Config.Bind("10. Gangway", "GangwayMountZ", 0.2f,
+                new ConfigDescription("Where along the boat the gangway sits, as a fraction of half the hull's length aft of amidships. 0 is amidships, 0.5 is halfway to the stern. Nudge it if the plank fouls the rigging on a particular hull.",
+                    new AcceptableValueRange<float>(-0.6f, 0.6f)));
+            GangwayMaxAngle = Config.Bind("10. Gangway", "GangwayMaxAngle", 35f,
+                new ConfigDescription("Steepest slope the gangway will rest at, in degrees. Anything steeper is refused: carrying a load you could not walk up it anyway.",
+                    new AcceptableValueRange<float>(10f, 60f)));
+            GangwaySwingTime = Config.Bind("10. Gangway", "GangwaySwingTime", 2.4f,
+                new ConfigDescription("Seconds for the whole movement: the three sections unfold, the ramp swings out from along the rail, then it lowers onto what it rests on.",
+                    new AcceptableValueRange<float>(0.2f, 8f)));
+            GangwayRetractDelay = Config.Bind("10. Gangway", "GangwayRetractDelay", 2f,
+                new ConfigDescription("Seconds at the helm before a gangway that is still down comes up by itself.",
+                    new AcceptableValueRange<float>(0f, 10f)));
+            GangwayTiesCleat = Config.Bind("10. Gangway", "GangwayTiesCleat", true,
+                "Lowering a gangway within CleatRange of a cleat that has no boat on it ties that cleat on as well.");
+            GangwayFineWoodCost = Config.Bind("10. Gangway", "GangwayFineWoodCost", 10,
+                new ConfigDescription("Fine wood to craft one gangway.", new AcceptableValueRange<int>(1, 100)));
+            GangwayIronNailCost = Config.Bind("10. Gangway", "GangwayIronNailCost", 4,
+                new ConfigDescription("Iron nails to craft one gangway. 0 for none.", new AcceptableValueRange<int>(0, 50)));
+
+            GangwayPlainTimber = Config.Bind("11. Development", "GangwayPlainTimber", false,
+                "Build the gangway from plain planks of our own rather than copies of the game's wooden floor. Slower to look at but it answers whether a rendering fault is in the copied model or in the game's shader.");
+            SurveyKey = Config.Bind("11. Development", "SurveyKey", KeyCode.None,
+                "Photographs every boat within 80 m from fixed angles into BepInEx/cache/SailTrim/survey, with a text file of what each gangway measured. For working on the mod; None to turn it off.");
+            SurveyWidth = Config.Bind("11. Development", "SurveyWidth", 768,
+                new ConfigDescription("Width of a survey picture, in pixels. Height is nine sixteenths of it.",
+                    new AcceptableValueRange<int>(256, 1920)));
+
             BuoyEnabled = Config.Bind("9. Buoy", "BuoyEnabled", true,
                 "Adds the Buoy build piece (hammer, Misc; 6 wood, 2 resin, no workbench). Placed on open water like a boat, it floats and holds its spot: channel markers, race marks.");
             BuoyLight = Config.Bind("9. Buoy", "BuoyLight", true, "The buoy's lantern burns at night.");
@@ -620,6 +665,8 @@ namespace SailTrim
         private void Update()
         {
             SailTrimNet.ClientUpdate();
+            Survey.Update();
+            try { Gangway.Tick(); } catch { }
             if (!Enabled.Value) { _wasPiloting = false; return; }
 
             var player = Player.m_localPlayer;

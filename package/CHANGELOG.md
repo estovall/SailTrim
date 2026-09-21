@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.0
+
+- **The Gangway.** A plank hinged at the rail that you walk over between the deck and the dock, so a load of metal no longer has to be climbed over the side, encumbered you cannot jump at all, which is the whole reason it exists. Craft one at the workbench (10 fine wood, 4 iron nails), so it arrives about when the longship does, and fit it to the brackets on the rail of any hull but the raft, one to a side; it stays with the boat. It is three boards hinged end to end, planked in the hull's own timber and strapped with iron beams: stowed they fold back on one another and stand lashed against the rail, and lowering unfolds them, swings the plank out over the side and sets it down on whatever is under it, dock, shore, log, or a beam halfway out, and keeps it there as the boat works in the swell. An inboard ramp swings down off the rail with it so you can walk up from the deck, and folds away inside the planking when it is not wanted, taking no deck at all.
+- While the gangway is down the boat holds its spot the way a moored boat does, though unlike a cleat it does not mend the hull. Lowering it within reach of a cleat with no boat on it ties that cleat on as well, so one press does the dock. You work it from on board, and taking the helm raises it after two seconds.
+- Every hull is measured rather than guessed at: the mount follows the boat's own boarding ladder, and the rail, the deck beside it and the height of the climb are read off a section taken across the beam in the hull's own frame, so the fitting sits properly on a Karve, a longship and a Drakkar alike.
+
 ## 1.7.1
 
 - Fixed: stepping off a boat furled the sail to look at but not in fact. The mod kept its own sail amount, so an empty boat sat there apparently furled and then sailed off the moment you stepped back aboard, with the cloth snapping back to where it had been. An empty boat now furls for real and has to be set again, as in vanilla. Loading cargo is no longer a chase.

@@ -1,0 +1,330 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using UnityEngine;
+
+namespace SailTrim
+{
+    /// <summary>
+    /// A way to look at the boats without being at the keyboard. Press SurveyKey and every ship near the player is
+    /// photographed from fixed angles into BepInEx\cache\SailTrim\survey\, next to a text file of the numbers each
+    /// gangway measured for itself. It exists so placement can be judged and corrected from the pictures rather
+    /// than by description; it costs nothing when the key is not pressed.
+    /// </summary>
+    internal static class Survey
+    {
+        private static int _run;
+
+        internal static string Dir
+        {
+            get
+            {
+                string d = Path.Combine(Models.CacheDir, "survey");
+                Directory.CreateDirectory(d);
+                return d;
+            }
+        }
+
+        internal static void Update()
+        {
+            if (Models.Headless || Plugin.SurveyKey.Value == KeyCode.None) return;
+            var p = Player.m_localPlayer;
+            if (p == null || !p.TakeInput()) return;
+            if (!ZInput.GetKeyDown(Plugin.SurveyKey.Value, false)) return;
+            try { Capture(); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: survey failed: " + e); }
+        }
+
+        private static void Capture()
+        {
+            var player = Player.m_localPlayer;
+            var ships = new List<Ship>();
+            foreach (var s in Object.FindObjectsByType<Ship>(FindObjectsSortMode.None))
+                if (s != null && Vector3.Distance(s.transform.position, player.transform.position) < 80f) ships.Add(s);
+            if (ships.Count == 0)
+            {
+                player.Message(MessageHud.MessageType.Center, "No boats within 80 m to survey");
+                return;
+            }
+
+            _run++;
+            var notes = new StringBuilder();
+            notes.AppendLine($"SailTrim survey {_run}, {System.DateTime.Now:yyyy-MM-dd HH:mm:ss}, {ships.Count} boat(s)");
+            int shots = 0;
+            foreach (var ship in ships)
+            {
+                string name = ship.name.Replace("(Clone)", "");
+                string state = Gangway.AnyDown(ship) ? "down" : (Gangway.Fitted(ship, 1) || Gangway.Fitted(ship, -1) ? "stowed" : "bare");
+                notes.AppendLine();
+                notes.AppendLine($"--- {name} [{state}] ---");
+                Describe(ship, notes);
+
+                Bounds b = HullBounds(ship);
+                string stem = $"{name}_{state}";
+                // Abeam from starboard, a player's three-quarter view, and close on the starboard mount.
+                shots += Shot(ship, b, stem + "_beam", ship.transform.right, 8f, 1.0f) ? 1 : 0;
+                shots += Shot(ship, b, stem + "_quarter", (ship.transform.right * 1.1f + ship.transform.forward * 0.7f + Vector3.up * 0.75f).normalized, 30f, 1.0f) ? 1 : 0;
+                shots += Shot(ship, b, stem + "_astern", (-ship.transform.forward * 1.2f + ship.transform.right * 0.35f + Vector3.up * 0.5f).normalized, 22f, 1.0f) ? 1 : 0;
+                var m0 = ship.transform.Find("SailTrim_Gangway_S");
+                var rig = m0 != null ? m0.GetComponentInChildren<GangwayMount>(true) : null;
+                if (rig != null && Gangway.Fitted(ship, 1)) shots += Swing(ship, rig, name, notes);
+
+                var mount = ship.transform.Find("SailTrim_Gangway_S");
+                if (mount != null)
+                {
+                    // Close enough to see the joinery. The first pass framed four and a half metres and the plank
+                    // was a smudge on the rail.
+                    var mb = new Bounds(mount.position + ship.transform.forward * 0.6f, Vector3.one * 2.8f);
+                    shots += Shot(ship, mb, stem + "_mount", (ship.transform.right * 1.2f + ship.transform.forward * 0.4f + Vector3.up * 0.35f).normalized, 18f, 1.0f) ? 1 : 0;
+                    // And from inboard looking out, which is the view that shows whether it sits on the deck.
+                    shots += Shot(ship, mb, stem + "_inboard", (-ship.transform.right * 1.0f + ship.transform.forward * 0.45f + Vector3.up * 0.8f).normalized, 35f, 1.0f) ? 1 : 0;
+                }
+            }
+            File.WriteAllText(Path.Combine(Dir, "survey.txt"), notes.ToString());
+
+            var tree = new StringBuilder();
+            foreach (var ship in ships)
+            {
+                tree.AppendLine();
+                tree.AppendLine("=== " + ship.name.Replace("(Clone)", "") + " ===");
+                DumpTree(ship, ship.transform, tree, 0);
+                Coincident(ship, tree);
+            }
+            File.WriteAllText(Path.Combine(Dir, "hierarchy.txt"), tree.ToString());
+            Plugin.Log.LogInfo($"SailTrim: survey wrote {shots} image(s) to {Dir}");
+            player.Message(MessageHud.MessageType.Center, $"Surveyed {ships.Count} boat(s): {shots} images");
+        }
+
+        /// <summary>
+        /// The whole travel, a step at a time: pose the rig, measure how deep it is inside the hull, and take a
+        /// picture. "It clips through the ship" becomes a depth in metres against a named collider, which is
+        /// something that can be worked on without being at the keyboard.
+        /// </summary>
+        private static int Swing(Ship ship, GangwayMount rig, string name, StringBuilder notes)
+        {
+            float was = rig.Deploy;
+            int shots = 0;
+            notes.AppendLine("  swing (deploy: deepest overlap with the hull):");
+            var mount = rig.transform.parent;
+            var mb = new Bounds(mount.position, Vector3.one * 3.4f);
+            Vector3 eye = (ship.transform.right * 1.1f + ship.transform.forward * 0.4f + Vector3.up * 0.45f).normalized;
+            try
+            {
+                foreach (float f in new[] { 0f, 0.2f, 0.4f, 0.6f, 0.8f, 1f })
+                {
+                    rig.PoseFor(f);
+                    Physics.SyncTransforms();
+                    notes.AppendLine("    " + f.ToString("0.0") + "  " + Overlap(ship, rig));
+                    shots += Shot(ship, mb, $"{name}_swing{Mathf.RoundToInt(f * 100):000}", eye, 18f, 1.0f) ? 1 : 0;
+                }
+            }
+            finally { rig.PoseFor(was); Physics.SyncTransforms(); }
+            return shots;
+        }
+
+        /// <summary>How far our colliders are inside the boat's, and which of the boat's they are inside.</summary>
+        private static string Overlap(Ship ship, GangwayMount rig)
+        {
+            var mine = new List<Collider>();
+            if (rig.WalkCollider != null && rig.WalkCollider.enabled) mine.Add(rig.WalkCollider);
+            if (rig.StepCollider != null && rig.StepCollider.enabled) mine.Add(rig.StepCollider);
+            if (mine.Count == 0) return "no collider";
+
+            float worst = 0f;
+            string where = "";
+            foreach (var a in mine)
+                foreach (var b in ship.GetComponentsInChildren<Collider>())
+                {
+                    if (b == null || b.isTrigger || b.transform.IsChildOf(rig.transform.parent)) continue;
+                    if (b.GetComponentInParent<GangwayMount>() != null) continue;
+                    if (!Physics.ComputePenetration(a, a.transform.position, a.transform.rotation,
+                                                    b, b.transform.position, b.transform.rotation,
+                                                    out _, out float depth)) continue;
+                    if (depth > worst) { worst = depth; where = a.name + " in " + b.name; }
+                }
+            return worst <= 0.001f ? "clear" : $"{worst:0.00} m  ({where})";
+        }
+
+        /// <summary>
+        /// Every part of a boat and of what we bolted to it, with its place in the boat's own frame. A picture
+        /// says the plank is fighting with itself; this says whether there are two meshes in the same place, and
+        /// what the hull calls the beam the ladder is on.
+        /// </summary>
+        private static void DumpTree(Ship ship, Transform t, StringBuilder sb, int depth)
+        {
+            if (depth > 12) return;
+            var mf = t.GetComponent<MeshFilter>();
+            var mr = t.GetComponent<MeshRenderer>();
+            var col = t.GetComponent<Collider>();
+            bool interesting = mf != null || col != null || t.childCount > 0;
+            if (interesting)
+            {
+                sb.Append(' ', depth * 2).Append(t.name);
+                sb.Append(" @").Append(V(ship.transform.InverseTransformPoint(t.position)));
+                if (!t.gameObject.activeInHierarchy) sb.Append(" [off]");
+                if (mf != null && mf.sharedMesh != null)
+                {
+                    sb.Append(" mesh=").Append(mf.sharedMesh.name).Append('/').Append(mf.sharedMesh.vertexCount);
+                    if (mr != null)
+                    {
+                        // The part's own size, not a world-aligned box round it: a yawed boat made every box
+                        // look like a diagonal and nothing could be compared with anything.
+                        Vector3 own = Vector3.Scale(mf.sharedMesh.bounds.size, t.lossyScale);
+                        sb.Append(" at").Append(V(ship.transform.InverseTransformPoint(mr.bounds.center)))
+                          .Append(" size").Append(V(own));
+                        // How it is lit, not only what it is. Ours next to the boat's own is the comparison that
+                        // says whether a difference in setup explains a difference on screen.
+                        sb.Append(" scale").Append(V(t.lossyScale));
+                        var mat = mr.sharedMaterial;
+                        sb.Append(" mat=").Append(mat == null ? "none" : mat.name)
+                          .Append('/').Append(mat == null || mat.shader == null ? "?" : mat.shader.name);
+                        sb.Append(" probe=").Append(mr.lightProbeUsage)
+                          .Append(" refl=").Append(mr.reflectionProbeUsage)
+                          .Append(" mv=").Append(mr.motionVectorGenerationMode)
+                          .Append(" shadow=").Append(mr.shadowCastingMode)
+                          .Append(mr.receiveShadows ? "+recv" : "-recv")
+                          .Append(" lightmap=").Append(mr.lightmapIndex)
+                          .Append(" layer=").Append(LayerMask.LayerToName(t.gameObject.layer));
+                    }
+                }
+                var body = t.GetComponent<Rigidbody>();
+                if (body != null)
+                    sb.Append(" body=").Append(body.isKinematic ? "kinematic" : "dynamic")
+                      .Append('/').Append(body.interpolation);
+                if (col != null)
+                    sb.Append(" col=").Append(col.GetType().Name)
+                      .Append(col is BoxCollider bx ? $"[c{V(bx.center)} s{V(bx.size)}]" : "").Append(col.isTrigger ? "(trigger)" : "")
+                      .Append(col.enabled ? "" : "[off]").Append(" layer=").Append(LayerMask.LayerToName(t.gameObject.layer));
+                sb.AppendLine();
+            }
+            for (int i = 0; i < t.childCount; i++) DumpTree(ship, t.GetChild(i), sb, depth + 1);
+        }
+
+        private static string V(Vector3 v) => $"({v.x:0.00},{v.y:0.00},{v.z:0.00})";
+
+        /// <summary>
+        /// Any two of our own meshes sitting in the same place. Two surfaces in one plane is what "there are two
+        /// models inside each other" actually looks like, and it is not something a screenshot settles.
+        /// </summary>
+        private static void Coincident(Ship ship, StringBuilder sb)
+        {
+            var ours = new List<MeshRenderer>();
+            foreach (var m in ship.GetComponentsInChildren<GangwayMount>(true))
+                if (m.transform.parent != null) ours.AddRange(m.transform.parent.GetComponentsInChildren<MeshRenderer>(true));
+            int found = 0;
+            for (int i = 0; i < ours.Count; i++)
+                for (int j = i + 1; j < ours.Count; j++)
+                {
+                    if (Vector3.Distance(ours[i].bounds.center, ours[j].bounds.center) > 0.03f) continue;
+                    if (Vector3.Distance(ours[i].bounds.size, ours[j].bounds.size) > 0.05f) continue;
+                    sb.AppendLine($"  COINCIDENT {Trail(ours[i].transform)} and {Trail(ours[j].transform)} at {V(ours[i].bounds.center)}");
+                    found++;
+                }
+            sb.AppendLine("  coincident pairs among our own meshes: " + found);
+        }
+
+        private static string Trail(Transform t)
+        {
+            string s = t.name;
+            for (var p = t.parent; p != null && p.GetComponent<Ship>() == null; p = p.parent) s = p.name + "/" + s;
+            return s;
+        }
+
+        /// <summary>The numbers each mount worked out for itself, so a picture can be turned into a correction.</summary>
+        private static void Describe(Ship ship, StringBuilder notes)
+        {
+            var fc = ship.m_floatCollider;
+            if (fc != null)
+                notes.AppendLine($"float collider size {fc.size}, centre(local) {ship.transform.InverseTransformPoint(fc.transform.TransformPoint(fc.center))}");
+            Bounds b = HullBounds(ship);
+            notes.AppendLine($"hull bounds size {b.size}, centre(local) {ship.transform.InverseTransformPoint(b.center)}");
+            foreach (int side in Gangway.Sides)
+            {
+                var t = ship.transform.Find(side < 0 ? "SailTrim_Gangway_P" : "SailTrim_Gangway_S");
+                string s = t == null ? "no mount" : $"mount(local) {t.localPosition}";
+                var m = t != null ? t.GetComponentInChildren<GangwayMount>(true) : null;
+                if (m != null) s += $", {m.Describe()}";
+                notes.AppendLine($"{Gangway.SideName(side)}: fitted {Gangway.Fitted(ship, side)}, down {Gangway.Down(ship, side)}, {s}");
+                // The section across the beam the rail was picked out of: x:top, outboard first.
+                if (m != null && m.ProfileText().Length > 0) notes.AppendLine("  profile " + m.ProfileText());
+            }
+        }
+
+        /// <summary>
+        /// The hull, not the rig. Framing on the renderers put the camera far enough back to fit a twenty metre
+        /// mast and sail, which buried it in the hillside and left the boat a speck; the float collider is the
+        /// hull itself, and a little room round it is what wants looking at.
+        /// </summary>
+        private static Bounds HullBounds(Ship ship)
+        {
+            var fc = ship.m_floatCollider;
+            if (fc != null)
+            {
+                Vector3 c = fc.transform.TransformPoint(fc.center);
+                Vector3 sz = fc.size;
+                return new Bounds(c + Vector3.up * Mathf.Max(1f, sz.y * 0.75f),
+                                  new Vector3(sz.x * 1.5f, Mathf.Max(3f, sz.y * 2.5f), sz.z * 1.15f));
+            }
+            Bounds b = new Bounds(ship.transform.position, Vector3.one * 8f);
+            return b;
+        }
+
+        /// <summary>
+        /// One picture of the live scene: a camera copied from the game's own (so fog, layers and the rendering
+        /// path all match), moved to frame these bounds from this direction.
+        /// </summary>
+        private static bool Shot(Ship ship, Bounds b, string file, Vector3 dir, float pitchDeg, float fill)
+        {
+            var main = Utils.GetMainCamera();
+            if (main == null) return false;
+            int w = Plugin.SurveyWidth.Value, h = Mathf.RoundToInt(Plugin.SurveyWidth.Value * 9f / 16f);
+
+            GameObject camGo = null;
+            RenderTexture rt = null;
+            Texture2D tex = null;
+            try
+            {
+                camGo = new GameObject("SailTrim_SurveyCam");
+                var cam = camGo.AddComponent<Camera>();
+                cam.CopyFrom(main);
+                cam.enabled = false;
+                cam.targetTexture = null;
+
+                Vector3 d = dir.normalized;
+                // Tip the eye down by the asked-for angle about the horizontal across the view.
+                Vector3 flat = new Vector3(d.x, 0f, d.z);
+                if (flat.sqrMagnitude < 1e-4f) flat = ship.transform.right;
+                flat.Normalize();
+                Vector3 axis = Vector3.Cross(Vector3.up, flat);
+                Vector3 eyeDir = Quaternion.AngleAxis(-pitchDeg, axis) * flat;
+
+                float radius = Mathf.Max(0.5f, b.extents.magnitude);
+                float dist = radius / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) / Mathf.Max(0.2f, fill);
+                cam.transform.position = b.center + eyeDir * dist;
+                cam.transform.rotation = Quaternion.LookRotation(-eyeDir, Vector3.up);
+                cam.nearClipPlane = 0.05f;
+                cam.farClipPlane = Mathf.Max(600f, dist * 4f);
+
+                rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
+                cam.targetTexture = rt;
+                cam.Render();
+                var prev = RenderTexture.active;
+                RenderTexture.active = rt;
+                tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+                tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                tex.Apply();
+                RenderTexture.active = prev;
+                cam.targetTexture = null;
+
+                File.WriteAllBytes(Path.Combine(Dir, file + ".png"), tex.EncodeToPNG());
+                return true;
+            }
+            finally
+            {
+                if (tex != null) Object.Destroy(tex);
+                if (rt != null) { rt.Release(); Object.Destroy(rt); }
+                if (camGo != null) Object.Destroy(camGo);
+            }
+        }
+    }
+}

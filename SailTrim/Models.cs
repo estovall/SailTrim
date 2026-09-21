@@ -70,6 +70,17 @@ namespace SailTrim
         /// as they are in src, with src's materials. bounds is the copy's extent in the child's own space.
         /// </summary>
         internal static GameObject CopyVisual(GameObject src, Transform parent, string name, out Bounds bounds)
+            => CopyVisual(src, parent, name, out bounds, false);
+
+        /// <summary>
+        /// The game's pieces are statically batched: the mesh a piece renders holds its vertices in the world
+        /// coordinates of whatever scene baked it, tens of units from its own origin, and the renderer carries a
+        /// matching negative translation to put it back. Reusing that mesh reproduces the offset, and every part
+        /// we build out of one is then drawn from the difference of two large numbers. Baking rewrites the
+        /// vertices into the part's own space, around its own origin, and keeps only the triangles inside this
+        /// renderer's own bounds, so nothing of a neighbour in the same batch comes along with it.
+        /// </summary>
+        internal static GameObject CopyVisual(GameObject src, Transform parent, string name, out Bounds bounds, bool bake)
         {
             var part = new GameObject(name);
             part.transform.SetParent(parent, false);
@@ -90,14 +101,41 @@ namespace SailTrim
                 var go = new GameObject(r.gameObject.name);
                 go.layer = part.layer;
                 go.transform.SetParent(part.transform, false);
-                go.transform.localPosition = m.GetColumn(3);
-                go.transform.localRotation = m.rotation;
-                go.transform.localScale = m.lossyScale;
-                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                Mesh use = mesh;
+                if (bake)
+                {
+                    var baked = Bake(r, mesh, m);
+                    if (baked != null)
+                    {
+                        use = baked;
+                        m = Matrix4x4.identity;   // the vertices already carry it
+                    }
+                }
+                if (m != Matrix4x4.identity)
+                {
+                    go.transform.localPosition = m.GetColumn(3);
+                    go.transform.localRotation = m.rotation;
+                    go.transform.localScale = m.lossyScale;
+                }
+                go.AddComponent<MeshFilter>().sharedMesh = use;
                 var mr = go.AddComponent<MeshRenderer>();
-                mr.sharedMaterials = r.sharedMaterials;
-                mr.shadowCastingMode = ShadowCastingMode.On;
-                var b = mesh.bounds;
+                // Our own copy of the material when baking. Sharing the game's means sharing whatever the game
+                // does to it: a piece that sets a property on the shared material, for snow or wear or damage,
+                // sets it on ours too, and we have no property block of our own to say otherwise.
+                mr.sharedMaterials = bake ? Own(r.sharedMaterials) : r.sharedMaterials;
+                // A renderer is more than its materials. Left at Unity's defaults, ours asked for probe blending
+                // and motion vectors that the piece we copied never asked for, and what a dynamic object gets
+                // from those can differ from one frame to the next while the geometry stands perfectly still.
+                mr.lightProbeUsage = r.lightProbeUsage;
+                mr.reflectionProbeUsage = r.reflectionProbeUsage;
+                mr.motionVectorGenerationMode = r.motionVectorGenerationMode;
+                mr.allowOcclusionWhenDynamic = r.allowOcclusionWhenDynamic;
+                mr.receiveShadows = r.receiveShadows;
+                mr.renderingLayerMask = r.renderingLayerMask;
+                // Whatever the piece we copied does. Turning this off did not stop the flashing, so shadow acne
+                // was not the cause, and a gangway with no shadow looks pasted on.
+                mr.shadowCastingMode = r.shadowCastingMode;
+                var b = use.bounds;
                 for (int i = 0; i < 8; i++)
                 {
                     Vector3 c = b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
@@ -108,6 +146,164 @@ namespace SailTrim
             }
             if (!any) { Object.Destroy(part); return null; }
             return part;
+        }
+
+        /// <summary>
+        /// This renderer's own geometry, in the part's space, around the origin. Triangles outside the renderer's
+        /// own world bounds belong to other members of the same static batch and are left behind. Returns null if
+        /// the mesh cannot be read, in which case the caller keeps the original and its offset.
+        /// </summary>
+        private static Mesh Bake(Renderer r, Mesh mesh, Matrix4x4 m)
+        {
+            try
+            {
+                if (!mesh.isReadable) return null;
+                var verts = mesh.vertices;
+                if (verts.Length == 0) return null;
+                var norms = mesh.normals;
+                var uvs = mesh.uv;
+                var uv2 = mesh.uv2;
+                var cols = mesh.colors;
+                var tans = mesh.tangents;
+
+                // The renderer's own slice of the batch, in mesh space.
+                Matrix4x4 w2l = r.transform.worldToLocalMatrix;
+                Bounds wb = r.bounds;
+                Bounds keep = new Bounds(w2l.MultiplyPoint3x4(wb.center), Vector3.zero);
+                for (int i = 0; i < 8; i++)
+                {
+                    Vector3 c = wb.center + Vector3.Scale(wb.extents,
+                        new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                    keep.Encapsulate(w2l.MultiplyPoint3x4(c));
+                }
+                keep.Expand(0.02f);
+
+                var map = new Dictionary<int, int>();
+                var outV = new List<Vector3>();
+                var outN = new List<Vector3>();
+                var outU = new List<Vector2>();
+                var outU2 = new List<Vector2>();
+                var outC = new List<Color>();
+                var outTan = new List<Vector4>();
+                var subs = new List<List<int>>();
+                bool any = false;
+                for (int sm = 0; sm < mesh.subMeshCount; sm++)
+                {
+                    var tris = mesh.GetTriangles(sm);
+                    var outT = new List<int>();
+                    for (int t = 0; t + 2 < tris.Length; t += 3)
+                    {
+                        if (!keep.Contains(verts[tris[t]]) || !keep.Contains(verts[tris[t + 1]]) || !keep.Contains(verts[tris[t + 2]])) continue;
+                        for (int k = 0; k < 3; k++)
+                        {
+                            int vi = tris[t + k];
+                            if (!map.TryGetValue(vi, out int ni))
+                            {
+                                ni = outV.Count;
+                                map[vi] = ni;
+                                outV.Add(m.MultiplyPoint3x4(verts[vi]));
+                                if (norms.Length == verts.Length) outN.Add(m.MultiplyVector(norms[vi]).normalized);
+                                if (uvs.Length == verts.Length) outU.Add(uvs[vi]);
+                                // A game shader reads more than position and uv: vertex colour carries wear and
+                                // snow, the tangent carries the normal map. Dropping them lights the surface from
+                                // nowhere in particular.
+                                if (uv2.Length == verts.Length) outU2.Add(uv2[vi]);
+                                if (cols.Length == verts.Length) outC.Add(cols[vi]);
+                                if (tans.Length == verts.Length)
+                                {
+                                    Vector3 td = m.MultiplyVector(new Vector3(tans[vi].x, tans[vi].y, tans[vi].z)).normalized;
+                                    outTan.Add(new Vector4(td.x, td.y, td.z, tans[vi].w));
+                                }
+                            }
+                            outT.Add(ni);
+                        }
+                    }
+                    if (outT.Count > 0) any = true;
+                    subs.Add(outT);
+                }
+                if (!any || outV.Count == 0) return null;
+
+                var baked = new Mesh { name = mesh.name + "_SailTrim" };
+                baked.SetVertices(outV);
+                if (outN.Count == outV.Count) baked.SetNormals(outN);
+                if (outU.Count == outV.Count) baked.SetUVs(0, outU);
+                if (outU2.Count == outV.Count) baked.SetUVs(1, outU2);
+                if (outC.Count == outV.Count) baked.SetColors(outC);
+                if (outTan.Count == outV.Count) baked.SetTangents(outTan);
+                baked.subMeshCount = subs.Count;
+                for (int sm = 0; sm < subs.Count; sm++) baked.SetTriangles(subs[sm], sm);
+                if (outN.Count != outV.Count) baked.RecalculateNormals();
+                baked.RecalculateBounds();
+                return baked;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Fold a scale into the baked meshes under a part so the renderer can keep an identity scale. A non
+        /// uniform scale needs the inverse transpose for its normals, which Unity does on the GPU but not when it
+        /// merges small movers into one dynamic batch -- and whether any given frame merges them is not something
+        /// you can predict. The lighting then alternates between right and wrong every frame, on geometry that
+        /// never moves. Scaling the vertices once, here, takes the question away.
+        /// </summary>
+        private static readonly Dictionary<Material, Material> _ownMats = new Dictionary<Material, Material>();
+
+        /// <summary>Our own instances of these materials, made once and reused.</summary>
+        private static Material[] Own(Material[] src)
+        {
+            if (src == null) return null;
+            var outM = new Material[src.Length];
+            for (int i = 0; i < src.Length; i++)
+            {
+                var m = src[i];
+                if (m == null) continue;
+                if (!_ownMats.TryGetValue(m, out var mine) || mine == null)
+                {
+                    mine = new Material(m) { name = m.name + " (SailTrim)" };
+                    _ownMats[m] = mine;
+                }
+                outM[i] = mine;
+            }
+            return outM;
+        }
+
+        internal static bool ScaleInto(GameObject part, Vector3 scale, ref Bounds b)
+        {
+            if (part == null) return false;
+            // Every mesh or none. Bailing out part way through left the meshes already done scaled and the rest
+            // at full size, so a stub cut from a two metre beam came out as a stub with a two metre rod beside it.
+            foreach (var check in part.GetComponentsInChildren<MeshFilter>(true))
+                if (check.sharedMesh == null || !check.sharedMesh.name.EndsWith("_SailTrim")) return false;
+            Vector3 inv = new Vector3(
+                Mathf.Approximately(scale.x, 0f) ? 1f : 1f / scale.x,
+                Mathf.Approximately(scale.y, 0f) ? 1f : 1f / scale.y,
+                Mathf.Approximately(scale.z, 0f) ? 1f : 1f / scale.z);
+            foreach (var mf in part.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var mesh = mf.sharedMesh;
+                var v = mesh.vertices;
+                for (int i = 0; i < v.Length; i++) v[i] = Vector3.Scale(v[i], scale);
+                mesh.SetVertices(v);
+                var n = mesh.normals;
+                if (n.Length == v.Length)
+                {
+                    for (int i = 0; i < n.Length; i++) n[i] = Vector3.Scale(n[i], inv).normalized;
+                    mesh.SetNormals(n);
+                }
+                var t = mesh.tangents;
+                if (t.Length == v.Length)
+                {
+                    for (int i = 0; i < t.Length; i++)
+                    {
+                        Vector3 d = Vector3.Scale(new Vector3(t[i].x, t[i].y, t[i].z), scale).normalized;
+                        t[i] = new Vector4(d.x, d.y, d.z, t[i].w);
+                    }
+                    mesh.SetTangents(t);
+                }
+                mesh.RecalculateBounds();
+            }
+            b = new Bounds(Vector3.Scale(b.center, scale), Vector3.Scale(b.size, scale));
+            return true;
         }
 
         private static List<Renderer> VisibleRenderers(GameObject src)
