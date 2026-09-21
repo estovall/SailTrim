@@ -158,7 +158,7 @@ namespace SailTrim
                 p.Stow = 0.26f;
             }
             else if (n.IndexOf("VikingShip", StringComparison.OrdinalIgnoreCase) >= 0) { } // Longship
-            else if (n.IndexOf("Karve", StringComparison.OrdinalIgnoreCase) >= 0) { }
+            else if (n.IndexOf("Karve", StringComparison.OrdinalIgnoreCase) >= 0) p.Inset = -0.07f;
             return p;
         }
 
@@ -422,10 +422,10 @@ namespace SailTrim
                             if (i == 0 && j == 0) { part = first; b = b0; }
                             else part = Models.CopyVisual(floorSrc, root.transform, "deck" + i + "_" + j, out b, true);
                             if (part == null) continue;
-                            b = Models.ScaleInto(part, scale, b);
+                            bool fitted0 = Models.ScaleInto(part, scale, ref b);
                             Models.Place(part, b, new Vector3(0f, 1f, 0.5f),
                                          new Vector3(i * sx, 0f, (j + 0.5f) * sz - width * 0.5f),
-                                         Vector3.one, Quaternion.identity);
+                                         fitted0 ? Vector3.one : scale, Quaternion.identity);
                             built = true;
                         }
                 }
@@ -465,8 +465,8 @@ namespace SailTrim
                     // Set in by half its own width. Flush with the edge of the deck, the kerb's outer face and the
                     // deck's were the same plane for the whole two metres, and the renderer had no way to choose
                     // between them: that is the flicker down the length of the plank.
-                    b = Models.ScaleInto(part, scale, b);
-                    Models.Place(part, b, anchor, new Vector3(0f, edge * 0.5f - 0.02f, sz * (width * 0.5f - edge * 0.5f)), Vector3.one, rot);
+                    bool fittedE = Models.ScaleInto(part, scale, ref b);
+                    Models.Place(part, b, anchor, new Vector3(0f, edge * 0.5f - 0.02f, sz * (width * 0.5f - edge * 0.5f)), fittedE ? Vector3.one : scale, rot);
                 }
             }
             if (built && beamSrc != null && !_loggedBeamMats)
@@ -590,8 +590,8 @@ namespace SailTrim
             var part = Models.CopyVisual(src, parent, name, out var b, true);
             if (part == null || b.size.x < 0.05f || b.size.z < 0.05f) return null;
             var scale = new Vector3(size.x / b.size.x, Mathf.Max(0.05f, size.y / Mathf.Max(0.01f, b.size.y)), size.z / b.size.z);
-            b = Models.ScaleInto(part, scale, b);
-            Models.Place(part, b, new Vector3(0.5f, 1f, 0.5f), centre + new Vector3(0f, size.y * 0.5f, 0f), Vector3.one, Quaternion.identity);
+            bool fittedT = Models.ScaleInto(part, scale, ref b);
+            Models.Place(part, b, new Vector3(0.5f, 1f, 0.5f), centre + new Vector3(0f, size.y * 0.5f, 0f), fittedT ? Vector3.one : scale, Quaternion.identity);
             SetLayer(part.transform, layer);
             return part;
         }
@@ -1514,7 +1514,7 @@ namespace SailTrim
                                    // Chunky, because it is a stub cut from a beam. Squashed to a wafer the
                                    // ironwork painted along that beam smears into a stripe.
                                    new Vector3(0.30f, 0.20f, 0.22f),
-                                   new Vector3(-0.08f, 0.02f, sz * 0.34f), layer);
+                                   new Vector3(-0.02f, 0.02f, sz * 0.34f), layer);
         }
 
         /// <summary>

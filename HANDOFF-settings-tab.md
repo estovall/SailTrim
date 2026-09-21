@@ -779,3 +779,23 @@ which is exactly why one flickered and the other did not.
 
 If the log shows nothing turned off, the cause is elsewhere and the next thing to try is `shadowCastingMode`
 off on the ironwork alone — the beams carry rivets, which is the sort of geometry that acnes at a grazing angle.
+
+## Gangway: the thin rod beside the bracket
+
+`ScaleInto` returned from inside its loop when it met a mesh it had not baked. Everything before that point was
+already scaled and everything after was left at full size, so a stub cut from a two metre beam came out as a
+stub **with a two metre rod beside it** — which is what the interaction fittings looked like on the Drakkar.
+
+It checks every mesh before it touches any, and returns a bool. When it declines, the caller falls back to
+scaling the transform as before, so a part that cannot be baked is merely un-baked rather than half-sized:
+
+```csharp
+bool fitted = Models.ScaleInto(part, scale, ref b);
+Models.Place(part, b, anchor, target, fitted ? Vector3.one : scale, rot);
+```
+
+All or nothing is the rule for anything that rewrites geometry in place. A partial rewrite leaves something
+worse than not doing it at all.
+
+The brackets move from 8 cm inboard of the hinge to 2, and the Karve's mount takes `Inset = -0.07` to sit a hair
+further out on its rail.

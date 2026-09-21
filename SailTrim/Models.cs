@@ -267,9 +267,13 @@ namespace SailTrim
             return outM;
         }
 
-        internal static Bounds ScaleInto(GameObject part, Vector3 scale, Bounds b)
+        internal static bool ScaleInto(GameObject part, Vector3 scale, ref Bounds b)
         {
-            if (part == null) return b;
+            if (part == null) return false;
+            // Every mesh or none. Bailing out part way through left the meshes already done scaled and the rest
+            // at full size, so a stub cut from a two metre beam came out as a stub with a two metre rod beside it.
+            foreach (var check in part.GetComponentsInChildren<MeshFilter>(true))
+                if (check.sharedMesh == null || !check.sharedMesh.name.EndsWith("_SailTrim")) return false;
             Vector3 inv = new Vector3(
                 Mathf.Approximately(scale.x, 0f) ? 1f : 1f / scale.x,
                 Mathf.Approximately(scale.y, 0f) ? 1f : 1f / scale.y,
@@ -277,7 +281,6 @@ namespace SailTrim
             foreach (var mf in part.GetComponentsInChildren<MeshFilter>(true))
             {
                 var mesh = mf.sharedMesh;
-                if (mesh == null || !mesh.name.EndsWith("_SailTrim")) return b;   // not ours to rewrite
                 var v = mesh.vertices;
                 for (int i = 0; i < v.Length; i++) v[i] = Vector3.Scale(v[i], scale);
                 mesh.SetVertices(v);
@@ -299,7 +302,8 @@ namespace SailTrim
                 }
                 mesh.RecalculateBounds();
             }
-            return new Bounds(Vector3.Scale(b.center, scale), Vector3.Scale(b.size, scale));
+            b = new Bounds(Vector3.Scale(b.center, scale), Vector3.Scale(b.size, scale));
+            return true;
         }
 
         private static List<Renderer> VisibleRenderers(GameObject src)
