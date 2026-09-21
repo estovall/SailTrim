@@ -290,6 +290,9 @@ namespace SailTrim
                 }
             }
             if (_recipe != null && !db.m_recipes.Contains(_recipe)) db.m_recipes.Add(_recipe);
+            Plugin.Log.LogInfo($"SailTrim: gangway item {(db.GetItemPrefab("SailTrim_GangwayKit") != null ? "registered" : "MISSING")}, " +
+                $"recipe {(_recipe != null ? "at " + (_recipe.m_craftingStation != null ? _recipe.m_craftingStation.name : "no station") : "MISSING")}, " +
+                $"needs {string.Join(" + ", System.Array.ConvertAll(_recipe != null ? _recipe.m_resources : new Piece.Requirement[0], r => r.m_amount + "x" + r.m_resItem.name))}");
         }
 
         internal static void OnZNetScene(ZNetScene scene)
@@ -354,7 +357,7 @@ namespace SailTrim
             _box.size = new Vector3(Length, 0.12f, 0.84f);
             // The layer the hull uses, so it hovers, blocks and carries a player exactly as the deck does.
             gameObject.layer = HullLayer(ship);
-            SetCollider(false);
+            SetCollider(0);
             Apply(0f);
         }
 
@@ -362,19 +365,31 @@ namespace SailTrim
         /// Unfitted, all that is here is a small patch of rail to interact with; fitted, the collider is the plank
         /// you walk on. The object itself always stays active, because its own Update is what watches the boat's state.
         /// </summary>
-        private void SetCollider(bool full)
+        /// <summary>
+        /// 0 nothing fitted, 1 fitted and stowed, 2 out over the side. The game gives hovering to the FIRST thing
+        /// its ray meets, so an unfitted mount tucked inside the rail is invisible to it: it has to stand proud.
+        /// </summary>
+        private void SetCollider(int mode)
         {
-            if (full)
+            if (_box == null) return;
+            switch (mode)
             {
-                _box.center = new Vector3(Length * 0.5f, -0.05f, 0f);
-                _box.size = new Vector3(Length, 0.12f, 0.84f);
-            }
-            else
-            {
-                _box.center = new Vector3(0.1f, -0.05f, 0f);
-                _box.size = new Vector3(0.6f, 0.4f, 0.8f);
+                case 2: // the plank you walk on
+                    _box.center = new Vector3(Length * 0.5f, -0.05f, 0f);
+                    _box.size = new Vector3(Length, 0.12f, 0.84f);
+                    break;
+                case 1: // stowed along the rail: the inboard end of it, enough to look at and take hold of
+                    _box.center = new Vector3(0.75f, -0.02f, 0f);
+                    _box.size = new Vector3(1.5f, 0.3f, 0.84f);
+                    break;
+                default: // a bare rail: a small post standing above it, clear of the hull
+                    _box.center = new Vector3(0.05f, 0.3f, 0f);
+                    _box.size = new Vector3(0.5f, 0.66f, 0.9f);
+                    break;
             }
         }
+
+        private void RefreshCollider() => SetCollider(!_wasFitted ? 0 : (_deploy > 0.5f ? 2 : 1));
 
         private static int HullLayer(Ship ship)
         {
@@ -399,7 +414,7 @@ namespace SailTrim
             transform.localRotation = Quaternion.Euler(0f, yaw, 0f) * Quaternion.Euler(0f, 0f, -angle);
             // Only a plank that is out over the side is something to walk on; stowed it is just a rail.
             bool walk = deploy > 0.5f;
-            if (walk != _walkable) { _walkable = walk; SetCollider(walk); }
+            if (walk != _walkable) { _walkable = walk; RefreshCollider(); }
         }
 
         /// <summary>Where the far end of the plank would be at this angle.</summary>
@@ -496,19 +511,24 @@ namespace SailTrim
         {
             if (_deckFound || _ship == null || _mount == null) return;
             _deckFound = true;
-            Vector3 from = _mount.position + Vector3.up * 4f;
-            var hits = Physics.RaycastAll(from, Vector3.down, 8f, ~0, QueryTriggerInteraction.Ignore);
+            float ceiling = _mount.position.y + 1.6f;
+            Vector3 from = _mount.position + Vector3.up * 2f;
+            var hits = Physics.RaycastAll(from, Vector3.down, 4f, ~0, QueryTriggerInteraction.Ignore);
             float best = float.NegativeInfinity;
             foreach (var h in hits)
             {
                 if (h.collider == _box || !h.collider.transform.IsChildOf(_ship.transform)) continue;
+                // Anything well above the rail is the rig, not the deck.
+                if (h.point.y > ceiling) continue;
                 if (h.point.y > best) best = h.point.y;
             }
+            float before = _mount.localPosition.y;
             if (best > float.NegativeInfinity)
             {
                 Vector3 p = _mount.position; p.y = best + 0.05f;
                 _mount.position = p;
             }
+            Plugin.Log.LogInfo($"SailTrim: {_ship.name} gangway {Gangway.SideName(_side)} rail y {before:0.00} -> {_mount.localPosition.y:0.00}" + (best > float.NegativeInfinity ? "" : " (nothing found, kept the guess)"));
         }
 
         /// <summary>
@@ -538,6 +558,8 @@ namespace SailTrim
         private void Update()
         {
             if (_ship == null || _ship.m_nview == null || !_ship.m_nview.IsValid()) return;
+            // The rail height needs physics, which Awake does not have, so it is measured on the first frame.
+            EnsureDeck();
             bool fitted = Gangway.Fitted(_ship, _side);
             bool down = fitted && Gangway.Down(_ship, _side);
 
@@ -550,7 +572,8 @@ namespace SailTrim
             {
                 _wasFitted = fitted;
                 if (_visual != null) _visual.SetActive(fitted);
-                if (!fitted) { _deploy = 0f; SetCollider(false); }
+                if (!fitted) _deploy = 0f;
+                RefreshCollider();
             }
             if (!fitted) return;
 

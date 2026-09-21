@@ -294,3 +294,13 @@ The full walkable collider only exists past the half-way point; stowed it is a s
 of plank never blocks the deck. `GangwayStowAngle` and `GangwaySwingRate` are gone, replaced by `GangwaySwingTime`.
 Watch on the Karve, the shortest hull: the mount is 20% aft of amidships, so six metres forward reaches about the
 stem. Note the plank mesh is built once from `GangwayLength` at load, so changing that config wants a restart.
+
+**First in-game try (Max): the item crafts and the icon renders, but there is nothing on the boat to use it on**
+("Use Gangway on what?"). Two faults, both in the mount:
+1. `EnsureDeck` only ran when you lowered the gangway, so an unfitted mount sat at its guess (`floatCollider`
+   centre + 1 m), usually inside the hull. It now runs on the mount's first `Update`, when physics is live, with
+   the ray bounded to 1.6 m above the guess so the yard overhead cannot win, and it logs the rail height it found.
+2. The unfitted collider was a small box tucked inside the rail. `Player.FindHoverObject` takes the FIRST thing
+   its ray meets and stops, so the hull's own collider always won and the mount was never hoverable. The unfitted
+   mount is now a small post standing proud of the rail; stowed it covers the inboard 1.5 m of the plank;
+   deployed it is the full walkable plank (`SetCollider(0|1|2)` / `RefreshCollider`).
