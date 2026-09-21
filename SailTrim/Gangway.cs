@@ -368,12 +368,7 @@ namespace SailTrim
             string beamName = null;
             // Iron-strapped timber: the gangway costs fine wood and iron nails, and ought to look like it. The
             // plain wooden floor it used to be built from looked like a bit of somebody's house.
-            string floorName = "plain";
-            var floorSrc = Plugin.GangwayPlainTimber.Value ? null
-                         : Models.FindFirst(db, out floorName,
-                             "darkwood_beam", "darkwood_beam_26", "darkwood_beam_45", "darkwood_pole",
-                             "wood_beam", "wood_floor", "wood_floor_1x1", "piece_woodfloor");
-            if (floorSrc == null) floorName = "plain";
+            var floorSrc = TimberSource(out string floorName);
             if (floorSrc != null)
             {
                 // Lay the piece out at its own size in both directions rather than stretching one of it to fit.
@@ -447,11 +442,42 @@ namespace SailTrim
         }
 
         /// <summary>One tread of the steps, cut from the same floor piece the walkway is laid from.</summary>
+        /// <summary>
+        /// The timber everything is cut from. A material is painted for the mesh it ships with -- the ironwork on
+        /// a darkwood beam is where it is because the beam's uvs put it there -- so the piece and its material
+        /// have to be taken together, and whatever is cut from it kept near its own proportions.
+        /// </summary>
+        internal static GameObject TimberSource(out string name)
+        {
+            name = "plain";
+            if (Plugin.GangwayPlainTimber.Value) return null;
+            var src = Models.FindFirst(ObjectDB.instance, out name,
+                "darkwood_beam", "darkwood_beam_26", "darkwood_beam_45", "darkwood_pole",
+                "wood_beam", "wood_floor", "wood_floor_1x1", "piece_woodfloor");
+            if (src == null)
+            {
+                // Anything the world calls darkwood will do; the names above are only the likely ones.
+                var scene = ZNetScene.instance;
+                if (scene != null && scene.m_prefabs != null)
+                    foreach (var p in scene.m_prefabs)
+                        if (p != null && p.name.StartsWith("darkwood", StringComparison.OrdinalIgnoreCase)
+                            && p.GetComponentInChildren<MeshRenderer>(true) != null)
+                        { name = p.name; return p; }
+            }
+            if (src != null && !_loggedTimber)
+            {
+                _loggedTimber = true;
+                Plugin.Log.LogInfo("SailTrim: gangway cut from " + name);
+            }
+            return src;
+        }
+
+        private static bool _loggedTimber;
+
         internal static GameObject BuildTread(Transform parent, string name, Vector3 size, Vector3 centre, int layer)
         {
             if (Models.Headless || parent == null) return null;
-            var src = Plugin.GangwayPlainTimber.Value ? null
-                    : Models.FindFirst(ObjectDB.instance, out _, "wood_floor", "wood_floor_1x1", "piece_woodfloor");
+            var src = TimberSource(out _);
             if (src == null)
             {
                 var mat0 = WoodMaterial();
@@ -1336,8 +1362,10 @@ namespace SailTrim
             int layer = VisualLayer(_ship);
             foreach (float sz in new[] { -1f, 1f })
                 Gangway.BuildTread(_brackets.transform, sz < 0f ? "bracketL" : "bracketR",
-                                   new Vector3(0.22f, 0.12f, 0.14f),
-                                   new Vector3(-0.06f, 0.06f, sz * 0.36f), layer);
+                                   // Chunky, because it is a stub cut from a beam. Squashed to a wafer the
+                                   // ironwork painted along that beam smears into a stripe.
+                                   new Vector3(0.30f, 0.20f, 0.22f),
+                                   new Vector3(-0.08f, 0.02f, sz * 0.34f), layer);
         }
 
         /// <summary>

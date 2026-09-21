@@ -637,3 +637,16 @@ with its ironwork smeared across it. Falls back through `wood_beam` to `wood_flo
 The lashings stand 8.5 cm clear of the bundle instead of 4.5, are twice the thickness, and get their own
 instance of the rope material darkened to 55%. Hemp against fresh timber is nearly the same colour, and the same
 colour at the same depth is no lashing at all.
+
+**On taking the mesh with the material:** yes, and `CopyVisual` always did — it copies the prefab's meshes *and*
+their materials together. The ironwork on a darkwood beam is where it is because the beam's uvs put it there, so
+the two cannot be separated. What mattered was the scaling: `BuildWalkway` now tiles the piece at its own size
+in both directions (`nx = round(length / src.x)`, `nz = round(width / src.z)`), so each copy is scaled by
+something close to 1 and the straps keep their proportions.
+
+`TimberSource()` is now the single place the timber is chosen, used by the walkway, the brow and the brackets
+alike, and it falls back to scanning `ZNetScene.m_prefabs` for anything named `darkwood*` in case the specific
+names are wrong. It logs what it picked.
+
+The brackets were the worst offender — a 2 m floor squashed to 0.22 x 0.12 x 0.14, which is a beam's ironwork
+smeared into a stripe. They are a chunky stub cut from the beam now, near its own cross-section.
