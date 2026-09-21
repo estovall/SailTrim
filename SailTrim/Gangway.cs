@@ -833,11 +833,28 @@ namespace SailTrim
         private GameObject _lashing;
         // How far each folded leaf must stand clear of the one below it, measured off a leaf once it is built.
         // A fixed figure was right until the edge beams got thicker, and then the leaves folded into each other.
-        private float _leafLift = LeafLift;
+        // A folded leaf is not symmetrical: its planking hangs below its origin and its kerbs stand above. Leaf
+        // two is turned over, so it meets leaf one kerb to kerb and leaf three plank to plank, and those two gaps
+        // want different clearances. One figure for both had to be the larger of them, which left the first pair
+        // standing a hand's breadth apart for no reason.
+        private float _leafLo = -0.22f, _leafHi = 0.1f;
+        private float LiftKerbs => Mathf.Max(0.05f, 2f * _leafHi + 0.02f);      // leaf one to leaf two
+        private float LiftPlanks => Mathf.Max(0.05f, -2f * _leafLo + 0.02f);    // leaf two to leaf three
+
+        /// <summary>How far the built thing reaches above and below its own origin.</summary>
+        private static bool MeshSpan(Transform root, out float lo, out float hi)
+        {
+            lo = 0f; hi = 0f;
+            float h = MeshHeight(root, out lo, out hi);
+            return h > 0.001f;
+        }
 
         /// <summary>How tall the built thing is, in its own space.</summary>
-        private static float MeshHeight(Transform root)
+        private static float MeshHeight(Transform root) => MeshHeight(root, out _, out _);
+
+        private static float MeshHeight(Transform root, out float lo, out float hi)
         {
+            lo = 0f; hi = 0f;
             bool any = false;
             Bounds bb = new Bounds();
             foreach (var mf in root.GetComponentsInChildren<MeshFilter>(true))
@@ -853,7 +870,10 @@ namespace SailTrim
                     if (!any) { bb = new Bounds(pt, Vector3.zero); any = true; } else bb.Encapsulate(pt);
                 }
             }
-            return any ? bb.size.y : 0f;
+            if (!any) return 0f;
+            lo = bb.min.y;
+            hi = bb.max.y;
+            return bb.size.y;
         }
         private float _ignoreAt;
         private int _stowDir = 1;      // +1 lies forward along the rail, -1 aft
@@ -968,8 +988,9 @@ namespace SailTrim
                     _box.size = new Vector3(Length, 0.12f, 0.84f);
                     break;
                 case 1: // folded and stowed: one section long, three leaves thick
-                    _box.center = new Vector3(Length / 6f, _leafLift, 0f);
-                    _box.size = new Vector3(Length / 3f, _leafLift * 2f + 0.16f, 0.84f);
+                    float top = LiftKerbs + LiftPlanks + _leafHi;
+                    _box.center = new Vector3(Length / 6f, (top + _leafLo) * 0.5f, 0f);
+                    _box.size = new Vector3(Length / 3f, Mathf.Max(0.2f, top - _leafLo), 0.84f);
                     break;
                 default:
                     break;
@@ -1029,11 +1050,10 @@ namespace SailTrim
             // Folded, each leaf stands clear of the one under it. Folded flat about a shared hinge they were three
             // slabs in one plane, and the renderer had to choose between them every pixel: they crawled with z-fighting.
             float folded = 1f - unfold;
-            float lift = _leafLift * folded;
             float fold = folded * FoldAngle;
             float seg = Length / 3f;
-            if (_seg2 != null) { _seg2.localPosition = new Vector3(seg, lift, 0f); _seg2.localRotation = Quaternion.Euler(0f, 0f, fold); }
-            if (_seg3 != null) { _seg3.localPosition = new Vector3(seg, -lift, 0f); _seg3.localRotation = Quaternion.Euler(0f, 0f, -fold); }
+            if (_seg2 != null) { _seg2.localPosition = new Vector3(seg, LiftKerbs * folded, 0f); _seg2.localRotation = Quaternion.Euler(0f, 0f, fold); }
+            if (_seg3 != null) { _seg3.localPosition = new Vector3(seg, -LiftPlanks * folded, 0f); _seg3.localRotation = Quaternion.Euler(0f, 0f, -fold); }
 
             // The treads come down first: they are what you climb to reach the plank.
             FoldBrow(unfold);
@@ -1088,7 +1108,7 @@ namespace SailTrim
                 var v = sec.transform.Find("visual");
                 if (v != null) v.localPosition = new Vector3(Joint, 0f, 0f);
             }
-            _leafLift = Mathf.Max(LeafLift, MeshHeight(s1.transform) + 0.03f);
+            if (MeshSpan(s1.transform, out float lo, out float hi)) { _leafLo = lo; _leafHi = hi; }
             _visual = s1; _seg2 = s2.transform; _seg3 = s3.transform;
         }
 
@@ -1441,7 +1461,7 @@ namespace SailTrim
             float folded = 1f - Mathf.Clamp01(down);
             if (_browLeaf != null)
             {
-                _browLeaf.localPosition = new Vector3(_browLen * 0.5f, _leafLift * folded, 0f);
+                _browLeaf.localPosition = new Vector3(_browLen * 0.5f, LiftKerbs * folded, 0f);
                 _browLeaf.localRotation = Quaternion.Euler(0f, 0f, folded * FoldAngle);
             }
             bool solid = down > 0.8f;

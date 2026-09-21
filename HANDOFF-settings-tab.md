@@ -824,3 +824,21 @@ The lesson: the thing you look at and the thing that moves should not be the sam
 **Also reverted:** `rb.interpolation` back to `None` on our kinematic bodies. Matching the hull was done while
 chasing the shading flicker, which turned out to be the material; interpolation makes Unity write the body's own
 physics pose over the transform every frame, and that pose never changes because we never call `MovePosition`.
+
+## Gangway: the two folds are not the same fold
+
+A leaf is not symmetrical about its own origin: its planking hangs 0.22 below and its kerbs stand 0.11 above.
+Leaf two is turned over when it folds, so it meets **leaf one kerb to kerb** and **leaf three plank to plank**,
+and those two gaps need quite different clearances:
+
+```
+leaf 1  [-0.22, +0.10]
+leaf 2  [lift1 - 0.10, lift1 + 0.22]     turned over
+leaf 3  [lift1 + lift2 - 0.22, ... ]     upright again
+```
+
+which gives `lift1 >= 2 * hi` (about 0.22) and `lift2 >= -2 * lo` (about 0.46). One figure for both had to be the
+larger of them, so the first pair stood a hand's breadth apart for nothing. `MeshSpan` measures a built leaf's
+top and bottom and the two lifts are worked out separately.
+
+Measuring the *height* of a thing that folds tells you less than measuring where its top and bottom are.
