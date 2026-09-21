@@ -172,6 +172,18 @@ namespace SailTrim
                         Vector3 own = Vector3.Scale(mf.sharedMesh.bounds.size, t.lossyScale);
                         sb.Append(" at").Append(V(ship.transform.InverseTransformPoint(mr.bounds.center)))
                           .Append(" size").Append(V(own));
+                        // How it is lit, not only what it is. Ours next to the boat's own is the comparison that
+                        // says whether a difference in setup explains a difference on screen.
+                        sb.Append(" scale").Append(V(t.lossyScale));
+                        var mat = mr.sharedMaterial;
+                        sb.Append(" mat=").Append(mat == null ? "none" : mat.name)
+                          .Append('/').Append(mat == null || mat.shader == null ? "?" : mat.shader.name);
+                        sb.Append(" probe=").Append(mr.lightProbeUsage)
+                          .Append(" refl=").Append(mr.reflectionProbeUsage)
+                          .Append(" mv=").Append(mr.motionVectorGenerationMode)
+                          .Append(" shadow=").Append(mr.shadowCastingMode)
+                          .Append(mr.receiveShadows ? "+recv" : "-recv")
+                          .Append(" lightmap=").Append(mr.lightmapIndex);
                     }
                 }
                 if (col != null)

@@ -120,6 +120,15 @@ namespace SailTrim
                 go.AddComponent<MeshFilter>().sharedMesh = use;
                 var mr = go.AddComponent<MeshRenderer>();
                 mr.sharedMaterials = r.sharedMaterials;
+                // A renderer is more than its materials. Left at Unity's defaults, ours asked for probe blending
+                // and motion vectors that the piece we copied never asked for, and what a dynamic object gets
+                // from those can differ from one frame to the next while the geometry stands perfectly still.
+                mr.lightProbeUsage = r.lightProbeUsage;
+                mr.reflectionProbeUsage = r.reflectionProbeUsage;
+                mr.motionVectorGenerationMode = r.motionVectorGenerationMode;
+                mr.allowOcclusionWhenDynamic = r.allowOcclusionWhenDynamic;
+                mr.receiveShadows = r.receiveShadows;
+                mr.renderingLayerMask = r.renderingLayerMask;
                 // A thin plank self-shadowing at a grazing angle is acne, and the shadow cascades shift with the
                 // camera every frame, so it reads as the whole surface flashing between lit and dark.
                 mr.shadowCastingMode = bake ? ShadowCastingMode.Off : ShadowCastingMode.On;
@@ -225,6 +234,48 @@ namespace SailTrim
                 return baked;
             }
             catch { return null; }
+        }
+
+        /// <summary>
+        /// Fold a scale into the baked meshes under a part so the renderer can keep an identity scale. A non
+        /// uniform scale needs the inverse transpose for its normals, which Unity does on the GPU but not when it
+        /// merges small movers into one dynamic batch -- and whether any given frame merges them is not something
+        /// you can predict. The lighting then alternates between right and wrong every frame, on geometry that
+        /// never moves. Scaling the vertices once, here, takes the question away.
+        /// </summary>
+        internal static Bounds ScaleInto(GameObject part, Vector3 scale, Bounds b)
+        {
+            if (part == null) return b;
+            Vector3 inv = new Vector3(
+                Mathf.Approximately(scale.x, 0f) ? 1f : 1f / scale.x,
+                Mathf.Approximately(scale.y, 0f) ? 1f : 1f / scale.y,
+                Mathf.Approximately(scale.z, 0f) ? 1f : 1f / scale.z);
+            foreach (var mf in part.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var mesh = mf.sharedMesh;
+                if (mesh == null || !mesh.name.EndsWith("_SailTrim")) return b;   // not ours to rewrite
+                var v = mesh.vertices;
+                for (int i = 0; i < v.Length; i++) v[i] = Vector3.Scale(v[i], scale);
+                mesh.SetVertices(v);
+                var n = mesh.normals;
+                if (n.Length == v.Length)
+                {
+                    for (int i = 0; i < n.Length; i++) n[i] = Vector3.Scale(n[i], inv).normalized;
+                    mesh.SetNormals(n);
+                }
+                var t = mesh.tangents;
+                if (t.Length == v.Length)
+                {
+                    for (int i = 0; i < t.Length; i++)
+                    {
+                        Vector3 d = Vector3.Scale(new Vector3(t[i].x, t[i].y, t[i].z), scale).normalized;
+                        t[i] = new Vector4(d.x, d.y, d.z, t[i].w);
+                    }
+                    mesh.SetTangents(t);
+                }
+                mesh.RecalculateBounds();
+            }
+            return new Bounds(Vector3.Scale(b.center, scale), Vector3.Scale(b.size, scale));
         }
 
         private static List<Renderer> VisibleRenderers(GameObject src)

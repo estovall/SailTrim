@@ -137,6 +137,7 @@ namespace SailTrim
         internal static ConfigEntry<bool> GangwayTiesCleat;
         internal static ConfigEntry<int> GangwayFineWoodCost;
         internal static ConfigEntry<int> GangwayIronNailCost;
+        internal static ConfigEntry<bool> GangwayPlainTimber;
         internal static ConfigEntry<KeyCode> SurveyKey;
         internal static ConfigEntry<int> SurveyWidth;
         internal static ConfigEntry<bool> BuoyLight;
@@ -522,6 +523,8 @@ namespace SailTrim
             GangwayIronNailCost = Config.Bind("10. Gangway", "GangwayIronNailCost", 4,
                 new ConfigDescription("Iron nails to craft one gangway. 0 for none.", new AcceptableValueRange<int>(0, 50)));
 
+            GangwayPlainTimber = Config.Bind("11. Development", "GangwayPlainTimber", false,
+                "Build the gangway from plain planks of our own rather than copies of the game's wooden floor. Slower to look at but it answers whether a rendering fault is in the copied model or in the game's shader.");
             SurveyKey = Config.Bind("11. Development", "SurveyKey", KeyCode.F10,
                 "Photographs every boat within 80 m from fixed angles into BepInEx/cache/SailTrim/survey, with a text file of what each gangway measured. For working on the mod; None to turn it off.");
             SurveyWidth = Config.Bind("11. Development", "SurveyWidth", 768,

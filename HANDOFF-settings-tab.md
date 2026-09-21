@@ -519,3 +519,28 @@ Two candidates were removed this round and one test added:
 - **`Coincident()`** reports any two of our own meshes whose bounds centres are within 3 cm, by path, in
   `hierarchy.txt`. If two surfaces really are in one plane this names them; if it reports zero, the cause is
   material or lighting and not geometry at all.
+
+## Gangway: the flashing is not geometry
+
+`Coincident()` reported **0 pairs on all six mounts**. Nothing of ours shares a place with anything else of ours,
+so it is not z-fighting, not a duplicated model, and no amount of moving things apart will help. It is how the
+surface is lit.
+
+Two differences between our renderers and the boat's own were closed:
+
+- **Scale is baked into the mesh** (`Models.ScaleInto`), so every part keeps an identity scale. A non-uniform
+  scale needs the inverse transpose for its normals; Unity does that on the GPU but *not* when it merges small
+  movers into a dynamic batch, and whether a frame merges them is not predictable. The lighting then alternates
+  between right and wrong every frame on geometry that never moves — which is exactly the reported symptom.
+- **Renderer settings are copied from the source**, not left at Unity's defaults: light probe usage, reflection
+  probe usage, motion vectors, occlusion, receive-shadows, rendering layer mask.
+
+If it still flashes, `hierarchy.txt` now prints each renderer's scale, material, shader, probe usage, motion
+vector mode, shadow mode and lightmap index — **ours and the boat's own, in the same file, to compare** — and
+`11. Development / GangwayPlainTimber` builds the whole thing from plain planks of our own with our own material,
+which separates "the copied model is wrong" from "the game's shader dislikes what we feed it".
+
+## Gangway: the Karve, fixed
+
+With the section read in the hull's frame, both Karves now report rail 1.24 m and deck drop 0.71 m on **all four**
+mounts, and the Longship is symmetric too. Compare the previous run: 0.92, 1.24, 1.56 and 1.80 on the same hull.

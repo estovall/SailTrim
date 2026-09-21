@@ -261,7 +261,9 @@ namespace SailTrim
 
             bool built = false;
             string beamName = null;
-            var floorSrc = Models.FindFirst(db, out string floorName, "wood_floor", "wood_floor_1x1", "piece_woodfloor");
+            string floorName = "plain";
+            var floorSrc = Plugin.GangwayPlainTimber.Value ? null
+                         : Models.FindFirst(db, out floorName, "wood_floor", "wood_floor_1x1", "piece_woodfloor");
             if (floorSrc != null)
             {
                 int n = Mathf.Max(1, Mathf.RoundToInt(length / 2f));
@@ -271,7 +273,8 @@ namespace SailTrim
                     var part = Models.CopyVisual(floorSrc, root.transform, "deck" + k, out var b, true);
                     if (part == null || b.size.x < 0.05f || b.size.z < 0.05f) continue;
                     var scale = new Vector3(seg / b.size.x, 1f, width / b.size.z);
-                    Models.Place(part, b, new Vector3(0f, 1f, 0.5f), new Vector3(k * seg, 0f, 0f), scale, Quaternion.identity);
+                    b = Models.ScaleInto(part, scale, b);
+                    Models.Place(part, b, new Vector3(0f, 1f, 0.5f), new Vector3(k * seg, 0f, 0f), Vector3.one, Quaternion.identity);
                     built = true;
                 }
             }
@@ -302,7 +305,8 @@ namespace SailTrim
                     // Set in by half its own width. Flush with the edge of the deck, the kerb's outer face and the
                     // deck's were the same plane for the whole two metres, and the renderer had no way to choose
                     // between them: that is the flicker down the length of the plank.
-                    Models.Place(part, b, anchor, new Vector3(0f, Kerb * 0.5f - 0.01f, sz * (width * 0.5f - Kerb)), scale, rot);
+                    b = Models.ScaleInto(part, scale, b);
+                    Models.Place(part, b, anchor, new Vector3(0f, Kerb * 0.5f - 0.01f, sz * (width * 0.5f - Kerb)), Vector3.one, rot);
                 }
             }
             if (!built)
@@ -322,12 +326,23 @@ namespace SailTrim
         internal static GameObject BuildTread(Transform parent, string name, Vector3 size, Vector3 centre, int layer)
         {
             if (Models.Headless || parent == null) return null;
-            var src = Models.FindFirst(ObjectDB.instance, out _, "wood_floor", "wood_floor_1x1", "piece_woodfloor");
-            if (src == null) return null;
+            var src = Plugin.GangwayPlainTimber.Value ? null
+                    : Models.FindFirst(ObjectDB.instance, out _, "wood_floor", "wood_floor_1x1", "piece_woodfloor");
+            if (src == null)
+            {
+                var mat0 = WoodMaterial();
+                if (mat0 == null) return null;
+                var mb0 = new Models.MeshBuilder();
+                mb0.Box(centre + new Vector3(0f, size.y * 0.5f, 0f), size);
+                var made = Models.MeshPart(parent, name, mb0.Build("SailTrim_Tread"), mat0);
+                if (made != null) SetLayer(made.transform, layer);
+                return made;
+            }
             var part = Models.CopyVisual(src, parent, name, out var b, true);
             if (part == null || b.size.x < 0.05f || b.size.z < 0.05f) return null;
             var scale = new Vector3(size.x / b.size.x, Mathf.Max(0.05f, size.y / Mathf.Max(0.01f, b.size.y)), size.z / b.size.z);
-            Models.Place(part, b, new Vector3(0.5f, 1f, 0.5f), centre + new Vector3(0f, size.y * 0.5f, 0f), scale, Quaternion.identity);
+            b = Models.ScaleInto(part, scale, b);
+            Models.Place(part, b, new Vector3(0.5f, 1f, 0.5f), centre + new Vector3(0f, size.y * 0.5f, 0f), Vector3.one, Quaternion.identity);
             SetLayer(part.transform, layer);
             return part;
         }
