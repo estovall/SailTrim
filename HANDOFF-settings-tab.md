@@ -598,3 +598,13 @@ Longship looked right, the Karve and the Drakkar came out broken. Our planks car
 only the Longship's material reads them as timber. `ShipTimber` now pulls `VikingShip` out of `ZNetScene` once
 and uses that material on every hull, falling back to the boat at hand only if the prefab cannot be found. One
 material that looks right on all three beats three that do not.
+
+## Gangway: lashed down when stowed
+
+Two rope lashings round the folded bundle, so a stowed gangway looks stowed rather than balanced on the rail.
+They reuse what the cleat already had — `CleatPiece.RopeMaterial()` for the world's own rope and
+`Models.MeshBuilder.Sweep` for the tube — and are built in the **plank's own frame**, so they sit correctly on
+the bundle however it happens to be leaning without any pose maths of their own. They are cast off the instant
+the gangway starts to travel: a lashing on a plank swinging out over the side would be a lashing holding
+nothing. `RopeMaterial()` returns null before the world's prefabs are up, so the build is retried each frame
+until it takes.

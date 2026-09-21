@@ -655,6 +655,7 @@ namespace SailTrim
         private readonly List<Collider> _mine = new List<Collider>();
         private GameObject _brackets;
         private bool _timbered;
+        private GameObject _lashing;
         private float _ignoreAt;
         private int _stowDir = 1;      // +1 lies forward along the rail, -1 aft
         private bool _stowChosen;
@@ -833,6 +834,11 @@ namespace SailTrim
 
             // The treads come down first: they are what you climb to reach the plank.
             FoldBrow(unfold);
+
+            // Cast off as soon as it moves: a lashed bundle that swings out over the side would be a lashing
+            // holding nothing.
+            bool lashed = deploy < 0.02f;
+            if (_lashing != null && _lashing.activeSelf != lashed) _lashing.SetActive(lashed);
 
             // Only a ramp that is out over the side and unfolded is something to walk on.
             bool walk = deploy > 0.6f;
@@ -1232,6 +1238,44 @@ namespace SailTrim
         }
 
         /// <summary>
+        /// Two lashings round the folded bundle, so a stowed gangway looks stowed rather than balanced there. They
+        /// are built in the plank's own frame, so they sit on the bundle however it is leaning, and they are cast
+        /// off the moment it starts to go over the side.
+        /// </summary>
+        private void BuildLashings()
+        {
+            if (_lashing != null || Models.Headless || _visual == null) return;
+            var mat = CleatPiece.RopeMaterial();
+            if (mat == null) return;   // the world's prefabs are not up yet; try again next frame
+
+            // The folded bundle: three leaves, each hanging below its own top surface, stacked by the leaf lift.
+            const float Thick = 0.22f;
+            float top = LeafLift * 2f;
+            float midY = (top - Thick) * 0.5f;
+            float ry = (top + Thick) * 0.5f + 0.045f;
+            float rz = 0.42f + 0.045f;
+
+            float seg = Length / 3f;
+            var mb = new Models.MeshBuilder();
+            foreach (float x0 in new[] { seg * 0.26f, seg * 0.74f })
+            {
+                var path = new List<Vector3>();
+                for (int i = 0; i <= 16; i++)
+                {
+                    float a = Mathf.Lerp(-Mathf.PI, Mathf.PI, i / 16f);
+                    path.Add(new Vector3(x0, midY + Mathf.Cos(a) * ry, Mathf.Sin(a) * rz));
+                }
+                mb.Sweep(path, 0.022f, 6);
+            }
+            _lashing = Models.MeshPart(transform, "lashing", mb.Build("SailTrim_GangwayLashing"), mat);
+            if (_lashing != null)
+            {
+                Gangway.SetLayer(_lashing.transform, VisualLayer(_ship));
+                _lashing.SetActive(_wasFitted && _deploy < 0.02f);
+            }
+        }
+
+        /// <summary>
         /// A pair of iron-strapped timber brackets bolted to the rail, there whether a gangway is fitted or not.
         /// Nothing marked the spot before: you had to know that a particular stretch of rail on a particular boat
         /// would answer, and nobody was going to work that out. Now the boat shows you where its gangway goes.
@@ -1299,6 +1343,7 @@ namespace SailTrim
                 BuildSections();
                 if (_visual != null) _visual.SetActive(fitted);
             }
+            if (_visual != null) BuildLashings();
             if (_visual != null && !_timbered)
             {
                 _timbered = true;
@@ -1310,6 +1355,7 @@ namespace SailTrim
                 _wasFitted = fitted;
                 if (_visual != null) _visual.SetActive(fitted);
                 if (_step != null) _step.SetActive(fitted);
+                if (_lashing != null) _lashing.SetActive(fitted && _deploy < 0.02f);
                 if (!fitted) _deploy = 0f;
                 RefreshCollider();
             }
