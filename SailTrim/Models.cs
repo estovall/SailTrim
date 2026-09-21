@@ -119,7 +119,10 @@ namespace SailTrim
                 }
                 go.AddComponent<MeshFilter>().sharedMesh = use;
                 var mr = go.AddComponent<MeshRenderer>();
-                mr.sharedMaterials = r.sharedMaterials;
+                // Our own copy of the material when baking. Sharing the game's means sharing whatever the game
+                // does to it: a piece that sets a property on the shared material, for snow or wear or damage,
+                // sets it on ours too, and we have no property block of our own to say otherwise.
+                mr.sharedMaterials = bake ? Own(r.sharedMaterials) : r.sharedMaterials;
                 // A renderer is more than its materials. Left at Unity's defaults, ours asked for probe blending
                 // and motion vectors that the piece we copied never asked for, and what a dynamic object gets
                 // from those can differ from one frame to the next while the geometry stands perfectly still.
@@ -129,9 +132,9 @@ namespace SailTrim
                 mr.allowOcclusionWhenDynamic = r.allowOcclusionWhenDynamic;
                 mr.receiveShadows = r.receiveShadows;
                 mr.renderingLayerMask = r.renderingLayerMask;
-                // A thin plank self-shadowing at a grazing angle is acne, and the shadow cascades shift with the
-                // camera every frame, so it reads as the whole surface flashing between lit and dark.
-                mr.shadowCastingMode = bake ? ShadowCastingMode.Off : ShadowCastingMode.On;
+                // Whatever the piece we copied does. Turning this off did not stop the flashing, so shadow acne
+                // was not the cause, and a gangway with no shadow looks pasted on.
+                mr.shadowCastingMode = r.shadowCastingMode;
                 var b = use.bounds;
                 for (int i = 0; i < 8; i++)
                 {
@@ -243,6 +246,27 @@ namespace SailTrim
         /// you can predict. The lighting then alternates between right and wrong every frame, on geometry that
         /// never moves. Scaling the vertices once, here, takes the question away.
         /// </summary>
+        private static readonly Dictionary<Material, Material> _ownMats = new Dictionary<Material, Material>();
+
+        /// <summary>Our own instances of these materials, made once and reused.</summary>
+        private static Material[] Own(Material[] src)
+        {
+            if (src == null) return null;
+            var outM = new Material[src.Length];
+            for (int i = 0; i < src.Length; i++)
+            {
+                var m = src[i];
+                if (m == null) continue;
+                if (!_ownMats.TryGetValue(m, out var mine) || mine == null)
+                {
+                    mine = new Material(m) { name = m.name + " (SailTrim)" };
+                    _ownMats[m] = mine;
+                }
+                outM[i] = mine;
+            }
+            return outM;
+        }
+
         internal static Bounds ScaleInto(GameObject part, Vector3 scale, Bounds b)
         {
             if (part == null) return b;

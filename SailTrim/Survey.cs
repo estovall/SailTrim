@@ -183,9 +183,14 @@ namespace SailTrim
                           .Append(" mv=").Append(mr.motionVectorGenerationMode)
                           .Append(" shadow=").Append(mr.shadowCastingMode)
                           .Append(mr.receiveShadows ? "+recv" : "-recv")
-                          .Append(" lightmap=").Append(mr.lightmapIndex);
+                          .Append(" lightmap=").Append(mr.lightmapIndex)
+                          .Append(" layer=").Append(LayerMask.LayerToName(t.gameObject.layer));
                     }
                 }
+                var body = t.GetComponent<Rigidbody>();
+                if (body != null)
+                    sb.Append(" body=").Append(body.isKinematic ? "kinematic" : "dynamic")
+                      .Append('/').Append(body.interpolation);
                 if (col != null)
                     sb.Append(" col=").Append(col.GetType().Name).Append(col.isTrigger ? "(trigger)" : "")
                       .Append(col.enabled ? "" : "[off]").Append(" layer=").Append(LayerMask.LayerToName(t.gameObject.layer));

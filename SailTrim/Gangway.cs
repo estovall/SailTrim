@@ -622,7 +622,11 @@ namespace SailTrim
             var rb = gameObject.AddComponent<Rigidbody>();
             rb.isKinematic = true;
             rb.useGravity = false;
-            rb.interpolation = RigidbodyInterpolation.None;
+            // However the boat is smoothed between physics steps, ours must be smoothed the same way. A hull
+            // interpolated toward the next step carries our visuals with it as its children, while our own body
+            // writes its pose only on the step itself: the two disagree by a fraction of a frame, every frame,
+            // and a normal-mapped surface shifting by a millimetre relights itself completely.
+            rb.interpolation = ship != null && ship.m_body != null ? ship.m_body.interpolation : RigidbodyInterpolation.None;
             gameObject.AddComponent<GangwayFooting>().Ship = ship;
             _rb = rb;
             SetCollider(0);
@@ -1078,7 +1082,7 @@ namespace SailTrim
             var rb = _step.AddComponent<Rigidbody>();
             rb.isKinematic = true;
             rb.useGravity = false;
-            rb.interpolation = RigidbodyInterpolation.None;
+            rb.interpolation = _ship != null && _ship.m_body != null ? _ship.m_body.interpolation : RigidbodyInterpolation.None;
             _step.AddComponent<GangwayFooting>().Ship = _ship;
 
             // Two leaves, so that a ramp long enough to walk up folds into something short enough to stand

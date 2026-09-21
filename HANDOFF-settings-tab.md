@@ -544,3 +544,32 @@ which separates "the copied model is wrong" from "the game's shader dislikes wha
 
 With the section read in the hull's frame, both Karves now report rail 1.24 m and deck drop 0.71 m on **all four**
 mounts, and the Longship is symmetric too. Compare the previous run: 0.92, 1.24, 1.56 and 1.80 on the same hull.
+
+## Gangway: narrowing the flashing, round two
+
+The renderer comparison in `hierarchy.txt` did its job and ruled out most of what was suspected:
+
+| | ours | the boat's own |
+|---|---|---|
+| scale | (1,1,1) | (0.15,0.19,2.68) — **non-uniform, and it does not flash** |
+| shader | Custom/Piece | Custom/Piece |
+| probes | BlendProbes / BlendProbes | BlendProbes / BlendProbes |
+| motion vectors | Object | Object |
+| lightmap | -1 | -1 |
+
+So non-uniform scale was **not** the cause (baking it in was still worth doing), shadow acne was not the cause
+(it flashed with shadow casting off), and it is not geometry (`coincident pairs: 0`). Everything we could match,
+we matched, and it still flashes. Two differences were left, and both are now closed:
+
+- **The material was the game's own asset**, shared with every wood floor in the world. Anything the game sets
+  on that shared material — snow, wear, damage — lands on ours too, and unlike a real piece we have no
+  `MaterialPropertyBlock` to override it with. Baked copies now get our own instance of the material, made once
+  and reused.
+- **Our body was not smoothed the way the boat's is.** The plank and the brow carry their own kinematic bodies
+  and had `interpolation = None` while `Ship.m_body` has whatever Valheim gives it. A hull interpolated toward
+  the next physics step carries our visuals with it as children, while our own body writes its pose only on the
+  step itself — the two disagree by a fraction of a frame, every frame, and a normal-mapped surface that shifts
+  by a millimetre relights itself completely. They now take the ship's own interpolation setting.
+
+`hierarchy.txt` now also prints each renderer's **layer** and each body's **kinematic/interpolation**, so the
+next run shows whether the interpolation actually matches and whether our visuals are on the boat's mesh layer.
