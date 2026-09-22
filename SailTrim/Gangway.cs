@@ -46,6 +46,13 @@ namespace SailTrim
         private const string LashPortKey = "SailTrim_LashPort";
         private const string LashStbdKey = "SailTrim_LashStbd";
         private const string LashedByKey = "SailTrim_LashedBy";
+        // And the same three by tag. A ZDOID is reassigned when the world loads, so the ids above mean nothing
+        // after a restart and the raft would come apart; see Tag in Cleat.cs.
+        private const string LashPortTagKey = "SailTrim_LashPortTag";
+        private const string LashStbdTagKey = "SailTrim_LashStbdTag";
+        private const string LashedByTagKey = "SailTrim_LashedByTag";
+
+        private static string LashTagKey(int side) => side < 0 ? LashPortTagKey : LashStbdTagKey;
 
         private static string LashKey(int side) => side < 0 ? LashPortKey : LashStbdKey;
 
@@ -125,6 +132,9 @@ namespace SailTrim
             ZDOID was = zdo.GetZDOID(LashKey(side));
             if (was != onto && !was.IsNone()) TellLashed(ship, was, false);
             if (was != onto) zdo.Set(LashKey(side), onto);
+            var oz = onto.IsNone() || ZDOMan.instance == null ? null : ZDOMan.instance.GetZDO(onto);
+            zdo.Set(LashTagKey(side), oz != null ? oz.GetLong(Tag.Key, 0L) : 0L);
+            if (!onto.IsNone()) Tag.Of(ship.m_nview);
             if (!onto.IsNone()) TellLashed(ship, onto, true);
         }
 
@@ -151,12 +161,15 @@ namespace SailTrim
             if (on != 0)
             {
                 zdo.Set(LashedByKey, from);
+                var fz = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(from) : null;
+                zdo.Set(LashedByTagKey, fz != null ? fz.GetLong(Tag.Key, 0L) : 0L);
+                Tag.Of(nv);
                 Mooring.HoldHere(ship);
                 ship.m_speed = Ship.Speed.Stop;
                 var st = SailTrimShip.Get(ship);
                 if (st != null) st.OnMoored();
             }
-            else if (zdo.GetZDOID(LashedByKey) == from) zdo.Set(LashedByKey, ZDOID.None);
+            else if (zdo.GetZDOID(LashedByKey) == from) { zdo.Set(LashedByKey, ZDOID.None); zdo.Set(LashedByTagKey, 0L); }
         }
 
         /// <summary>Ships whose lashing partner has not been seen lately, and since when (see LashedFrom).</summary>
@@ -174,6 +187,7 @@ namespace SailTrim
             var nv = ship != null ? ship.m_nview : null;
             if (nv == null || !nv.IsValid()) return ZDOID.None;
             var zdo = nv.GetZDO();
+            RelinkLash(ship);
             ZDOID from = zdo.GetZDOID(LashedByKey);
             if (from.IsNone()) return ZDOID.None;
             var oz = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(from) : null;
@@ -189,10 +203,44 @@ namespace SailTrim
             }
             _lashMissingSince.Remove(ship);
             bool down = (oz.GetInt(StateHash) & (DownPort | DownStbd)) != 0;
-            bool ours = oz.GetZDOID(LashPortKey) == zdo.m_uid || oz.GetZDOID(LashStbdKey) == zdo.m_uid;
+            long us = zdo.GetLong(Tag.Key, 0L);
+            bool ours = oz.GetZDOID(LashPortKey) == zdo.m_uid || oz.GetZDOID(LashStbdKey) == zdo.m_uid
+                     || (us != 0L && (oz.GetLong(LashPortTagKey, 0L) == us || oz.GetLong(LashStbdTagKey, 0L) == us));
             if (down && ours) return from;
             if (nv.IsOwner()) zdo.Set(LashedByKey, ZDOID.None);
             return ZDOID.None;
+        }
+
+        /// <summary>
+        /// Put the raft's ids back after a world load, from the tags. Both ends: the boat underneath finds the
+        /// boat whose plank is on it, and that boat's record of which side it lashed from is repaired too.
+        /// </summary>
+        private static void RelinkLash(Ship ship)
+        {
+            var nv = ship != null ? ship.m_nview : null;
+            if (nv == null || !nv.IsValid() || !nv.IsOwner()) return;
+            var zdo = nv.GetZDO();
+            long want = zdo.GetLong(LashedByTagKey, 0L);
+            if (want == 0L) return;
+            ZDOID have = zdo.GetZDOID(LashedByKey);
+            if (!have.IsNone() && ZDOMan.instance != null)
+            {
+                var hz = ZDOMan.instance.GetZDO(have);
+                if (hz != null && hz.GetLong(Tag.Key, 0L) == want) return;
+            }
+            long us = Tag.Of(nv);
+            foreach (var other in UnityEngine.Object.FindObjectsByType<Ship>(FindObjectsSortMode.None))
+            {
+                var ov = other.m_nview;
+                if (ov == null || !ov.IsValid() || Tag.Read(ov) != want) continue;
+                var oz2 = ov.GetZDO();
+                zdo.Set(LashedByKey, oz2.m_uid);
+                if (ov.IsOwner() && us != 0L)
+                    foreach (int side in Sides)
+                        if (oz2.GetLong(LashTagKey(side), 0L) == us) oz2.Set(LashKey(side), zdo.m_uid);
+                Plugin.Log.LogInfo("SailTrim: " + ship.name + " found the boat lashed to it again after a reload");
+                return;
+            }
         }
 
         /// <summary>The boat this gangway is lying on, if it is on a boat and that boat is loaded here.</summary>
@@ -984,7 +1032,6 @@ namespace SailTrim
         private float _browDrop = 0.6f, _browLen = 1.1f;
         private readonly List<Collider> _mine = new List<Collider>();
         // The boat this plank is lying on, and the pairs struck out so that it does not lean on it.
-        private Ship _lashedTo;
         private float _lashIgnoreAt;
         private readonly List<Collider> _lashIgnored = new List<Collider>();
         private GameObject _brackets;
@@ -1348,6 +1395,19 @@ namespace SailTrim
 
         private bool Lower(Humanoid user)
         {
+            // Not under way. Lowering it holds the boat where it lies, so a plank put down at speed stops her
+            // dead, which is neither good to watch nor good for whoever is standing up.
+            float limit = Plugin.GangwayLowerSpeed.Value;
+            if (limit > 0f && _ship != null && _ship.m_body != null)
+            {
+                float kn = _ship.m_body.linearVelocity.magnitude * 1.94384f;
+                if (kn > limit)
+                {
+                    user.Message(MessageHud.MessageType.Center,
+                        $"Too much way on to put the gangway down ({kn:0.0} kn)");
+                    return false;
+                }
+            }
             EnsureDeck();
             if (!FindRest(out float angle, out float _, out float _, out Ship onto))
             {
@@ -1563,27 +1623,39 @@ namespace SailTrim
         {
             if (Time.time < _lashIgnoreAt) return;
             _lashIgnoreAt = Time.time + 1f;
-            SetLashIgnore(down ? Gangway.LashTarget(_ship, _side) : null);
+            SetLashIgnore(down);
         }
 
-        private void SetLashIgnore(Ship other)
+        /// <summary>
+        /// While the plank is out it may not touch any boat. Sparing only the boat it lashed to left the shove in
+        /// place everywhere else: on the way out before the lash is made, on a boat it lands on without lashing,
+        /// and on every boat at all when GangwayLashShips is off. Ours is a kinematic body and a kinematic body
+        /// overlapping a floating one throws it on its beam ends, which is what put a hull on its side.
+        /// </summary>
+        private void SetLashIgnore(bool down)
         {
-            if (_lashedTo != other)
+            if (!down)
             {
+                if (_lashIgnored.Count == 0) return;
                 foreach (var c in _lashIgnored)
                 {
                     if (c == null) continue;
                     foreach (var own in _mine) if (own != null) Physics.IgnoreCollision(own, c, false);
                 }
                 _lashIgnored.Clear();
-                _lashedTo = other;
+                return;
             }
-            if (other == null) return;
-            foreach (var c in other.GetComponentsInChildren<Collider>(true))
+            Vector3 here = _mount != null ? _mount.position : transform.position;
+            foreach (var other in UnityEngine.Object.FindObjectsByType<Ship>(FindObjectsSortMode.None))
             {
-                if (c == null || _mine.Contains(c) || _lashIgnored.Contains(c)) continue;
-                foreach (var own in _mine) if (own != null) Physics.IgnoreCollision(own, c, true);
-                _lashIgnored.Add(c);
+                if (other == null || other == _ship) continue;   // our own is struck out already, in IgnoreShip
+                if (Vector3.Distance(other.transform.position, here) > Length + 30f) continue;
+                foreach (var c in other.GetComponentsInChildren<Collider>(true))
+                {
+                    if (c == null || _mine.Contains(c) || _lashIgnored.Contains(c)) continue;
+                    foreach (var own in _mine) if (own != null) Physics.IgnoreCollision(own, c, true);
+                    _lashIgnored.Add(c);
+                }
             }
         }
 

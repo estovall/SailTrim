@@ -71,7 +71,18 @@ namespace SailTrim
             if (!_built) return;
             SetVisible(true);
 
+            // Pinned to the ship's wind dial, then scaled and shifted by however much the player asked for.
+            // Another mod that moves or enlarges that dial takes our text off the edge of the screen with it,
+            // and there is no arrangement of ours that suits every other mod's.
             _container.position = _circle.position;
+            float scale = Mathf.Clamp(Plugin.HudScale.Value, 0.2f, 3f);
+            if (!Mathf.Approximately(_container.localScale.x, scale)) _container.localScale = Vector3.one * scale;
+            var shift = new Vector2(Plugin.HudOffsetX.Value, Plugin.HudOffsetY.Value);
+            if (shift != Vector2.zero)
+            {
+                float rs = _canvasRoot != null && _canvasRoot.lossyScale.x > 1e-4f ? _canvasRoot.lossyScale.x : 1f;
+                _container.position += new Vector3(shift.x * rs, shift.y * rs, 0f);
+            }
             _container.rotation = _canvasRoot.rotation;
 
             bool manual = piloting ? Plugin.ManualTrim.Value : st.ManualMode;

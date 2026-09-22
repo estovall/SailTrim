@@ -20,6 +20,8 @@ namespace SailTrim
     {
         internal const string PrefabName = "SailTrim_Cleat";
         internal const string BoatKey = "SailTrim_Boat";
+        /// <summary>The boat this cleat holds, by tag rather than by ZDOID. See <see cref="Tag"/>.</summary>
+        internal const string BoatTagKey = "SailTrim_BoatTag";
 
         /// <summary>Where the rope is made fast: the middle of the horn, in the cleat's own space.</summary>
         internal static readonly Vector3 RopePoint = new Vector3(0f, 0.25f, 0f);
@@ -276,10 +278,57 @@ namespace SailTrim
     }
 
     /// <summary>The placed cleat. Tie and untie, the rope, and letting go of a boat that is gone.</summary>
+    /// <summary>
+    /// A number on an object that survives a world load. A ZDOID does not: `ZDO.Load` hands every ZDO a fresh
+    /// one, so anything saved that points at another object by ZDOID points at nothing after a restart, or worse
+    /// at whatever now holds that id. That is why a tied boat came back untied while the gangway, which keeps its
+    /// state as a plain number on the boat's own ZDO, came back as it was left. Both ends of a link keep the
+    /// other's tag, and the ZDOIDs are put back from them when the world returns.
+    /// </summary>
+    internal static class Tag
+    {
+        internal const string Key = "SailTrim_Tag";
+
+        internal static long Of(ZNetView nv)
+        {
+            if (nv == null || !nv.IsValid()) return 0L;
+            var zdo = nv.GetZDO();
+            long id = zdo.GetLong(Key, 0L);
+            if (id != 0L) return id;
+            if (!nv.IsOwner()) return 0L;
+            id = ((long)UnityEngine.Random.Range(int.MinValue, int.MaxValue) << 32)
+               ^ (uint)UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+            if (id == 0L) id = 1L;
+            zdo.Set(Key, id);
+            return id;
+        }
+
+        internal static long Read(ZNetView nv)
+        {
+            if (nv == null || !nv.IsValid()) return 0L;
+            return nv.GetZDO().GetLong(Key, 0L);
+        }
+    }
+
     internal class CleatPiece : MonoBehaviour, Hoverable, Interactable
     {
         private ZNetView _nview;
-        private float _checkTimer, _tieTime;
+        private float _checkTimer, _tieTime, _relinkTimer;
+        private static readonly List<CleatPiece> _all = new List<CleatPiece>();
+
+        internal ZNetView View => _nview;
+
+        private void OnEnable() { if (!_all.Contains(this)) _all.Add(this); }
+        private void OnDisable() { _all.Remove(this); }
+
+        /// <summary>The loaded cleat carrying this tag, if its zone is up.</summary>
+        internal static CleatPiece ByTag(long tag)
+        {
+            if (tag == 0L) return null;
+            foreach (var c in _all)
+                if (c != null && Tag.Read(c._nview) == tag) return c;
+            return null;
+        }
 
         private void Awake()
         {
@@ -375,6 +424,9 @@ namespace SailTrim
             if (shipView == null || !shipView.IsValid()) return;
             _nview.ClaimOwnership();
             _nview.GetZDO().Set(Cleat.BoatKey, shipView.GetZDO().m_uid);
+            // And by tag, which is what will still mean something after a restart.
+            _nview.GetZDO().Set(Cleat.BoatTagKey, Tag.Of(shipView));
+            Tag.Of(_nview);
             _tieTime = Time.time;
             // To the boat's owner, who runs its physics and writes its ZDO.
             shipView.InvokeRPC(Mooring.RpcName, _nview.GetZDO().m_uid, true);
@@ -407,6 +459,8 @@ namespace SailTrim
             if (_nview == null || !_nview.IsValid()) { HideRope(); return; }
             var boat = Boat;
             if (boat.IsNone()) { HideRope(); return; }
+            _relinkTimer -= Time.deltaTime;
+            if (_relinkTimer <= 0f) { _relinkTimer = 2f; Relink(); }
             _checkTimer -= Time.deltaTime;
             if (_checkTimer <= 0f)
             {
@@ -527,6 +581,35 @@ namespace SailTrim
                 _anchorLocal = ship.transform.InverseTransformPoint(best);
             }
             return ship.transform.TransformPoint(_anchorLocal);
+        }
+
+        /// <summary>
+        /// Put our end of the link back after a world load, from the boat's tag. Until this runs the stored
+        /// ZDOID is a number from the last session and means nothing.
+        /// </summary>
+        private void Relink()
+        {
+            if (_nview == null || !_nview.IsValid()) return;
+            var zdo = _nview.GetZDO();
+            long want = zdo.GetLong(Cleat.BoatTagKey, 0L);
+            if (want == 0L) return;
+            ZDOID have = zdo.GetZDOID(Cleat.BoatKey);
+            if (!have.IsNone() && ZDOMan.instance != null)
+            {
+                var hz = ZDOMan.instance.GetZDO(have);
+                if (hz != null && hz.GetLong(Tag.Key, 0L) == want) return;   // still pointing at the right boat
+            }
+            foreach (var ship in Object.FindObjectsByType<Ship>(FindObjectsSortMode.None))
+            {
+                var sv = ship.m_nview;
+                if (sv == null || !sv.IsValid() || Tag.Read(sv) != want) continue;
+                if (!_nview.IsOwner()) _nview.ClaimOwnership();
+                if (!_nview.IsOwner()) return;
+                zdo.Set(Cleat.BoatKey, sv.GetZDO().m_uid);
+                _tieTime = Time.time;   // give the boat a moment to put its own end back
+                Plugin.Log.LogInfo("SailTrim: cleat found its boat again after a reload");
+                return;
+            }
         }
 
         private static bool HullCollider(Ship ship, Collider c)
@@ -686,6 +769,7 @@ namespace SailTrim
     {
         internal const string RpcName = "SailTrim_Moor";
         internal const string CleatKey = "SailTrim_Cleat";
+        internal const string CleatTagKey = "SailTrim_CleatTag";
         private static readonly int PosHash = "SailTrim_MoorPos".GetStableHashCode();
         private static readonly int YawHash = "SailTrim_MoorYaw".GetStableHashCode();
 
@@ -712,6 +796,9 @@ namespace SailTrim
             if (tie)
             {
                 zdo.Set(CleatKey, cleat);
+                var cz = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(cleat) : null;
+                if (cz != null) zdo.Set(CleatTagKey, cz.GetLong(Tag.Key, 0L));
+                Tag.Of(nv);
                 zdo.Set(PosHash, ship.m_body.position);
                 zdo.Set(YawHash, ship.transform.eulerAngles.y);
                 ship.m_speed = Ship.Speed.Stop;
@@ -721,7 +808,32 @@ namespace SailTrim
             else
             {
                 zdo.Set(CleatKey, ZDOID.None);
+                zdo.Set(CleatTagKey, 0L);
             }
+        }
+
+        /// <summary>
+        /// The boat's end of the same repair: find the cleat by the tag we kept and write its new ZDOID back.
+        /// A cleat whose zone is not loaded is not a cleat that has gone; the grace in FixedStep covers that.
+        /// </summary>
+        internal static void Relink(Ship ship)
+        {
+            var nv = ship != null ? ship.m_nview : null;
+            if (nv == null || !nv.IsValid() || !nv.IsOwner()) return;
+            var zdo = nv.GetZDO();
+            long want = zdo.GetLong(CleatTagKey, 0L);
+            if (want == 0L) return;
+            ZDOID have = zdo.GetZDOID(CleatKey);
+            if (!have.IsNone() && ZDOMan.instance != null)
+            {
+                var hz = ZDOMan.instance.GetZDO(have);
+                if (hz != null && hz.GetLong(Tag.Key, 0L) == want) return;
+            }
+            var piece = CleatPiece.ByTag(want);
+            var pv = piece != null ? piece.View : null;
+            if (pv == null || !pv.IsValid()) return;
+            zdo.Set(CleatKey, pv.GetZDO().m_uid);
+            Plugin.Log.LogInfo("SailTrim: " + ship.name + " found its cleat again after a reload");
         }
 
         /// <summary>Owner: remember the spot to hold the boat at (tying up, or a gangway going down).</summary>
@@ -746,6 +858,8 @@ namespace SailTrim
         {
             var nv = ship.m_nview;
             var zdo = nv.GetZDO();
+            // Before anything trusts the stored id: after a world load it is a number from the last session.
+            if (Time.frameCount % 60 == 0) Relink(ship);
             ZDOID cleat = zdo.GetZDOID(CleatKey);
             // A gangway down holds the boat too, so it cannot be shoved out from under someone walking across,
             // and so does another boat's gangway lying across this one: the plank holds both ends of the raft or

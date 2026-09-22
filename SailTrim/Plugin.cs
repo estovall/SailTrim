@@ -30,6 +30,9 @@ namespace SailTrim
         internal static ConfigEntry<bool> Enabled;
         internal static ConfigEntry<bool> ShowHud;
         internal static ConfigEntry<bool> ControlHints;
+        internal static ConfigEntry<float> HudScale;
+        internal static ConfigEntry<float> HudOffsetX;
+        internal static ConfigEntry<float> HudOffsetY;
         internal static ConfigEntry<bool> ShowControls;
         internal static ConfigEntry<float> CameraTilt;
         internal static ConfigEntry<float> HullSpeedScale;
@@ -136,6 +139,7 @@ namespace SailTrim
         internal static ConfigEntry<float> GangwayRetractDelay;
         internal static ConfigEntry<bool> GangwayTiesCleat;
         internal static ConfigEntry<bool> GangwayLashShips;
+        internal static ConfigEntry<float> GangwayLowerSpeed;
         internal static ConfigEntry<int> GangwayFineWoodCost;
         internal static ConfigEntry<int> GangwayIronNailCost;
         internal static ConfigEntry<bool> GangwayPlainTimber;
@@ -256,6 +260,15 @@ namespace SailTrim
                 "Master switch. When false the boat sails exactly like vanilla (patches stay loaded but pass through).");
             ShowHud = Config.Bind("1. General", "ShowHud", true,
                 "Show the trim overlay on the ship HUD: sail icon on the wind circle, speed gauge, state and heel text.");
+            HudScale = Config.Bind("1. General", "HudScale", 1f,
+                new ConfigDescription("Size of the sailing HUD (speed gauge, sail icon, the lines of text) as a fraction of normal. Below 1 if another mod has moved or enlarged the ship's wind dial and our text runs off the screen.",
+                    new AcceptableValueRange<float>(0.4f, 2f)));
+            HudOffsetX = Config.Bind("1. General", "HudOffsetX", 0f,
+                new ConfigDescription("Shift the sailing HUD sideways, in pixels at 1080p. Negative is left.",
+                    new AcceptableValueRange<float>(-1200f, 1200f)));
+            HudOffsetY = Config.Bind("1. General", "HudOffsetY", 0f,
+                new ConfigDescription("Shift the sailing HUD up or down, in pixels at 1080p. Negative is down.",
+                    new AcceptableValueRange<float>(-1200f, 1200f)));
             ControlHints = Config.Bind("1. General", "ControlHints", true,
                 "Show the raise/lower key hint under the ship HUD when you take the helm with the sail furled. It disappears once you have used the keys (until the next game start). false = never show it.");
             ShowControls = Config.Bind("1. General", "ShowControls", true,
@@ -517,6 +530,9 @@ namespace SailTrim
             GangwayRetractDelay = Config.Bind("10. Gangway", "GangwayRetractDelay", 2f,
                 new ConfigDescription("Seconds at the helm before a gangway that is still down comes up by itself.",
                     new AcceptableValueRange<float>(0f, 10f)));
+            GangwayLowerSpeed = Config.Bind("10. Gangway", "GangwayLowerSpeed", 1.2f,
+                new ConfigDescription("How fast the boat may still be moving, in knots, for a gangway to be lowered. A plank put down at speed stops the boat dead. 0 for no limit.",
+                    new AcceptableValueRange<float>(0f, 20f)));
             GangwayLashShips = Config.Bind("10. Gangway", "GangwayLashShips", true,
                 "Let a gangway come down on another boat's deck when it can reach it. Both boats then hold where they lie, as a gangway onto a dock holds the one boat, so the plank stays put between them and you can walk across. Taking the helm of either boat raises it.");
             GangwayTiesCleat = Config.Bind("10. Gangway", "GangwayTiesCleat", true,
