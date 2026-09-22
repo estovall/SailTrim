@@ -150,6 +150,7 @@ namespace SailTrim
         private static readonly Dictionary<Ship, Vector3> _preStep = new Dictionary<Ship, Vector3>();
         private static readonly Dictionary<Ship, float> _emptySince = new Dictionary<Ship, float>();
         private static readonly Dictionary<Ship, float> _coastSaid = new Dictionary<Ship, float>();
+        private static readonly Dictionary<Ship, Vector3> _coastFrom = new Dictionary<Ship, Vector3>();
 
         [HarmonyPatch(typeof(Ship), nameof(Ship.CustomFixedUpdate))]
         [HarmonyPrefix]
@@ -168,7 +169,7 @@ namespace SailTrim
             if (body == null || nv == null || !nv.IsValid() || !nv.IsOwner()) return;
 
             bool empty = __instance.m_players == null || __instance.m_players.Count == 0;
-            if (!empty) { _emptySince.Remove(__instance); _coastSaid.Remove(__instance); return; }
+            if (!empty) { _emptySince.Remove(__instance); _coastSaid.Remove(__instance); _coastFrom.Remove(__instance); return; }
 
             float coast = Plugin.EmptyCoast.Value;
             if (coast <= 0f) return;
@@ -182,14 +183,20 @@ namespace SailTrim
             // Anything that is holding her has its own way of doing it and must not be fought.
             if (Mooring.IsMoored(__instance) || Gangway.AnyDown(__instance) || Gangway.LashedAlongside(__instance)) return;
             if (!_preStep.TryGetValue(__instance, out Vector3 pre)) return;
+            if (first) _coastFrom[__instance] = new Vector3(pre.x, 0f, pre.z);
+            if (!_coastFrom.TryGetValue(__instance, out Vector3 from)) return;
 
             // Set from the speed she had before the step, not from what vanilla left, so this cannot run away
             // whichever path through the physics the step happened to take.
-            float k = Mathf.Exp(-fixedDeltaTime * 2.2f);
+            // Straight down to nothing across the whole window, from the speed she was making when the last
+            // person left. An exponential was the obvious thing and was wrong: at any rate steep enough to stop
+            // her by the end it takes nine tenths of her way in the first second, which is the wall again with a
+            // longer tail on it. The log showed 17.8 kn down to 1.5 in a second and a quarter.
+            float frac = Mathf.Clamp01(1f - age / coast);
             Vector3 v = body.linearVelocity;
             float wasKn = Horizontal(pre), vanillaKn = Horizontal(v);
-            v.x = pre.x * k;
-            v.z = pre.z * k;
+            v.x = from.x * frac;
+            v.z = from.z * frac;
             body.linearVelocity = v;
 
             // The horizontal speed only: the total includes her riding up and down on the swell, which is what
