@@ -30,6 +30,7 @@ namespace SailTrim
         internal static ConfigEntry<bool> Enabled;
         internal static ConfigEntry<bool> ShowHud;
         internal static ConfigEntry<bool> ControlHints;
+        internal static ConfigEntry<HudCorner> HudAnchor;
         internal static ConfigEntry<float> HudScale;
         internal static ConfigEntry<float> HudOffsetX;
         internal static ConfigEntry<float> HudOffsetY;
@@ -260,6 +261,8 @@ namespace SailTrim
                 "Master switch. When false the boat sails exactly like vanilla (patches stay loaded but pass through).");
             ShowHud = Config.Bind("1. General", "ShowHud", true,
                 "Show the trim overlay on the ship HUD: sail icon on the wind circle, speed gauge, state and heel text.");
+            HudAnchor = Config.Bind("1. General", "HudAnchor", HudCorner.WindDial,
+                "Where the sailing HUD sits. WindDial keeps it with the ship's wind dial, which is what it reads from; the corners cut it loose, for when another mod has moved or enlarged that dial and taken our text off the screen with it. HudOffsetX/Y shift it from wherever this puts it.");
             HudScale = Config.Bind("1. General", "HudScale", 1f,
                 new ConfigDescription("Size of the sailing HUD (speed gauge, sail icon, the lines of text) as a fraction of normal. Below 1 if another mod has moved or enlarged the ship's wind dial and our text runs off the screen.",
                     new AcceptableValueRange<float>(0.4f, 2f)));

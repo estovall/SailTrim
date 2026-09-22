@@ -4,6 +4,17 @@ using UnityEngine.UI;
 
 namespace SailTrim
 {
+    /// <summary>Where the sailing HUD sits: with the ship's wind dial, or cut loose in a corner of its own.</summary>
+    internal enum HudCorner
+    {
+        WindDial,
+        TopLeft,
+        TopRight,
+        BottomLeft,
+        BottomRight,
+        Centre,
+    }
+
     /// <summary>
     /// uGUI overlay built onto the vanilla ship HUD: a sail icon on the wind circle that rotates with the
     /// sheet, an apparent-wind arrow, a speed gauge in knots, and state / heel text in the game's font.
@@ -71,17 +82,39 @@ namespace SailTrim
             if (!_built) return;
             SetVisible(true);
 
-            // Pinned to the ship's wind dial, then scaled and shifted by however much the player asked for.
-            // Another mod that moves or enlarges that dial takes our text off the edge of the screen with it,
-            // and there is no arrangement of ours that suits every other mod's.
-            _container.position = _circle.position;
+            // Normally pinned to the ship's wind dial, because that is what it reads from. A mod that moves or
+            // enlarges that dial drags our text off the edge of the screen with it, and no arrangement of ours
+            // suits every other mod's, so the HUD can be cut loose and put wherever the player wants instead.
+            if (Plugin.HudAnchor.Value == HudCorner.WindDial)
+            {
+                _container.position = _circle.position;
+            }
+            else
+            {
+                Rect r = _canvasRoot.rect;
+                float hx = r.width * 0.5f, hy = r.height * 0.5f;
+                Vector2 c;
+                switch (Plugin.HudAnchor.Value)
+                {
+                    case HudCorner.TopLeft: c = new Vector2(-hx + _d * 1.6f, hy - _d * 1.1f); break;
+                    case HudCorner.TopRight: c = new Vector2(hx - _d * 1.6f, hy - _d * 1.1f); break;
+                    case HudCorner.BottomLeft: c = new Vector2(-hx + _d * 1.6f, -hy + _d * 1.7f); break;
+                    case HudCorner.BottomRight: c = new Vector2(hx - _d * 1.6f, -hy + _d * 1.7f); break;
+                    default: c = Vector2.zero; break;
+                }
+                _container.anchoredPosition = c;
+            }
             float scale = Mathf.Clamp(Plugin.HudScale.Value, 0.2f, 3f);
             if (!Mathf.Approximately(_container.localScale.x, scale)) _container.localScale = Vector3.one * scale;
             var shift = new Vector2(Plugin.HudOffsetX.Value, Plugin.HudOffsetY.Value);
             if (shift != Vector2.zero)
             {
-                float rs = _canvasRoot != null && _canvasRoot.lossyScale.x > 1e-4f ? _canvasRoot.lossyScale.x : 1f;
-                _container.position += new Vector3(shift.x * rs, shift.y * rs, 0f);
+                if (Plugin.HudAnchor.Value == HudCorner.WindDial)
+                {
+                    float rs = _canvasRoot != null && _canvasRoot.lossyScale.x > 1e-4f ? _canvasRoot.lossyScale.x : 1f;
+                    _container.position += new Vector3(shift.x * rs, shift.y * rs, 0f);
+                }
+                else _container.anchoredPosition += shift;
             }
             _container.rotation = _canvasRoot.rotation;
 
