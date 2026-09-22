@@ -45,6 +45,9 @@ namespace SailTrim
         private static bool _buildFailed;
         private static float _buildFailedAt;
         private static float _d;       // circle diameter in canvas units
+        // Where each piece was first laid out. HudLayout moves them from here, so the offsets a player sets stay
+        // meaningful whatever size the dial they are pinned to turns out to be.
+        private static Vector2 _homeGauge, _homeState, _homeInfo, _homeHint, _homeControls;
         private static float _radius;  // vanilla wind icon radius in canvas units
 
         /// <summary>Called when the player raises or lowers the sail with the mod's keys: the hint has done its job.</summary>
@@ -106,6 +109,12 @@ namespace SailTrim
             }
             float scale = Mathf.Clamp(Plugin.HudScale.Value, 0.2f, 3f);
             if (!Mathf.Approximately(_container.localScale.x, scale)) _container.localScale = Vector3.one * scale;
+            HudLayout.Apply(HudLayout.Part.Gauge, _gaugeRoot, _homeGauge);
+            HudLayout.Apply(HudLayout.Part.State, _stateText, _homeState);
+            HudLayout.Apply(HudLayout.Part.Info, _infoText, _homeInfo);
+            HudLayout.Apply(HudLayout.Part.Hint, _hintText, _homeHint);
+            HudLayout.Apply(HudLayout.Part.Controls, _controlsText, _homeControls);
+
             var shift = new Vector2(Plugin.HudOffsetX.Value, Plugin.HudOffsetY.Value);
             if (shift != Vector2.zero)
             {
@@ -189,7 +198,7 @@ namespace SailTrim
                     else hint = "Someone has the sheet";
                 }
             }
-            _hintText.text = hint;
+            _hintText.text = HudLayout.Editing ? HudLayout.Banner() : hint;
         }
 
         private static string _controlsCache; private static float _controlsCacheAt = -10f;
@@ -365,7 +374,8 @@ namespace SailTrim
                 _gaugeRoot = gaugeGo.GetComponent<RectTransform>();
                 _gaugeRoot.SetParent(_container, false);
                 _gaugeRoot.anchorMin = _gaugeRoot.anchorMax = _gaugeRoot.pivot = new Vector2(0.5f, 0.5f);
-                _gaugeRoot.anchoredPosition = new Vector2(-d * 0.5f - gd * 0.65f, -d * 0.08f);
+                _homeGauge = new Vector2(-d * 0.5f - gd * 0.65f, -d * 0.08f);
+                _gaugeRoot.anchoredPosition = _homeGauge;
                 _gaugeRoot.sizeDelta = new Vector2(gd, gd);
 
                 Sprite ring = MakeRingSprite();
@@ -387,12 +397,15 @@ namespace SailTrim
                 _unitText.color = ColGold;
 
                 // State, info and hint lines under the circle.
-                _stateText = MakeText("State", _container, fontSource, d * 0.16f, new Vector2(0f, -d * 0.74f), new Vector2(d * 2.4f, d * 0.44f));
+                _homeState = new Vector2(0f, -d * 0.74f);
+                _stateText = MakeText("State", _container, fontSource, d * 0.16f, _homeState, new Vector2(d * 2.4f, d * 0.44f));
                 _stateText.textWrappingMode = TextWrappingModes.Normal;
                 _stateText.alignment = TextAlignmentOptions.Top;
-                _infoText = MakeText("Info", _container, fontSource, d * 0.13f, new Vector2(0f, -d * 0.98f), new Vector2(d * 2.6f, d * 0.22f));
+                _homeInfo = new Vector2(0f, -d * 0.98f);
+                _infoText = MakeText("Info", _container, fontSource, d * 0.13f, _homeInfo, new Vector2(d * 2.6f, d * 0.22f));
                 _infoText.color = ColText;
-                _hintText = MakeText("Hint", _container, fontSource, d * 0.12f, new Vector2(0f, -d * 1.3f), new Vector2(d * 2.6f, d * 0.4f));
+                _homeHint = new Vector2(0f, -d * 1.3f);
+                _hintText = MakeText("Hint", _container, fontSource, d * 0.12f, _homeHint, new Vector2(d * 2.6f, d * 0.4f));
                 _hintText.color = ColGold;
                 _hintText.textWrappingMode = TextWrappingModes.Normal;
                 _hintText.alignment = TextAlignmentOptions.Top;
@@ -401,7 +414,8 @@ namespace SailTrim
                 // against the right edge of the screen, and a list on that side ran off it.
                 float cw = d * 2.3f, ch = d * 1.6f;
                 float gaugeLeft = -d * 0.5f - gd * 0.65f - gd * 0.5f;
-                _controlsText = MakeText("Controls", _container, fontSource, d * 0.115f, new Vector2(gaugeLeft - d * 0.1f - cw * 0.5f, d * 0.55f - ch * 0.5f), new Vector2(cw, ch));
+                _homeControls = new Vector2(gaugeLeft - d * 0.1f - cw * 0.5f, d * 0.55f - ch * 0.5f);
+                _controlsText = MakeText("Controls", _container, fontSource, d * 0.115f, _homeControls, new Vector2(cw, ch));
                 _controlsText.color = ColText;
                 _controlsText.alignment = TextAlignmentOptions.TopRight;
                 _controlsText.textWrappingMode = TextWrappingModes.NoWrap;

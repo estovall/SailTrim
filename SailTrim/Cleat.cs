@@ -422,6 +422,7 @@ namespace SailTrim
         {
             var shipView = ship.m_nview;
             if (shipView == null || !shipView.IsValid()) return;
+            if (!Mooring.SlowEnough(ship, user)) return;
             _nview.ClaimOwnership();
             _nview.GetZDO().Set(Cleat.BoatKey, shipView.GetZDO().m_uid);
             // And by tag, which is what will still mean something after a restart.
@@ -840,6 +841,22 @@ namespace SailTrim
             Plugin.Log.LogInfo("SailTrim: " + ship.name + " found its cleat again after a reload");
         }
 
+        /// <summary>
+        /// Is she slow enough to be made fast? Holding a boat that still has way on her stops her against a wall,
+        /// however gently the hold is applied afterwards, and a gangway put down from a moving boat is aimed at
+        /// something it will no longer be over. Both the line and the plank want her nearly still.
+        /// </summary>
+        internal static bool SlowEnough(Ship ship, Humanoid user)
+        {
+            float limit = Plugin.MooringMaxSpeed.Value;
+            if (limit <= 0f || ship == null || ship.m_body == null) return true;
+            float kn = ship.m_body.linearVelocity.magnitude * 1.94384f;
+            if (kn <= limit) return true;
+            if (user != null)
+                user.Message(MessageHud.MessageType.Center, $"Too much way on ({kn:0.0} kn): take it off first");
+            return false;
+        }
+
         /// <summary>Owner: remember the spot to hold the boat at (tying up, or a gangway going down).</summary>
         internal static void HoldHere(Ship ship)
         {
@@ -917,44 +934,38 @@ namespace SailTrim
             ship.m_speed = Ship.Speed.Stop;
             ship.m_rudderValue = 0f;
 
-            // Just made fast: let her run on and lose it, and keep the holding spot under her while she does, so
-            // there is nothing to be pulled back to when she stops.
+            // Just made fast: let her run on and lose it rather than stopping against a wall. The spot she is
+            // held at does NOT move with her while she settles: a gangway is aimed at something before it goes
+            // down, and a boat allowed to drift while it lowers would put the plank in the water. She is under
+            // two knots to have got here at all, so the pull back to the spot is centimetres.
             if (!_wasHeld.Contains(ship))
             {
                 _wasHeld.Add(ship);
                 float settle = Mathf.Max(0f, Plugin.MooringSettle.Value);
                 if (settle > 0f) _settleUntil[ship] = Time.time + settle;
             }
+            bool settling = false;
             if (_settleUntil.TryGetValue(ship, out float until))
             {
-                if (Time.time < until)
-                {
-                    float k = Mathf.Exp(-dt * 2.2f);
-                    Vector3 vv = body.linearVelocity;
-                    vv.x *= k; vv.z *= k;
-                    body.linearVelocity = vv;
-                    Vector3 aav = body.angularVelocity;
-                    aav.y *= k;
-                    body.angularVelocity = aav;
-                    zdo.Set(PosHash, body.position);
-                    zdo.Set(YawHash, body.rotation.eulerAngles.y);
-                    return;
-                }
-                _settleUntil.Remove(ship);
+                if (Time.time < until) settling = true;
+                else _settleUntil.Remove(ship);
             }
 
             float hold = Plugin.MooringHold.Value;
             // What vanilla does to an empty boat every step, tied or not: nine tenths of the sideways and forward
             // speed go each step, so a shove carries it a few centimetres and no farther. The pull back to the
             // tie-up spot is gentle, in case the hull is against the dock.
+            // Nine tenths of the speed every step is a wall at fifty steps a second; for the first moments after
+            // she is made fast she loses it over a couple of seconds instead, and only then is held hard.
+            float keep = settling ? Mathf.Exp(-dt * 2.2f) : 0.1f;
             Vector3 v = body.linearVelocity;
-            v.x *= 0.1f; v.z *= 0.1f;
+            v.x *= keep; v.z *= keep;
             Vector3 d = zdo.GetVec3(PosHash, body.position) - body.position; d.y = 0f;
             if (d.magnitude > 6f) d = d.normalized * 6f;
             v += d * (0.1f * hold);
             body.linearVelocity = v;
             Vector3 av = body.angularVelocity;
-            av.y *= 0.1f;
+            av.y *= keep;
             float yawErr = Mathf.DeltaAngle(body.rotation.eulerAngles.y, zdo.GetFloat(YawHash, body.rotation.eulerAngles.y)) * Mathf.Deg2Rad;
             av.y += yawErr * (0.1f * hold);
             body.angularVelocity = av;

@@ -203,6 +203,8 @@ namespace SailTrim
 
             AddHeader(list, labelSource, "SailTrim keys");
             AddKey(list, keyRowTemplate, "Manual trim on/off", Plugin.ToggleKey);
+            // Rebindable here, and the row is the only place a player would think to look for it.
+            AddKey(list, keyRowTemplate, "Move the HUD about (at the helm)", Plugin.HudLayoutKey);
             AddKey(list, keyRowTemplate, "Take in sail (hold)", Plugin.LowerSailKey);
             AddKey(list, keyRowTemplate, "Let out sail (hold; E also)", Plugin.RaiseSailKey);
             AddKey(list, keyRowTemplate, "Row forward", Plugin.RowForwardKey);

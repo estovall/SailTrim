@@ -1403,19 +1403,9 @@ namespace SailTrim
 
         private bool Lower(Humanoid user)
         {
-            // Not under way. Lowering it holds the boat where it lies, so a plank put down at speed stops her
-            // dead, which is neither good to watch nor good for whoever is standing up.
-            float limit = Plugin.GangwayLowerSpeed.Value;
-            if (limit > 0f && _ship != null && _ship.m_body != null)
-            {
-                float kn = _ship.m_body.linearVelocity.magnitude * 1.94384f;
-                if (kn > limit)
-                {
-                    user.Message(MessageHud.MessageType.Center,
-                        $"Too much way on to put the gangway down ({kn:0.0} kn)");
-                    return false;
-                }
-            }
+            // Not under way: see Mooring.SlowEnough. Lowering holds the boat where she lies, and a plank aimed
+            // from a moving boat is aimed at something it will no longer be over.
+            if (!Mooring.SlowEnough(_ship, user)) return false;
             EnsureDeck();
             if (!FindRest(out float angle, out float _, out float _, out Ship onto, out Vector3 spot, out Transform on))
             {

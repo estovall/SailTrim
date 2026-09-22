@@ -31,6 +31,7 @@ namespace SailTrim
         internal static ConfigEntry<bool> ShowHud;
         internal static ConfigEntry<bool> ControlHints;
         internal static ConfigEntry<HudCorner> HudAnchor;
+        internal static ConfigEntry<KeyCode> HudLayoutKey;
         internal static ConfigEntry<float> HudScale;
         internal static ConfigEntry<float> HudOffsetX;
         internal static ConfigEntry<float> HudOffsetY;
@@ -131,6 +132,7 @@ namespace SailTrim
         internal static ConfigEntry<float> CastOffDelay;
         internal static ConfigEntry<float> MoorRepairPerMinute;
         internal static ConfigEntry<float> MooringSettle;
+        internal static ConfigEntry<float> MooringMaxSpeed;
         internal static ConfigEntry<bool> BuoyEnabled;
         internal static ConfigEntry<bool> GangwayEnabled;
         internal static ConfigEntry<float> GangwayLength;
@@ -141,7 +143,7 @@ namespace SailTrim
         internal static ConfigEntry<float> GangwayRetractDelay;
         internal static ConfigEntry<bool> GangwayTiesCleat;
         internal static ConfigEntry<bool> GangwayLashShips;
-        internal static ConfigEntry<float> GangwayLowerSpeed;
+
         internal static ConfigEntry<int> GangwayFineWoodCost;
         internal static ConfigEntry<int> GangwayIronNailCost;
         internal static ConfigEntry<bool> GangwayPlainTimber;
@@ -262,6 +264,8 @@ namespace SailTrim
                 "Master switch. When false the boat sails exactly like vanilla (patches stay loaded but pass through).");
             ShowHud = Config.Bind("1. General", "ShowHud", true,
                 "Show the trim overlay on the ship HUD: sail icon on the wind circle, speed gauge, state and heel text.");
+            HudLayoutKey = Config.Bind("1. General", "HudLayoutKey", KeyCode.F8,
+                "Press this aboard a boat to move the HUD's pieces about with the arrow keys and watch them move. Tab picks the next piece, Page Up/Down sizes it, Backspace puts one back, Enter keeps the lot and Escape undoes it. For fitting the HUD round whatever else is on your screen.");
             HudAnchor = Config.Bind("1. General", "HudAnchor", HudCorner.WindDial,
                 "Where the sailing HUD sits. WindDial keeps it with the ship's wind dial, which is what it reads from; the corners cut it loose, for when another mod has moved or enlarged that dial and taken our text off the screen with it. HudOffsetX/Y shift it from wherever this puts it.");
             HudScale = Config.Bind("1. General", "HudScale", 1f,
@@ -515,6 +519,9 @@ namespace SailTrim
                 new ConfigDescription("Seconds at the helm of a tied-up boat before it casts off by itself.", new AcceptableValueRange<float>(0f, 10f)));
             MooringHold = Config.Bind("8. Mooring", "MooringHold", 1f,
                 new ConfigDescription("How firmly a moored boat is pulled back to where it was tied (heading too). 0 = only the vanilla empty-boat damping.", new AcceptableValueRange<float>(0f, 5f)));
+            MooringMaxSpeed = Config.Bind("8. Mooring", "MooringMaxSpeed", 2f,
+                new ConfigDescription("How fast the boat may still be moving, in knots, to tie up to a cleat or put a gangway down. Faster than this and she has to have her way taken off first. 0 for no limit.",
+                    new AcceptableValueRange<float>(0f, 20f)));
             MooringSettle = Config.Bind("8. Mooring", "MooringSettle", 2.5f,
                 new ConfigDescription("Seconds a boat takes to come to rest when it is tied up or a gangway goes down, instead of stopping dead. She carries her way for this long, and holds wherever she ends up.",
                     new AcceptableValueRange<float>(0f, 10f)));
@@ -537,9 +544,6 @@ namespace SailTrim
             GangwayRetractDelay = Config.Bind("10. Gangway", "GangwayRetractDelay", 2f,
                 new ConfigDescription("Seconds at the helm before a gangway that is still down comes up by itself.",
                     new AcceptableValueRange<float>(0f, 10f)));
-            GangwayLowerSpeed = Config.Bind("10. Gangway", "GangwayLowerSpeed", 1.9f,
-                new ConfigDescription("How fast the boat may still be moving, in knots, for a gangway to be lowered. A plank put down at speed stops the boat dead. 0 for no limit.",
-                    new AcceptableValueRange<float>(0f, 20f)));
             GangwayLashShips = Config.Bind("10. Gangway", "GangwayLashShips", true,
                 "Let a gangway come down on another boat's deck when it can reach it. Both boats then hold where they lie, as a gangway onto a dock holds the one boat, so the plank stays put between them and you can walk across. Taking the helm of either boat raises it.");
             GangwayTiesCleat = Config.Bind("10. Gangway", "GangwayTiesCleat", true,
@@ -560,6 +564,7 @@ namespace SailTrim
             BuoyEnabled = Config.Bind("9. Buoy", "BuoyEnabled", true,
                 "Adds the Buoy build piece (hammer, Misc; 6 wood, 2 resin, no workbench). Placed on open water like a boat, it floats and holds its spot: channel markers, race marks.");
             BuoyLight = Config.Bind("9. Buoy", "BuoyLight", true, "The buoy's lantern burns at night.");
+            HudLayout.Bind(Config);
             BuoyPins = Config.Bind("9. Buoy", "BuoyPins", true, "Every loaded buoy shows on the map as a small disc in its colour (press E at a buoy to change it).");
 
             // Gameplay-affecting settings the server owns when LockConfig is on.
@@ -692,6 +697,7 @@ namespace SailTrim
         {
             SailTrimNet.ClientUpdate();
             Survey.Update();
+            try { HudLayout.Update(); } catch { }
             try { Gangway.Tick(); } catch { }
             if (!Enabled.Value) { _wasPiloting = false; return; }
 
