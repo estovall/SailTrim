@@ -44,6 +44,46 @@ namespace SailTrim
             }
         }
 
+        // ---- what the settings page drives ----
+        internal static int Count => Order.Length;
+        internal static string NameOf(int i) => i >= 0 && i < Names.Length ? Names[i] : "?";
+        internal static Vector3 Live(int i) => _live != null && i >= 0 && i < _live.Length ? _live[i] : new Vector3(0f, 0f, 1f);
+
+        /// <summary>Move or size a piece from the settings page. Nulls leave that number alone.</summary>
+        internal static void Nudge(int i, float? x, float? y, float? scale)
+        {
+            if (_live == null || i < 0 || i >= _live.Length) return;
+            var v = _live[i];
+            if (x.HasValue) v.x = x.Value;
+            if (y.HasValue) v.y = y.Value;
+            if (scale.HasValue) v.z = Mathf.Clamp(scale.Value, 0.3f, 3f);
+            _live[i] = v;
+        }
+
+        internal static void ResetAll()
+        {
+            if (_live == null) return;
+            for (int i = 0; i < _live.Length; i++) _live[i] = new Vector3(0f, 0f, 1f);
+            Plugin.HudOffsetX.Value = 0f;
+            Plugin.HudOffsetY.Value = 0f;
+            Plugin.HudScale.Value = 1f;
+            Plugin.HudAnchor.Value = HudCorner.WindDial;
+        }
+
+        /// <summary>The settings page is open: remember what to go back to if it is dismissed with Back.</summary>
+        internal static void BeginEdit()
+        {
+            if (_live == null || _saved == null) return;
+            for (int i = 0; i < _live.Length; i++) _saved[i] = _live[i];
+        }
+
+        internal static void EndEdit(bool keep)
+        {
+            if (_live == null) return;
+            if (keep) { for (int i = 0; i < _live.Length; i++) _entries[i].Value = Write(_live[i]); }
+            else for (int i = 0; i < _live.Length; i++) _live[i] = _saved[i];
+        }
+
         internal static Vector3 Of(Part p)
         {
             int i = System.Array.IndexOf(Order, p);
@@ -95,14 +135,7 @@ namespace SailTrim
             // Backspace puts this piece back; Delete puts the whole HUD back, including the offsets that move
             // all of it at once. Anyone who has moved things about wants one key that undoes the lot.
             if (ZInput.GetKeyDown(KeyCode.Backspace, false)) _live[_sel] = new Vector3(0f, 0f, 1f);
-            if (ZInput.GetKeyDown(KeyCode.Delete, false))
-            {
-                for (int i = 0; i < _live.Length; i++) _live[i] = new Vector3(0f, 0f, 1f);
-                Plugin.HudOffsetX.Value = 0f;
-                Plugin.HudOffsetY.Value = 0f;
-                Plugin.HudScale.Value = 1f;
-                Plugin.HudAnchor.Value = HudCorner.WindDial;
-            }
+            if (ZInput.GetKeyDown(KeyCode.Delete, false)) ResetAll();
 
             // Held keys repeat, slowly at first, so a nudge is a nudge and a long press is a sweep.
             float step = ZInput.GetKey(KeyCode.LeftShift, false) || ZInput.GetKey(KeyCode.RightShift, false) ? 1f : 5f;

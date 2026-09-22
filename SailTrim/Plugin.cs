@@ -264,8 +264,8 @@ namespace SailTrim
                 "Master switch. When false the boat sails exactly like vanilla (patches stay loaded but pass through).");
             ShowHud = Config.Bind("1. General", "ShowHud", true,
                 "Show the trim overlay on the ship HUD: sail icon on the wind circle, speed gauge, state and heel text.");
-            HudLayoutKey = Config.Bind("1. General", "HudLayoutKey", KeyCode.F8,
-                "Press this aboard a boat to move the HUD's pieces about with the arrow keys and watch them move. Tab picks the next piece, Page Up/Down sizes it, Backspace puts one back, Enter keeps the lot and Escape undoes it. For fitting the HUD round whatever else is on your screen.");
+            HudLayoutKey = Config.Bind("1. General", "HudLayoutKey", KeyCode.None,
+                "Optional. The HUD is normally arranged on the SailTrim settings page, which is easier; bind a key here to do the same thing at the helm without opening the menu. Press this aboard a boat to move the HUD's pieces about with the arrow keys and watch them move. Tab picks the next piece, Page Up/Down sizes it, Backspace puts one back, Enter keeps the lot and Escape undoes it. For fitting the HUD round whatever else is on your screen.");
             HudAnchor = Config.Bind("1. General", "HudAnchor", HudCorner.WindDial,
                 "Where the sailing HUD sits. WindDial keeps it with the ship's wind dial, which is what it reads from; the corners cut it loose, for when another mod has moved or enlarged that dial and taken our text off the screen with it. HudOffsetX/Y shift it from wherever this puts it.");
             HudScale = Config.Bind("1. General", "HudScale", 1f,

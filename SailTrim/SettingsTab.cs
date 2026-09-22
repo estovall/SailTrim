@@ -34,6 +34,10 @@ namespace SailTrim
         private readonly List<KeyRow> _keys = new List<KeyRow>();
         private readonly List<ToggleRow> _toggles = new List<ToggleRow>();
         private KeyRow _capturing;
+        private int _part;
+        private TMP_Text _partRow;
+        private Slider _hudX, _hudY, _hudS;
+        private bool _hudRefreshing;
         private float _captureDelay;
         private TMP_Text _hint;
 
@@ -76,6 +80,8 @@ namespace SailTrim
 
             RectTransform keyRowTemplate = controls != null && controls.m_keys.Count > 0 ? controls.m_keys[0].m_keyTransform : null;
             Toggle toggleTemplate = gameplay != null ? gameplay.m_toggleRun : null;
+            // Any of the game's own sliders will do as a pattern; the volumes on the audio page are sliders.
+            Slider sliderTemplate = settings.GetComponentInChildren<Slider>(true);
             if (keyRowTemplate == null || toggleTemplate == null)
             {
                 Plugin.Log.LogWarning($"SailTrim: settings widget templates missing (controls={(controls != null)} keys={(controls != null ? controls.m_keys.Count : -1)} gameplay={(gameplay != null)} toggle={(toggleTemplate != null)}), no SailTrim tab.");
@@ -119,7 +125,7 @@ namespace SailTrim
             pageGo.SetActive(false);
 
             var tab = pageGo.AddComponent<SettingsTab>();
-            tab.Build(page, keyRowTemplate, toggleTemplate);
+            tab.Build(page, keyRowTemplate, toggleTemplate, sliderTemplate);
 
             tabs.m_tabs.Add(new TabHandler.Tab { m_button = button, m_page = page, m_default = false, m_onClick = new UnityEngine.Events.UnityEvent() });
             Plugin.Log.LogInfo("SailTrim: settings tab installed.");
@@ -162,7 +168,7 @@ namespace SailTrim
         // ------------------------------------------------------------------
         // Layout
         // ------------------------------------------------------------------
-        private void Build(RectTransform page, RectTransform keyRowTemplate, Toggle toggleTemplate)
+        private void Build(RectTransform page, RectTransform keyRowTemplate, Toggle toggleTemplate, Slider sliderTemplate)
         {
             // Scrollable: a masked viewport filling the page, the list as its content (mouse wheel scrolls).
             var viewportGo = new GameObject("Viewport", typeof(RectTransform));
@@ -223,14 +229,25 @@ namespace SailTrim
             AddToggle(list, toggleTemplate, "Rudder self-centres", Plugin.RudderSelfCenter);
             AddToggle(list, toggleTemplate, "Show the sailing keys beside the ship HUD", Plugin.ShowControls);
 
-            // The HUD is arranged in the world, not in here: you cannot judge where a thing should sit while a
-            // settings page is covering the place it sits. This says where to go and what to press when you do.
-            AddHeader(list, labelSource, "HUD layout");
-            AddKey(list, keyRowTemplate, "Move the HUD about", Plugin.HudLayoutKey);
-            AddInfoKey(list, keyRowTemplate, "Then, at the helm", "arrows / Tab");
-            AddInfoKey(list, keyRowTemplate, "Size a piece", "PgUp / PgDn");
-            AddInfoKey(list, keyRowTemplate, "Put it all back", "Delete");
-            AddInfoKey(list, keyRowTemplate, "Keep / undo", "Enter / Esc");
+            // The HUD keeps drawing behind this page, so it can be arranged from here and watched while it is
+            // done. Pick a piece, then move and size it; OK keeps the lot and Back puts it all as it was.
+            AddHeader(list, labelSource, "HUD layout (watch it move at the right)");
+            if (sliderTemplate != null)
+            {
+                _partRow = AddButtonRow(list, keyRowTemplate, "Piece", HudLayout.NameOf(_part), () =>
+                {
+                    _part = (_part + 1) % HudLayout.Count;
+                    RefreshHudRows();
+                });
+                _hudX = AddSlider(list, sliderTemplate, labelSource, "Left / right", -600f, 600f, () => HudLayout.Live(_part).x,
+                                  v => HudLayout.Nudge(_part, v, null, null));
+                _hudY = AddSlider(list, sliderTemplate, labelSource, "Up / down", -600f, 600f, () => HudLayout.Live(_part).y,
+                                  v => HudLayout.Nudge(_part, null, v, null));
+                _hudS = AddSlider(list, sliderTemplate, labelSource, "Size", 0.4f, 2f, () => HudLayout.Live(_part).z,
+                                  v => HudLayout.Nudge(_part, null, null, v));
+                AddButtonRow(list, keyRowTemplate, "Put the HUD back", "Reset", () => { HudLayout.ResetAll(); RefreshHudRows(); });
+            }
+            else AddInfoKey(list, keyRowTemplate, "HUD layout", "no slider to copy");
 
             _hint = AddHeader(list, labelSource, "Click a key to rebind. Esc cancels, Delete clears.");
             _hint.fontSize = Mathf.Max(12f, labelSource.fontSize * 0.8f);
@@ -377,6 +394,95 @@ namespace SailTrim
             _toggles.Add(new ToggleRow { Entry = entry, Toggle = toggle });
         }
 
+        /// <summary>A row whose button does something when pressed, rather than capturing a key.</summary>
+        private TMP_Text AddButtonRow(RectTransform list, RectTransform template, string label, string value, Action onClick)
+        {
+            var go = Instantiate(template.gameObject, list);
+            go.name = "Btn_" + label;
+            go.SetActive(true);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f); rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(20f, 32f);
+            var le = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>();
+            le.preferredWidth = 20f; le.preferredHeight = 32f;
+
+            var button = go.GetComponentInChildren<Button>(true);
+            var valueText = button != null ? button.GetComponentInChildren<TMP_Text>(true) : null;
+            if (button == null || valueText == null) { Destroy(go); return null; }
+            button.gameObject.SetActive(true);
+            button.onClick = new Button.ButtonClickedEvent();
+            button.onClick.AddListener(() => onClick());
+            var brt = button.GetComponent<RectTransform>();
+            brt.anchorMin = brt.anchorMax = new Vector2(0f, 0.5f); brt.pivot = new Vector2(0f, 0.5f);
+            brt.anchoredPosition = Vector2.zero;
+            brt.sizeDelta = new Vector2(140f, 32f);
+            var vrt = valueText.GetComponent<RectTransform>();
+            vrt.anchorMin = Vector2.zero; vrt.anchorMax = Vector2.one; vrt.offsetMin = new Vector2(4f, 2f); vrt.offsetMax = new Vector2(-4f, -2f);
+            valueText.alignment = TextAlignmentOptions.Center;
+            valueText.text = value;
+
+            foreach (var t in go.GetComponentsInChildren<TMP_Text>(true))
+            {
+                if (t == valueText || t.transform.parent != go.transform) continue;
+                t.gameObject.SetActive(true);
+                var lrt = t.GetComponent<RectTransform>();
+                lrt.anchorMin = lrt.anchorMax = new Vector2(0f, 0.5f); lrt.pivot = new Vector2(1f, 0.5f);
+                lrt.anchoredPosition = new Vector2(-10f, 0f);
+                lrt.sizeDelta = new Vector2(320f, 32f);
+                t.text = label;
+                t.alignment = TextAlignmentOptions.MidlineRight;
+                t.enableAutoSizing = false;
+                break;
+            }
+            return valueText;
+        }
+
+        /// <summary>One of the game's sliders, relabelled, reporting straight into the live HUD.</summary>
+        private Slider AddSlider(RectTransform list, Slider template, TMP_Text labelSource, string label,
+                                 float min, float max, Func<float> read, Action<float> write)
+        {
+            var go = Instantiate(template.gameObject, list);
+            go.name = "Slider_" + label;
+            go.SetActive(true);
+            var le = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>();
+            le.preferredWidth = 20f; le.preferredHeight = 32f;
+            var slider = go.GetComponent<Slider>();
+            if (slider == null) { Destroy(go); return null; }
+            slider.onValueChanged = new Slider.SliderEvent();
+            slider.minValue = min; slider.maxValue = max;
+            slider.wholeNumbers = false;
+            slider.value = Mathf.Clamp(read(), min, max);
+            slider.onValueChanged.AddListener(v => { if (!_hudRefreshing) write(v); });
+
+            var srt = go.GetComponent<RectTransform>();
+            srt.anchorMin = srt.anchorMax = new Vector2(0f, 0.5f); srt.pivot = new Vector2(0f, 0.5f);
+            srt.anchoredPosition = new Vector2(0f, 0f);
+            srt.sizeDelta = new Vector2(180f, 24f);
+
+            var text = Instantiate(labelSource, go.transform);
+            text.gameObject.SetActive(true);
+            text.text = label;
+            text.alignment = TextAlignmentOptions.MidlineRight;
+            text.enableAutoSizing = false;
+            var lrt = text.GetComponent<RectTransform>();
+            lrt.anchorMin = lrt.anchorMax = new Vector2(0f, 0.5f); lrt.pivot = new Vector2(1f, 0.5f);
+            lrt.anchoredPosition = new Vector2(-10f, 0f);
+            lrt.sizeDelta = new Vector2(320f, 32f);
+            return slider;
+        }
+
+        private void RefreshHudRows()
+        {
+            _hudRefreshing = true;
+            if (_partRow != null) _partRow.text = HudLayout.NameOf(_part);
+            Vector3 v = HudLayout.Live(_part);
+            if (_hudX != null) _hudX.value = Mathf.Clamp(v.x, _hudX.minValue, _hudX.maxValue);
+            if (_hudY != null) _hudY.value = Mathf.Clamp(v.y, _hudY.minValue, _hudY.maxValue);
+            if (_hudS != null) _hudS.value = Mathf.Clamp(v.z, _hudS.minValue, _hudS.maxValue);
+            _hudRefreshing = false;
+        }
+
         // ------------------------------------------------------------------
         // ISettingsTab
         // ------------------------------------------------------------------
@@ -384,6 +490,8 @@ namespace SailTrim
         {
             foreach (var k in _keys) { k.Pending = k.Entry.Value; }
             foreach (var t in _toggles) t.Toggle.isOn = t.Entry.Value;
+            HudLayout.BeginEdit();
+            RefreshHudRows();
             RefreshKeyTexts();
         }
 
@@ -400,6 +508,7 @@ namespace SailTrim
             bool changed = false;
             foreach (var k in _keys) if (k.Entry.Value != k.Pending) { k.Entry.Value = k.Pending; changed = true; }
             foreach (var t in _toggles) if (t.Entry.Value != t.Toggle.isOn) { t.Entry.Value = t.Toggle.isOn; changed = true; }
+            HudLayout.EndEdit(true);
             if (changed) Plugin.Instance.Config.Save();
             okActionCompletedCallback?.Invoke();
         }
@@ -407,6 +516,7 @@ namespace SailTrim
         public void OnBack()
         {
             if (_capturing != null) EndCapture();
+            HudLayout.EndEdit(false);
         }
 
         public void OnSharedSettingChanged(string setting, int value) { }
