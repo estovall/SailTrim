@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
 
@@ -141,6 +142,50 @@ namespace SailTrim
         }
 
         // A moored boat holds its spot on its owner's client, whatever else is on or off.
+        // An empty boat stops dead: vanilla takes nine tenths of her fore-and-aft and sideways speed every
+        // physics step the moment the last person steps off (Ship.CustomFixedUpdate, "if (m_players.Count == 0)").
+        // At fifty steps a second that is a wall, and it is what a boat does when you jump off her under sail.
+        // The speed she had before the step is kept here, and put back as a gentle decay afterwards; the vertical
+        // is left alone, so she still rides the waves as vanilla decides.
+        private static readonly Dictionary<Ship, Vector3> _preStep = new Dictionary<Ship, Vector3>();
+        private static readonly Dictionary<Ship, float> _emptySince = new Dictionary<Ship, float>();
+
+        [HarmonyPatch(typeof(Ship), nameof(Ship.CustomFixedUpdate))]
+        [HarmonyPrefix]
+        private static void Ship_CustomFixedUpdate_Coast_Pre(Ship __instance)
+        {
+            if (__instance.m_body == null) return;
+            _preStep[__instance] = __instance.m_body.linearVelocity;
+        }
+
+        [HarmonyPatch(typeof(Ship), nameof(Ship.CustomFixedUpdate))]
+        [HarmonyPostfix]
+        private static void Ship_CustomFixedUpdate_Coast(Ship __instance, float fixedDeltaTime)
+        {
+            var body = __instance.m_body;
+            var nv = __instance.m_nview;
+            if (body == null || nv == null || !nv.IsValid() || !nv.IsOwner()) return;
+
+            bool empty = __instance.m_players == null || __instance.m_players.Count == 0;
+            if (!empty) { _emptySince.Remove(__instance); return; }
+
+            float coast = Plugin.EmptyCoast.Value;
+            if (coast <= 0f) return;
+            if (!_emptySince.TryGetValue(__instance, out float since)) { since = Time.time; _emptySince[__instance] = since; }
+            if (Time.time - since > coast) return;
+            // Anything that is holding her has its own way of doing it and must not be fought.
+            if (Mooring.IsMoored(__instance) || Gangway.AnyDown(__instance) || Gangway.LashedAlongside(__instance)) return;
+            if (!_preStep.TryGetValue(__instance, out Vector3 pre)) return;
+
+            // Set from the speed she had before the step, not from what vanilla left, so this cannot run away
+            // whichever path through the physics the step happened to take.
+            float k = Mathf.Exp(-fixedDeltaTime * 2.2f);
+            Vector3 v = body.linearVelocity;
+            v.x = pre.x * k;
+            v.z = pre.z * k;
+            body.linearVelocity = v;
+        }
+
         [HarmonyPatch(typeof(Ship), nameof(Ship.CustomFixedUpdate))]
         [HarmonyPostfix]
         private static void Ship_CustomFixedUpdate_Mooring(Ship __instance, float fixedDeltaTime)
