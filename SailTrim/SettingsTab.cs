@@ -203,8 +203,6 @@ namespace SailTrim
 
             AddHeader(list, labelSource, "SailTrim keys");
             AddKey(list, keyRowTemplate, "Manual trim on/off", Plugin.ToggleKey);
-            // Rebindable here, and the row is the only place a player would think to look for it.
-            AddKey(list, keyRowTemplate, "Move the HUD about (at the helm)", Plugin.HudLayoutKey);
             AddKey(list, keyRowTemplate, "Take in sail (hold)", Plugin.LowerSailKey);
             AddKey(list, keyRowTemplate, "Let out sail (hold; E also)", Plugin.RaiseSailKey);
             AddKey(list, keyRowTemplate, "Row forward", Plugin.RowForwardKey);
@@ -224,6 +222,15 @@ namespace SailTrim
             AddToggle(list, toggleTemplate, "Row keys toggle (off = hold to row)", Plugin.RowKeysToggle);
             AddToggle(list, toggleTemplate, "Rudder self-centres", Plugin.RudderSelfCenter);
             AddToggle(list, toggleTemplate, "Show the sailing keys beside the ship HUD", Plugin.ShowControls);
+
+            // The HUD is arranged in the world, not in here: you cannot judge where a thing should sit while a
+            // settings page is covering the place it sits. This says where to go and what to press when you do.
+            AddHeader(list, labelSource, "HUD layout");
+            AddKey(list, keyRowTemplate, "Move the HUD about", Plugin.HudLayoutKey);
+            AddInfoKey(list, keyRowTemplate, "Then, at the helm", "arrows / Tab");
+            AddInfoKey(list, keyRowTemplate, "Size a piece", "PgUp / PgDn");
+            AddInfoKey(list, keyRowTemplate, "Put it all back", "Delete");
+            AddInfoKey(list, keyRowTemplate, "Keep / undo", "Enter / Esc");
 
             _hint = AddHeader(list, labelSource, "Click a key to rebind. Esc cancels, Delete clears.");
             _hint.fontSize = Mathf.Max(12f, labelSource.fontSize * 0.8f);
