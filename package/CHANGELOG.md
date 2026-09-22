@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.10.0
+
+- **Boats carry their way off instead of stopping dead.** Step off a boat under sail and vanilla takes nine tenths of her speed every physics step, which at fifty steps a second is a wall; she now loses her way evenly over `EmptyCoast` (2.5 seconds) and comes to rest like a boat rather than like a boat hitting one. The same when a line goes on or a gangway goes down: she settles over `MooringSettle` rather than stopping where she stands, and is held at the spot she was made fast at, not wherever she drifted to.
+- **A gangway stays where it was set down.** It used to feel for the ground again every frame and take whatever it found, so half a metre of swell had the tip reading the top of a beam one frame and the ground beside it the next, and the plank climbed in and out of the timber. It now takes the spot once, as it goes down, and keeps it in the frame of whatever it landed on: a dock stays put, another boat's rail rides with that boat, and only the angle needed to reach it changes as the hull works.
+- **Tying up and lowering a gangway want her nearly still** (`MooringMaxSpeed`, 3.5 knots). Both stop the boat, and a plank aimed from a moving boat is aimed at something it will no longer be over.
+- **Moorings survive a restart.** A boat tied to a cleat came back untied, while a gangway came back as it was left. A ZDOID does not survive a world load -- the game hands every object a fresh one -- so anything saved that points at another object by ZDOID points at nothing when the world returns, and the cleat and the boat each held the other's. Both ends now also keep a tag that does survive, and the link is put back from it. Boats lashed alongside keep their raft the same way.
+- **The HUD can be arranged to suit whatever else is on your screen.** In the SailTrim settings page: pick a piece (or "everything"), then move and size it with sliders while you watch it move behind the page, which goes see-through while you are there. OK keeps it, Back puts it as it was, and there is a Reset. For playing beside mods that move or enlarge the ship's dials.
+- Fixed: a gangway swinging out could throw another boat on its beam ends. It only spared the boat it had lashed to, which left the shove in place on the way out, on a boat it landed on without lashing, and on every boat when `GangwayLashShips` was off.
+- Fixed: a cleat made its rope fast to the boat's own gangway. A lowered plank reaches out towards the dock, so it was nearer the cleat than the hull was.
+- Fixed: the place to interact with a gangway was the plank itself, which moves, so it was never where the brackets are; and it was solid and invisible while nothing was fitted, which put a block on the rail to walk into. The brackets carry it now, on the layer the game's own ladders use, so you walk through it rather than into it.
+- Fixed: the gangway's ironwork was plain timber, its planks fought with themselves for every pixel, and its folded leaves stood further apart than they needed to.
+- A boat with no gangway fitted no longer builds one. Every hull but the raft carries the brackets, and they were building the walkway, the brow and all their meshes whether anyone had crafted a gangway or not.
+
 ## 1.9.0
 
 - A gangway can come down on another boat. If the plank reaches a deck rather than the shore, it lands on it, and the two boats are then lashed alongside: both hold where they lie and both stop, exactly as a gangway onto a dock holds the one boat. Walk across, load the other hold, raft up for the night. Taking the helm of either boat raises the plank and frees them both. `GangwayLashShips` turns it off.

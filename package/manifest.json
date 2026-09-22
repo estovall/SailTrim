@@ -1,7 +1,7 @@
 {
     "name": "SailTrim",
     "description": "Manual sail trimming for Valheim 1.0: sheet in and out, real heel, gusts, hull speed, a trim HUD on the wheel. Vanilla by default, H at the helm to opt in. Cleats to tie up, buoys to mark a channel, and a gangway to walk ashore loaded.",
-    "version_number": "1.9.0",
+    "version_number": "1.10.0",
     "website_url": "https://github.com/estovall/SailTrim",
     "dependencies": [
         "denikson-BepInExPack_Valheim-5.4.2350"

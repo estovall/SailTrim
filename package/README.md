@@ -167,6 +167,22 @@ ties that cleat on as well, so one press does the dock. You work it from on boar
 after two seconds (`GangwayRetractDelay`). `GangwayEnabled`, `GangwayLength`, `GangwayMaxAngle`,
 `GangwaySwingTime`, `GangwayTiesCleat` and its costs are in the config.
 
+**Rafting up (1.9.0).** If the plank comes down on another boat's deck rather than on the shore, it lands on it
+and the two are lashed alongside: both hold where they lie and both stop, the way a gangway onto a dock holds
+the one boat. Walk across, load the other hold, raft the fleet up for the night. Taking the helm of either boat
+raises the plank and frees them both. `GangwayLashShips` turns it off.
+
+She has to be nearly still to put it down, or to take a line to a cleat: `MooringMaxSpeed` (3.5 knots). Both
+stop the boat, and a plank aimed from a boat still making way is aimed at something it will no longer be over.
+
+## Arranging the HUD (1.10.0)
+
+Open the SailTrim settings page aboard a boat. The page goes see-through and the HUD keeps drawing behind it, so
+you can pick a piece from the list, move and size it with the sliders, and watch it move as you do. The first
+entry on the list is **everything**, for shifting the lot together. OK keeps it, Back puts it as it was, and
+Reset returns the whole HUD to stock. Meant for playing beside mods that move or enlarge the ship's own dials.
+`HudLayoutKey` can be bound if you would rather nudge things at the helm without opening the menu.
+
 ### Lashing alongside (1.9.0)
 
 Bring a boat up beside another and lower the gangway onto its deck. Nothing declares that you meant to: if the

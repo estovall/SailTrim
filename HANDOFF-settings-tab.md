@@ -1,6 +1,30 @@
 # SailTrim pick-up notes
 
-## Status, 2026-09-21: 1.9.0 is built, installed and unpublished
+## Status, 2026-09-22: 1.10.0 is released
+
+Everything below through 1.9.0 is published, and so is a round of work from the users: boats carry their way off
+instead of stopping dead (both stepping off under sail and making fast), the gangway keeps the spot it was set
+down on instead of feeling for the ground every frame, moorings survive a restart, and the HUD is arranged from
+the SailTrim settings page with the page turned see-through so you can watch it move. Max play-tested the lot,
+including seven boats lashed alongside in a storm.
+
+**The dedicated server is on 1.8.0 and must be moved to 1.10.0**: the version check wants an exact match, so the
+server and every client move together or not at all. `releases/SailTrim-1.10.0.zip` is committed ready for it.
+
+Still never tested with a real crew: crew weight (1.7.0). It has shipped twice now without anyone sailing a
+crewed boat with it.
+
+Two things worth keeping from the last round, both of which cost play-tests:
+
+- **A ZDOID does not survive a world load.** `ZDO.Load` hands every ZDO a fresh one. Anything saved that points
+  at another object by ZDOID is meaningless when the world returns; keep a tag of your own and repair the id
+  from it. This is why moorings did not survive a restart and gangway state did.
+- **Ask the game rather than reasoning about it.** The empty-boat coast looked broken for two rounds. Four lines
+  of logging showed the override was working perfectly and the *curve* was wrong: an exponential steep enough to
+  stop her inside the window spends nine tenths of itself in the first second, so 17.8 kn became 1.5 in a second
+  and a quarter. It lost her way in a straight line after that.
+
+## Previously, 2026-09-21: 1.9.0 was built and unpublished
 
 **Lashing alongside** is the one change in 1.9.0. A gangway lowered onto another boat's deck now lands on it and
 the two boats are lashed: both hold where they lie and both stop, as a gangway onto a dock stops the one boat.
