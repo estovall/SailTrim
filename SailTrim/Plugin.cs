@@ -523,7 +523,7 @@ namespace SailTrim
             EmptyCoast = Config.Bind("1. General", "EmptyCoast", 2.5f,
                 new ConfigDescription("Seconds an empty boat carries her way for after the last person steps off. Vanilla takes nine tenths of her speed every physics step, which stops her dead; this lets her run on and lose it. 0 for vanilla.",
                     new AcceptableValueRange<float>(0f, 10f)));
-            MooringMaxSpeed = Config.Bind("8. Mooring", "MooringMaxSpeed", 2f,
+            MooringMaxSpeed = Config.Bind("8. Mooring", "MooringMaxSpeed", 3.5f,
                 new ConfigDescription("How fast the boat may still be moving, in knots, to tie up to a cleat or put a gangway down. Faster than this and she has to have her way taken off first. 0 for no limit.",
                     new AcceptableValueRange<float>(0f, 20f)));
             MooringSettle = Config.Bind("8. Mooring", "MooringSettle", 2.5f,
