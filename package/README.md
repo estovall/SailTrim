@@ -214,6 +214,93 @@ map as a small disc in its colour. A boat that hits one shoves it aside for a mo
 
 Buoys and cleats cannot be damaged (a ship's ram, weather, the sea floor); remove them with the hammer.
 
+## FAQ
+
+**Do I have to learn to sail to use this?**
+No. The first time you run it you are sailing vanilla, exactly as before. Press **H** at the helm to take the
+sheet yourself, and H again to hand it back. Whichever you chose last is what you get next time. Manual trim is
+faster if you work at it, so it is worth trying, but nothing forces you.
+
+**Is it faster or slower than vanilla?**
+Faster when you trim well, about the same when you do not. A good trim is roughly 50% faster than vanilla's
+auto-trim on a reach and much faster upwind; 10 degrees off costs about 15% of the drive; a sloppy trim is
+about vanilla speed. A badly stalled sail is slower, but you can always crawl home. None of the realism
+features is a straight penalty.
+
+**Does everyone on the server need it?**
+Everyone who wants to sail with it, yes, and they all need the *same version*. The version check is exact: a
+server on 1.9.0 will not accept a 1.10.0 client. Move the server and the players together.
+
+**What happens to a friend who has not installed it?**
+They can still sail. From 1.1.1 the pilot's own machine simulates the boat while they hold the rudder with
+manual trim on, so an unmodded passenger sees the boat move exactly as the pilot is sailing it. They just see
+the yard drawn at vanilla's angle rather than yours.
+
+**Does the dedicated server need it?**
+Recommended, not required. Ship physics always runs on a client, so the server copy does not sail anything. It
+does two things, both in the server's config under `0. Server`: `Enforcement` (Off / Warn / Require) decides
+what happens to players without a matching version, and `LockConfig` pushes the server's physics, heel, gust
+and hull-speed settings to every client on connect so everyone sails by the same rules. Keys, HUD, camera tilt
+and the H opt-in always stay personal.
+
+**Where are the settings?**
+Two places. The common ones are in the game's own Settings screen, under a **SailTrim** tab: keys, the options,
+and the HUD layout. Everything else is `BepInEx\config\com.maxst.sailtrim.cfg`, which is created on first
+launch. Edit it with the game closed, or use a config manager.
+
+**The HUD sits on top of another mod's UI. Can I move it?**
+Yes, and you can watch it move while you do. Open Settings, SailTrim tab, aboard a boat: the page turns
+see-through and the HUD keeps drawing behind it. Pick a piece from the list, or **everything** to shift the lot
+together, and move and size it with the sliders. **OK** keeps it, **Back** puts it as it was, **Reset** returns
+the whole HUD to stock.
+
+**How do I get a gangway, and where does it go?**
+Craft one at the workbench: 10 fine wood and 4 iron nails, so it arrives about when the longship does. Every
+hull but the raft has a pair of timber brackets on each rail, near its own boarding ladder. Stand at them with a
+gangway in your pack and press **E**. It stays with the boat from then on, one to a side; press E again to lower
+or raise it.
+
+**Why will my gangway not go down?**
+Two reasons. Either there is nothing within reach for it to rest on, in which case it refuses rather than
+dangling over the water, or the boat still has way on her. Lowering it holds the boat where she lies, so she has
+to be under `MooringMaxSpeed` (3.5 knots) first. The message tells you which.
+
+**Can I tie two boats together?**
+Lower a gangway onto another boat's deck. It lands on it and the two are lashed alongside: both hold where they
+lie and both stop, so you can walk across and load the other hold. Taking the helm of either boat raises the
+plank and frees them both. `GangwayLashShips` turns it off if you would rather it never did that.
+
+**How do I tie up at a dock?**
+Build a **Cleat** from the hammer's Misc tab (one bronze). Stand at it with a boat within 10 m and press E. The
+rope is made fast round the horn and the boat holds her spot and heading, with or without people aboard, and
+mends herself slowly while she is there. Press E again to untie, or just take the helm and she casts off by
+herself after a second. She has to be under 3.5 knots to be made fast.
+
+**My boat came untied after I logged out.**
+Fixed in 1.10.0. Valheim hands every object a new internal id when a world loads, so the cleat and the boat each
+lost track of the other. Both ends now keep a marker that survives the reload, and the link is put back from it.
+Boats lashed alongside keep their raft the same way.
+
+**What are the buoys for?**
+Marking water. Build one from the hammer's Misc tab (6 wood, 2 resin, no workbench) and place it on open water
+like a boat. It floats, holds its spot, lights up at night and shows on the map. Press E to change the banner
+colour: red and green for a channel, yellow for a race mark. They stay loaded from a long way off, so a mark
+shows from down the length of a fjord.
+
+**Can I turn individual features off?**
+Yes. Everything in the `6. Realism` section can be set to zero on its own: gusts, wind shadow, downwind rolling,
+weather helm, leeway, mast strain, hull speed, bow-down trim. Gybes are off by default. The gangway, cleat and
+buoy each have an enable switch too.
+
+**Does it work with other mods?**
+It should. It patches the ship, the helm and the sailing HUD and leaves the rest of the game alone. The HUD can
+be moved and resized for anything that rearranges the ship's dials. If you find a mod it argues with, please say
+which one.
+
+**Something is wrong. What is useful to send?**
+`BepInEx\LogOutput.log`, what you were doing, and which ship. Issues at
+https://github.com/estovall/SailTrim -- the log usually says more than a screenshot can.
+
 ## Config highlights (`BepInEx\config\com.maxst.sailtrim.cfg`)
 
 | Key | Default | Meaning |
