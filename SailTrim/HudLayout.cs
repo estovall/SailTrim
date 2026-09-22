@@ -72,7 +72,8 @@ namespace SailTrim
             if (!Editing) return "";
             Vector3 v = _live[_sel];
             return $"<color=#FFD24A>Moving the {Names[_sel]}</color>   {v.x:0}, {v.y:0}   size {v.z:0.00}\n" +
-                   "<color=#AAAAAA>Tab next piece   arrows move   Page Up/Down size   Backspace reset   Enter keep   Esc undo</color>";
+                   "<color=#AAAAAA>Tab next piece   arrows move (Shift: fine)   Page Up/Down size   " +
+                   "Backspace reset piece   Delete reset all   Enter keep   Esc undo</color>";
         }
 
         internal static void Update()
@@ -91,7 +92,17 @@ namespace SailTrim
             if (ZInput.GetKeyDown(KeyCode.Return, false) || ZInput.GetKeyDown(KeyCode.KeypadEnter, false)) { Finish(true); return; }
             if (ZInput.GetKeyDown(KeyCode.Tab, false))
                 _sel = (_sel + (ZInput.GetKey(KeyCode.LeftShift, false) || ZInput.GetKey(KeyCode.RightShift, false) ? Order.Length - 1 : 1)) % Order.Length;
+            // Backspace puts this piece back; Delete puts the whole HUD back, including the offsets that move
+            // all of it at once. Anyone who has moved things about wants one key that undoes the lot.
             if (ZInput.GetKeyDown(KeyCode.Backspace, false)) _live[_sel] = new Vector3(0f, 0f, 1f);
+            if (ZInput.GetKeyDown(KeyCode.Delete, false))
+            {
+                for (int i = 0; i < _live.Length; i++) _live[i] = new Vector3(0f, 0f, 1f);
+                Plugin.HudOffsetX.Value = 0f;
+                Plugin.HudOffsetY.Value = 0f;
+                Plugin.HudScale.Value = 1f;
+                Plugin.HudAnchor.Value = HudCorner.WindDial;
+            }
 
             // Held keys repeat, slowly at first, so a nudge is a nudge and a long press is a sweep.
             float step = ZInput.GetKey(KeyCode.LeftShift, false) || ZInput.GetKey(KeyCode.RightShift, false) ? 1f : 5f;
