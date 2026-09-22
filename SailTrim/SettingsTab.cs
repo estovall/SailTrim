@@ -38,6 +38,8 @@ namespace SailTrim
         private TMP_Text _partRow;
         private Slider _hudX, _hudY, _hudS;
         private bool _hudRefreshing;
+        private class SliderText { public TMP_Text Text; public Func<float, string> Show; }
+        private readonly Dictionary<Slider, SliderText> _sliderValues = new Dictionary<Slider, SliderText>();
         private float _captureDelay;
         private TMP_Text _hint;
 
@@ -239,12 +241,12 @@ namespace SailTrim
                     _part = (_part + 1) % HudLayout.Count;
                     RefreshHudRows();
                 });
-                _hudX = AddSlider(list, sliderTemplate, labelSource, "Left / right", -600f, 600f, () => HudLayout.Live(_part).x,
-                                  v => HudLayout.Nudge(_part, v, null, null));
-                _hudY = AddSlider(list, sliderTemplate, labelSource, "Up / down", -600f, 600f, () => HudLayout.Live(_part).y,
-                                  v => HudLayout.Nudge(_part, null, v, null));
-                _hudS = AddSlider(list, sliderTemplate, labelSource, "Size", 0.4f, 2f, () => HudLayout.Live(_part).z,
-                                  v => HudLayout.Nudge(_part, null, null, v));
+                _hudX = AddSlider(list, sliderTemplate, "Left / right", -600f, 600f, () => HudLayout.Live(_part).x,
+                                  v => HudLayout.Nudge(_part, v, null, null), v => v.ToString("0"));
+                _hudY = AddSlider(list, sliderTemplate, "Up / down", -600f, 600f, () => HudLayout.Live(_part).y,
+                                  v => HudLayout.Nudge(_part, null, v, null), v => v.ToString("0"));
+                _hudS = AddSlider(list, sliderTemplate, "Size", 0.4f, 2f, () => HudLayout.Live(_part).z,
+                                  v => HudLayout.Nudge(_part, null, null, v), v => (v * 100f).ToString("0") + "%");
                 AddButtonRow(list, keyRowTemplate, "Put the HUD back", "Reset", () => { HudLayout.ResetAll(); RefreshHudRows(); });
             }
             else AddInfoKey(list, keyRowTemplate, "HUD layout", "no slider to copy");
@@ -438,9 +440,13 @@ namespace SailTrim
             return valueText;
         }
 
-        /// <summary>One of the game's sliders, relabelled, reporting straight into the live HUD.</summary>
-        private Slider AddSlider(RectTransform list, Slider template, TMP_Text labelSource, string label,
-                                 float min, float max, Func<float> read, Action<float> write)
+        /// <summary>
+        /// One of the game's sliders, relabelled, reporting straight into the live HUD. The clone arrives with
+        /// its own label and its own readout ("Mouse sensitivity ... 100%"); those are what get relabelled. Adding
+        /// a label of our own on top of one already there is how the rows came out written over each other.
+        /// </summary>
+        private Slider AddSlider(RectTransform list, Slider template, string label,
+                                 float min, float max, Func<float> read, Action<float> write, Func<float, string> show)
         {
             var go = Instantiate(template.gameObject, list);
             go.name = "Slider_" + label;
@@ -449,26 +455,31 @@ namespace SailTrim
             le.preferredWidth = 20f; le.preferredHeight = 32f;
             var slider = go.GetComponent<Slider>();
             if (slider == null) { Destroy(go); return null; }
+
+            // Left to right: the label, then the slider, then the readout.
+            var texts = new List<TMP_Text>(go.GetComponentsInChildren<TMP_Text>(true));
+            texts.Sort((a, b) => a.rectTransform.position.x.CompareTo(b.rectTransform.position.x));
+            TMP_Text lbl = texts.Count > 0 ? texts[0] : null;
+            TMP_Text val = texts.Count > 1 ? texts[texts.Count - 1] : null;
+            if (lbl != null)
+            {
+                lbl.gameObject.SetActive(true);
+                lbl.text = label;
+                lbl.enableAutoSizing = false;
+                lbl.alignment = TextAlignmentOptions.MidlineRight;
+            }
+
             slider.onValueChanged = new Slider.SliderEvent();
             slider.minValue = min; slider.maxValue = max;
             slider.wholeNumbers = false;
             slider.value = Mathf.Clamp(read(), min, max);
-            slider.onValueChanged.AddListener(v => { if (!_hudRefreshing) write(v); });
-
-            var srt = go.GetComponent<RectTransform>();
-            srt.anchorMin = srt.anchorMax = new Vector2(0f, 0.5f); srt.pivot = new Vector2(0f, 0.5f);
-            srt.anchoredPosition = new Vector2(0f, 0f);
-            srt.sizeDelta = new Vector2(180f, 24f);
-
-            var text = Instantiate(labelSource, go.transform);
-            text.gameObject.SetActive(true);
-            text.text = label;
-            text.alignment = TextAlignmentOptions.MidlineRight;
-            text.enableAutoSizing = false;
-            var lrt = text.GetComponent<RectTransform>();
-            lrt.anchorMin = lrt.anchorMax = new Vector2(0f, 0.5f); lrt.pivot = new Vector2(1f, 0.5f);
-            lrt.anchoredPosition = new Vector2(-10f, 0f);
-            lrt.sizeDelta = new Vector2(320f, 32f);
+            if (val != null) val.text = show(slider.value);
+            slider.onValueChanged.AddListener(v =>
+            {
+                if (val != null) val.text = show(v);
+                if (!_hudRefreshing) write(v);
+            });
+            _sliderValues[slider] = new SliderText { Text = val, Show = show };
             return slider;
         }
 
@@ -477,10 +488,17 @@ namespace SailTrim
             _hudRefreshing = true;
             if (_partRow != null) _partRow.text = HudLayout.NameOf(_part);
             Vector3 v = HudLayout.Live(_part);
-            if (_hudX != null) _hudX.value = Mathf.Clamp(v.x, _hudX.minValue, _hudX.maxValue);
-            if (_hudY != null) _hudY.value = Mathf.Clamp(v.y, _hudY.minValue, _hudY.maxValue);
-            if (_hudS != null) _hudS.value = Mathf.Clamp(v.z, _hudS.minValue, _hudS.maxValue);
+            SetSlider(_hudX, v.x);
+            SetSlider(_hudY, v.y);
+            SetSlider(_hudS, v.z);
             _hudRefreshing = false;
+        }
+
+        private void SetSlider(Slider s, float value)
+        {
+            if (s == null) return;
+            s.value = Mathf.Clamp(value, s.minValue, s.maxValue);
+            if (_sliderValues.TryGetValue(s, out var st) && st.Text != null) st.Text.text = st.Show(s.value);
         }
 
         // ------------------------------------------------------------------
