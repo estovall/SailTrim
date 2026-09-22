@@ -187,7 +187,9 @@ namespace SailTrim
             var nv = ship != null ? ship.m_nview : null;
             if (nv == null || !nv.IsValid()) return ZDOID.None;
             var zdo = nv.GetZDO();
-            RelinkLash(ship);
+            // LashedFrom is asked every physics step by the mooring, so the repair is not: it only matters
+            // after a world load, and once a second is sooner than anyone will notice.
+            if (Time.time >= _relinkAt) { _relinkAt = Time.time + 1f; RelinkLash(ship); }
             ZDOID from = zdo.GetZDOID(LashedByKey);
             if (from.IsNone()) return ZDOID.None;
             var oz = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(from) : null;
@@ -229,7 +231,7 @@ namespace SailTrim
                 if (hz != null && hz.GetLong(Tag.Key, 0L) == want) return;
             }
             long us = Tag.Of(nv);
-            foreach (var other in UnityEngine.Object.FindObjectsByType<Ship>(FindObjectsSortMode.None))
+            foreach (var other in NearbyShips())
             {
                 var ov = other.m_nview;
                 if (ov == null || !ov.IsValid() || Tag.Read(ov) != want) continue;
@@ -241,6 +243,23 @@ namespace SailTrim
                 Plugin.Log.LogInfo("SailTrim: " + ship.name + " found the boat lashed to it again after a reload");
                 return;
             }
+        }
+
+        /// <summary>
+        /// Every loaded boat, found once a second and shared. Each mount asking the engine for the list of ships
+        /// separately is the same answer fetched many times over, and the answer allocates an array each time.
+        /// </summary>
+        private static Ship[] _ships = new Ship[0];
+        private static float _shipsAt, _relinkAt;
+
+        internal static Ship[] NearbyShips()
+        {
+            if (Time.time >= _shipsAt)
+            {
+                _shipsAt = Time.time + 1f;
+                _ships = UnityEngine.Object.FindObjectsByType<Ship>(FindObjectsSortMode.None);
+            }
+            return _ships;
         }
 
         /// <summary>The boat this gangway is lying on, if it is on a boat and that boat is loaded here.</summary>
@@ -1238,8 +1257,19 @@ namespace SailTrim
         /// metres of timber and keeps it clear of the shrouds, the mast and the steering oar. Deployed, it is
         /// square out over the side on its hinge. Between the two it swings out, then drops.
         /// </summary>
+        private float _appliedDeploy = float.NaN, _appliedAngle = float.NaN;
+        private bool _appliedFitted;
+
         private void Apply(float deploy)
         {
+            // Stowed and still, there is nothing to write: the rig is a child of the boat and rides with it. This
+            // runs on every mount of every boat, so the case of "nothing is happening" wants to cost nothing.
+            if (deploy == _appliedDeploy && _wasFitted == _appliedFitted
+                && (deploy <= 0f || _restAngle == _appliedAngle)) return;
+            _appliedDeploy = deploy;
+            _appliedAngle = _restAngle;
+            _appliedFitted = _wasFitted;
+
             _deploy = deploy;
             // Nothing fitted: the mount is only somewhere to interact, and it belongs on the rail where it was put.
             if (!_wasFitted)
@@ -1633,6 +1663,8 @@ namespace SailTrim
         /// </summary>
         private void UpdateLashIgnore(bool down)
         {
+            // Nothing to do at all unless a plank is out; a stowed gangway cannot touch another boat.
+            if (!down && _lashIgnored.Count == 0) return;
             if (Time.time < _lashIgnoreAt) return;
             _lashIgnoreAt = Time.time + 1f;
             SetLashIgnore(down);
@@ -1658,7 +1690,7 @@ namespace SailTrim
                 return;
             }
             Vector3 here = _mount != null ? _mount.position : transform.position;
-            foreach (var other in UnityEngine.Object.FindObjectsByType<Ship>(FindObjectsSortMode.None))
+            foreach (var other in Gangway.NearbyShips())
             {
                 if (other == null || other == _ship) continue;   // our own is struck out already, in IgnoreShip
                 if (Vector3.Distance(other.transform.position, here) > Length + 30f) continue;
@@ -1703,6 +1735,7 @@ namespace SailTrim
         private void EnsureStep()
         {
             if (_step != null || _mount == null || !_deckFound || !_place.Step) return;
+            if (!_wasFitted && !Gangway.Fitted(_ship, _side)) return;   // no gangway, nothing to climb to
             // How far there is to climb, probed just inside the rail rather than assumed flat: a Karve has no deck
             // at all, you stand on the curve of the hull, and a reading taken anywhere else is the wrong height.
             float drop = _deckDrop;
@@ -1935,15 +1968,20 @@ namespace SailTrim
             // Pieces of the boat go on arriving for a while after Awake, and any pair we have not struck out is a
             // kinematic body wedged in a floating one.
             if (Time.time >= _ignoreAt && Time.time < _ignoreStop) IgnoreShip();
-            bool fitted = Gangway.Fitted(_ship, _side);
-            bool down = fitted && Gangway.Down(_ship, _side);
+            // One read of the boat's state, not two: this runs on every mount of every boat in the world.
+            int state = Gangway.State(_ship);
+            bool fitted = (state & Gangway.FittedBit(_side)) != 0;
+            bool down = fitted && (state & Gangway.DownBit(_side)) != 0;
 
-            if (_visual == null)
+            // Only once something is actually fitted. Every hull but the raft carries these mounts whether it has
+            // a gangway or not, and building three sections of walkway, a brow and their baked meshes for every
+            // boat in the world is a great deal of work for planks nobody has made yet.
+            if (fitted && _visual == null)
             {
                 BuildSections();
-                if (_visual != null) _visual.SetActive(fitted);
+                if (_visual != null) _visual.SetActive(true);
             }
-            if (_visual != null) BuildLashings();
+            if (fitted && _visual != null) BuildLashings();
             if (_visual != null && !_timbered)
             {
                 _timbered = true;
