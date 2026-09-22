@@ -178,19 +178,7 @@ namespace SailTrim
 
             // While this is being got right, say what is happening: whether the coast is running, and how fast
             // she is going as it does. Guessing at it from a description has cost two goes already.
-            if (Plugin.CoastLog.Value && (first || !_coastSaid.TryGetValue(__instance, out float said) || Time.time - said > 0.25f))
-            {
-                _coastSaid[__instance] = Time.time;
-                string why = age > coast ? "window over"
-                           : Mooring.IsMoored(__instance) ? "moored"
-                           : Gangway.AnyDown(__instance) ? "gangway down"
-                           : Gangway.LashedAlongside(__instance) ? "lashed"
-                           : !_preStep.ContainsKey(__instance) ? "no pre-step speed"
-                           : "coasting";
-                Plugin.Log.LogInfo($"SailTrim coast: {__instance.name} empty {age:0.00}s, {body.linearVelocity.magnitude * 1.94384f:0.0} kn, {why}");
-            }
-
-            if (age > coast) return;
+            if (age > coast) { _coastSaid.Remove(__instance); return; }
             // Anything that is holding her has its own way of doing it and must not be fought.
             if (Mooring.IsMoored(__instance) || Gangway.AnyDown(__instance) || Gangway.LashedAlongside(__instance)) return;
             if (!_preStep.TryGetValue(__instance, out Vector3 pre)) return;
@@ -199,10 +187,22 @@ namespace SailTrim
             // whichever path through the physics the step happened to take.
             float k = Mathf.Exp(-fixedDeltaTime * 2.2f);
             Vector3 v = body.linearVelocity;
+            float wasKn = Horizontal(pre), vanillaKn = Horizontal(v);
             v.x = pre.x * k;
             v.z = pre.z * k;
             body.linearVelocity = v;
+
+            // The horizontal speed only: the total includes her riding up and down on the swell, which is what
+            // made the first set of readings unreadable. Three numbers, so there is nothing left to infer:
+            // what she had, what vanilla left her, and what we gave back.
+            if (Plugin.CoastLog.Value && (first || !_coastSaid.TryGetValue(__instance, out float said) || Time.time - said > 0.2f))
+            {
+                _coastSaid[__instance] = Time.time;
+                Plugin.Log.LogInfo($"SailTrim coast: {__instance.name} {age:0.00}s  had {wasKn:0.0} kn  vanilla left {vanillaKn:0.0}  we set {Horizontal(v):0.0}");
+            }
         }
+
+        private static float Horizontal(Vector3 v) => new Vector2(v.x, v.z).magnitude * 1.94384f;
 
         [HarmonyPatch(typeof(Ship), nameof(Ship.CustomFixedUpdate))]
         [HarmonyPostfix]
