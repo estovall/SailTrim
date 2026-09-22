@@ -45,19 +45,37 @@ namespace SailTrim
         }
 
         // ---- what the settings page drives ----
-        internal static int Count => Order.Length;
-        internal static string NameOf(int i) => i >= 0 && i < Names.Length ? Names[i] : "?";
-        internal static Vector3 Live(int i) => _live != null && i >= 0 && i < _live.Length ? _live[i] : new Vector3(0f, 0f, 1f);
+        // Choice 0 is the whole HUD, which is the settings that move all of it at once; 1 and up are the pieces.
+        // Wanting to shift the lot one way is the commonest thing to want, and it was the one thing the list of
+        // pieces could not express.
+        internal static int Count => Order.Length + 1;
+
+        internal static string NameOf(int i) => i == 0 ? "everything" : (i - 1 >= 0 && i - 1 < Names.Length ? Names[i - 1] : "?");
+
+        internal static Vector3 Live(int i)
+        {
+            if (i == 0) return new Vector3(Plugin.HudOffsetX.Value, Plugin.HudOffsetY.Value, Plugin.HudScale.Value);
+            int k = i - 1;
+            return _live != null && k >= 0 && k < _live.Length ? _live[k] : new Vector3(0f, 0f, 1f);
+        }
 
         /// <summary>Move or size a piece from the settings page. Nulls leave that number alone.</summary>
         internal static void Nudge(int i, float? x, float? y, float? scale)
         {
-            if (_live == null || i < 0 || i >= _live.Length) return;
-            var v = _live[i];
+            if (i == 0)
+            {
+                if (x.HasValue) Plugin.HudOffsetX.Value = x.Value;
+                if (y.HasValue) Plugin.HudOffsetY.Value = y.Value;
+                if (scale.HasValue) Plugin.HudScale.Value = Mathf.Clamp(scale.Value, 0.4f, 2f);
+                return;
+            }
+            int k = i - 1;
+            if (_live == null || k < 0 || k >= _live.Length) return;
+            var v = _live[k];
             if (x.HasValue) v.x = x.Value;
             if (y.HasValue) v.y = y.Value;
             if (scale.HasValue) v.z = Mathf.Clamp(scale.Value, 0.3f, 3f);
-            _live[i] = v;
+            _live[k] = v;
         }
 
         internal static void ResetAll()
@@ -71,17 +89,26 @@ namespace SailTrim
         }
 
         /// <summary>The settings page is open: remember what to go back to if it is dismissed with Back.</summary>
+        private static Vector3 _savedAll;
+
         internal static void BeginEdit()
         {
             if (_live == null || _saved == null) return;
             for (int i = 0; i < _live.Length; i++) _saved[i] = _live[i];
+            _savedAll = new Vector3(Plugin.HudOffsetX.Value, Plugin.HudOffsetY.Value, Plugin.HudScale.Value);
         }
 
         internal static void EndEdit(bool keep)
         {
             if (_live == null) return;
             if (keep) { for (int i = 0; i < _live.Length; i++) _entries[i].Value = Write(_live[i]); }
-            else for (int i = 0; i < _live.Length; i++) _live[i] = _saved[i];
+            else
+            {
+                for (int i = 0; i < _live.Length; i++) _live[i] = _saved[i];
+                Plugin.HudOffsetX.Value = _savedAll.x;
+                Plugin.HudOffsetY.Value = _savedAll.y;
+                Plugin.HudScale.Value = _savedAll.z;
+            }
         }
 
         internal static Vector3 Of(Part p)

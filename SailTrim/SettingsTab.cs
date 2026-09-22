@@ -36,6 +36,10 @@ namespace SailTrim
         private KeyRow _capturing;
         private int _part;
         private TMP_Text _partRow;
+        private TMP_Dropdown _partDrop;
+        private TMP_Text _labelSource;
+        private CanvasGroup _fade;
+        private float _fadeWas = 1f;
         private Slider _hudX, _hudY, _hudS;
         private bool _hudRefreshing;
         private class SliderText { public TMP_Text Text; public Func<float, string> Show; }
@@ -84,6 +88,7 @@ namespace SailTrim
             Toggle toggleTemplate = gameplay != null ? gameplay.m_toggleRun : null;
             // Any of the game's own sliders will do as a pattern; the volumes on the audio page are sliders.
             Slider sliderTemplate = settings.GetComponentInChildren<Slider>(true);
+            TMP_Dropdown dropTemplate = settings.GetComponentInChildren<TMP_Dropdown>(true);
             if (keyRowTemplate == null || toggleTemplate == null)
             {
                 Plugin.Log.LogWarning($"SailTrim: settings widget templates missing (controls={(controls != null)} keys={(controls != null ? controls.m_keys.Count : -1)} gameplay={(gameplay != null)} toggle={(toggleTemplate != null)}), no SailTrim tab.");
@@ -127,7 +132,7 @@ namespace SailTrim
             pageGo.SetActive(false);
 
             var tab = pageGo.AddComponent<SettingsTab>();
-            tab.Build(page, keyRowTemplate, toggleTemplate, sliderTemplate);
+            tab.Build(page, keyRowTemplate, toggleTemplate, sliderTemplate, dropTemplate);
 
             tabs.m_tabs.Add(new TabHandler.Tab { m_button = button, m_page = page, m_default = false, m_onClick = new UnityEngine.Events.UnityEvent() });
             Plugin.Log.LogInfo("SailTrim: settings tab installed.");
@@ -170,7 +175,7 @@ namespace SailTrim
         // ------------------------------------------------------------------
         // Layout
         // ------------------------------------------------------------------
-        private void Build(RectTransform page, RectTransform keyRowTemplate, Toggle toggleTemplate, Slider sliderTemplate)
+        private void Build(RectTransform page, RectTransform keyRowTemplate, Toggle toggleTemplate, Slider sliderTemplate, TMP_Dropdown dropTemplate)
         {
             // Scrollable: a masked viewport filling the page, the list as its content (mouse wheel scrolls).
             var viewportGo = new GameObject("Viewport", typeof(RectTransform));
@@ -207,6 +212,7 @@ namespace SailTrim
 
             // The toggle's own label is the reliable source for the settings font/colour.
             TMP_Text labelSource = toggleTemplate.GetComponentInChildren<TMP_Text>(true);
+            _labelSource = labelSource;
             if (labelSource == null) labelSource = keyRowTemplate.GetComponentInChildren<TMP_Text>(true);
 
             AddHeader(list, labelSource, "SailTrim keys");
@@ -236,11 +242,13 @@ namespace SailTrim
             AddHeader(list, labelSource, "HUD layout (watch it move at the right)");
             if (sliderTemplate != null)
             {
-                _partRow = AddButtonRow(list, keyRowTemplate, "Piece", HudLayout.NameOf(_part), () =>
-                {
-                    _part = (_part + 1) % HudLayout.Count;
-                    RefreshHudRows();
-                });
+                if (dropTemplate != null) AddDropdown(list, dropTemplate, "Move", i => { _part = i; RefreshHudRows(); });
+                else
+                    _partRow = AddButtonRow(list, keyRowTemplate, "Move", HudLayout.NameOf(_part), () =>
+                    {
+                        _part = (_part + 1) % HudLayout.Count;
+                        RefreshHudRows();
+                    });
                 _hudX = AddSlider(list, sliderTemplate, "Left / right", -600f, 600f, () => HudLayout.Live(_part).x,
                                   v => HudLayout.Nudge(_part, v, null, null), v => v.ToString("0"));
                 _hudY = AddSlider(list, sliderTemplate, "Up / down", -600f, 600f, () => HudLayout.Live(_part).y,
@@ -483,10 +491,48 @@ namespace SailTrim
             return slider;
         }
 
+        /// <summary>The list of things that can be moved, as one of the game's own dropdowns.</summary>
+        private void AddDropdown(RectTransform list, TMP_Dropdown template, string label, Action<int> onPick)
+        {
+            var go = Instantiate(template.gameObject, list);
+            go.name = "Drop_" + label;
+            go.SetActive(true);
+            var le = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>();
+            le.preferredWidth = 20f; le.preferredHeight = 32f;
+            var drop = go.GetComponent<TMP_Dropdown>();
+            if (drop == null) { Destroy(go); return; }
+
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 0.5f); rt.pivot = new Vector2(0f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(220f, 30f);
+
+            drop.onValueChanged = new TMP_Dropdown.DropdownEvent();
+            drop.ClearOptions();
+            var names = new List<string>();
+            for (int i = 0; i < HudLayout.Count; i++) names.Add(HudLayout.NameOf(i));
+            drop.AddOptions(names);
+            drop.value = Mathf.Clamp(_part, 0, names.Count - 1);
+            drop.RefreshShownValue();
+            drop.onValueChanged.AddListener(i => onPick(i));
+            _partDrop = drop;
+
+            // Its own caption is inside it; the row label goes to the left, like the others.
+            var text = Instantiate(_labelSource, go.transform.parent);
+            text.gameObject.SetActive(true);
+            text.text = label;
+            text.enableAutoSizing = false;
+            text.alignment = TextAlignmentOptions.MidlineRight;
+            var lrt = text.GetComponent<RectTransform>();
+            lrt.SetSiblingIndex(go.transform.GetSiblingIndex());
+            lrt.sizeDelta = new Vector2(320f, 32f);
+        }
+
         private void RefreshHudRows()
         {
             _hudRefreshing = true;
             if (_partRow != null) _partRow.text = HudLayout.NameOf(_part);
+            if (_partDrop != null && _partDrop.value != _part) { _partDrop.value = _part; _partDrop.RefreshShownValue(); }
             Vector3 v = HudLayout.Live(_part);
             SetSlider(_hudX, v.x);
             SetSlider(_hudY, v.y);
@@ -579,6 +625,27 @@ namespace SailTrim
         private RectTransform _list, _viewport;
         private float _wheelAcc;
         private const float WheelStepPixels = 3f * 44f; // three rows per notch
+
+        /// <summary>
+        /// Show the world through the settings panel while this page is up. The HUD is drawn behind it and the
+        /// whole point of arranging it here is to watch it move; a panel you cannot see past is a panel that hides
+        /// the thing being adjusted. Only while this page is the one showing, and put back when it is not.
+        /// </summary>
+        private void OnEnable()
+        {
+            var settings = GetComponentInParent<Settings>();
+            var root = settings != null ? settings.gameObject : null;
+            if (root == null) return;
+            _fade = root.GetComponent<CanvasGroup>() ?? root.AddComponent<CanvasGroup>();
+            _fadeWas = _fade.alpha;
+            _fade.alpha = 0.55f;
+        }
+
+        private void OnDisable()
+        {
+            if (_fade != null) _fade.alpha = _fadeWas;
+            _fade = null;
+        }
 
         private void Update()
         {
