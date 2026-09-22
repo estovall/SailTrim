@@ -149,6 +149,7 @@ namespace SailTrim
         // is left alone, so she still rides the waves as vanilla decides.
         private static readonly Dictionary<Ship, Vector3> _preStep = new Dictionary<Ship, Vector3>();
         private static readonly Dictionary<Ship, float> _emptySince = new Dictionary<Ship, float>();
+        private static readonly Dictionary<Ship, float> _coastSaid = new Dictionary<Ship, float>();
 
         [HarmonyPatch(typeof(Ship), nameof(Ship.CustomFixedUpdate))]
         [HarmonyPrefix]
@@ -167,12 +168,29 @@ namespace SailTrim
             if (body == null || nv == null || !nv.IsValid() || !nv.IsOwner()) return;
 
             bool empty = __instance.m_players == null || __instance.m_players.Count == 0;
-            if (!empty) { _emptySince.Remove(__instance); return; }
+            if (!empty) { _emptySince.Remove(__instance); _coastSaid.Remove(__instance); return; }
 
             float coast = Plugin.EmptyCoast.Value;
             if (coast <= 0f) return;
-            if (!_emptySince.TryGetValue(__instance, out float since)) { since = Time.time; _emptySince[__instance] = since; }
-            if (Time.time - since > coast) return;
+            bool first = !_emptySince.TryGetValue(__instance, out float since);
+            if (first) { since = Time.time; _emptySince[__instance] = since; }
+            float age = Time.time - since;
+
+            // While this is being got right, say what is happening: whether the coast is running, and how fast
+            // she is going as it does. Guessing at it from a description has cost two goes already.
+            if (Plugin.CoastLog.Value && (first || !_coastSaid.TryGetValue(__instance, out float said) || Time.time - said > 0.25f))
+            {
+                _coastSaid[__instance] = Time.time;
+                string why = age > coast ? "window over"
+                           : Mooring.IsMoored(__instance) ? "moored"
+                           : Gangway.AnyDown(__instance) ? "gangway down"
+                           : Gangway.LashedAlongside(__instance) ? "lashed"
+                           : !_preStep.ContainsKey(__instance) ? "no pre-step speed"
+                           : "coasting";
+                Plugin.Log.LogInfo($"SailTrim coast: {__instance.name} empty {age:0.00}s, {body.linearVelocity.magnitude * 1.94384f:0.0} kn, {why}");
+            }
+
+            if (age > coast) return;
             // Anything that is holding her has its own way of doing it and must not be fought.
             if (Mooring.IsMoored(__instance) || Gangway.AnyDown(__instance) || Gangway.LashedAlongside(__instance)) return;
             if (!_preStep.TryGetValue(__instance, out Vector3 pre)) return;

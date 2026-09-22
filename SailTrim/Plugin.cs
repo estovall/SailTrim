@@ -133,6 +133,7 @@ namespace SailTrim
         internal static ConfigEntry<float> MoorRepairPerMinute;
         internal static ConfigEntry<float> MooringSettle;
         internal static ConfigEntry<float> EmptyCoast;
+        internal static ConfigEntry<bool> CoastLog;
         internal static ConfigEntry<float> MooringMaxSpeed;
         internal static ConfigEntry<bool> BuoyEnabled;
         internal static ConfigEntry<bool> GangwayEnabled;
@@ -520,6 +521,8 @@ namespace SailTrim
                 new ConfigDescription("Seconds at the helm of a tied-up boat before it casts off by itself.", new AcceptableValueRange<float>(0f, 10f)));
             MooringHold = Config.Bind("8. Mooring", "MooringHold", 1f,
                 new ConfigDescription("How firmly a moored boat is pulled back to where it was tied (heading too). 0 = only the vanilla empty-boat damping.", new AcceptableValueRange<float>(0f, 5f)));
+            CoastLog = Config.Bind("11. Development", "CoastLog", true,
+                "Write a line to the log four times a second while an empty boat is carrying her way, saying how fast she is going and whether the coast is running. For working out why she stops when she should not.");
             EmptyCoast = Config.Bind("1. General", "EmptyCoast", 2.5f,
                 new ConfigDescription("Seconds an empty boat carries her way for after the last person steps off. Vanilla takes nine tenths of her speed every physics step, which stops her dead; this lets her run on and lose it. 0 for vanilla.",
                     new AcceptableValueRange<float>(0f, 10f)));
