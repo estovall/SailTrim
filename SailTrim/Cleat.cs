@@ -777,6 +777,10 @@ namespace SailTrim
         private static readonly Dictionary<Ship, float> _repairAt = new Dictionary<Ship, float>();
         /// <summary>Ships whose cleat has not been seen lately, and since when (see FixedStep).</summary>
         private static readonly Dictionary<Ship, float> _cleatMissingSince = new Dictionary<Ship, float>();
+        // Boats still carrying their way off, and when they are expected to be still. A boat that stops dead the
+        // instant a line goes on looks like it hit a wall; a real one carries her way and settles where she ends.
+        private static readonly Dictionary<Ship, float> _settleUntil = new Dictionary<Ship, float>();
+        private static readonly HashSet<Ship> _wasHeld = new HashSet<Ship>();
         private const float RepairStep = 5f;
         private static float _messageTime;
 
@@ -866,7 +870,7 @@ namespace SailTrim
             // it holds neither. That is all either does: a gangway is not a mooring and does not mend the hull.
             bool byGangway = Gangway.AnyDown(ship) || Gangway.LashedAlongside(ship);
             bool byCleat = !cleat.IsNone();
-            if (!byCleat && !byGangway) return;
+            if (!byCleat && !byGangway) { _wasHeld.Remove(ship); _settleUntil.Remove(ship); return; }
             if (byCleat && (!_checkAt.TryGetValue(ship, out float at) || Time.time > at))
             {
                 _checkAt[ship] = Time.time + 1f;
@@ -889,7 +893,7 @@ namespace SailTrim
                         byCleat = false;
                     }
                 }
-                if (!byCleat && !byGangway) return;
+                if (!byCleat && !byGangway) { _wasHeld.Remove(ship); _settleUntil.Remove(ship); return; }
             }
             var body = ship.m_body;
             if (body == null) return;
@@ -912,6 +916,33 @@ namespace SailTrim
             }
             ship.m_speed = Ship.Speed.Stop;
             ship.m_rudderValue = 0f;
+
+            // Just made fast: let her run on and lose it, and keep the holding spot under her while she does, so
+            // there is nothing to be pulled back to when she stops.
+            if (!_wasHeld.Contains(ship))
+            {
+                _wasHeld.Add(ship);
+                float settle = Mathf.Max(0f, Plugin.MooringSettle.Value);
+                if (settle > 0f) _settleUntil[ship] = Time.time + settle;
+            }
+            if (_settleUntil.TryGetValue(ship, out float until))
+            {
+                if (Time.time < until)
+                {
+                    float k = Mathf.Exp(-dt * 2.2f);
+                    Vector3 vv = body.linearVelocity;
+                    vv.x *= k; vv.z *= k;
+                    body.linearVelocity = vv;
+                    Vector3 aav = body.angularVelocity;
+                    aav.y *= k;
+                    body.angularVelocity = aav;
+                    zdo.Set(PosHash, body.position);
+                    zdo.Set(YawHash, body.rotation.eulerAngles.y);
+                    return;
+                }
+                _settleUntil.Remove(ship);
+            }
+
             float hold = Plugin.MooringHold.Value;
             // What vanilla does to an empty boat every step, tied or not: nine tenths of the sideways and forward
             // speed go each step, so a shove carries it a few centimetres and no farther. The pull back to the

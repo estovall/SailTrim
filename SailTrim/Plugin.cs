@@ -130,6 +130,7 @@ namespace SailTrim
         internal static ConfigEntry<float> MooringHold;
         internal static ConfigEntry<float> CastOffDelay;
         internal static ConfigEntry<float> MoorRepairPerMinute;
+        internal static ConfigEntry<float> MooringSettle;
         internal static ConfigEntry<bool> BuoyEnabled;
         internal static ConfigEntry<bool> GangwayEnabled;
         internal static ConfigEntry<float> GangwayLength;
@@ -514,6 +515,9 @@ namespace SailTrim
                 new ConfigDescription("Seconds at the helm of a tied-up boat before it casts off by itself.", new AcceptableValueRange<float>(0f, 10f)));
             MooringHold = Config.Bind("8. Mooring", "MooringHold", 1f,
                 new ConfigDescription("How firmly a moored boat is pulled back to where it was tied (heading too). 0 = only the vanilla empty-boat damping.", new AcceptableValueRange<float>(0f, 5f)));
+            MooringSettle = Config.Bind("8. Mooring", "MooringSettle", 2.5f,
+                new ConfigDescription("Seconds a boat takes to come to rest when it is tied up or a gangway goes down, instead of stopping dead. She carries her way for this long, and holds wherever she ends up.",
+                    new AcceptableValueRange<float>(0f, 10f)));
             MoorRepairPerMinute = Config.Bind("8. Mooring", "MoorRepairPerMinute", 5f,
                 new ConfigDescription("A tied-up boat mends itself: this percent of its full health per minute (the dock knocks it about between tides). 0 = off.", new AcceptableValueRange<float>(0f, 100f)));
             GangwayEnabled = Config.Bind("10. Gangway", "GangwayEnabled", true,
@@ -533,7 +537,7 @@ namespace SailTrim
             GangwayRetractDelay = Config.Bind("10. Gangway", "GangwayRetractDelay", 2f,
                 new ConfigDescription("Seconds at the helm before a gangway that is still down comes up by itself.",
                     new AcceptableValueRange<float>(0f, 10f)));
-            GangwayLowerSpeed = Config.Bind("10. Gangway", "GangwayLowerSpeed", 1.2f,
+            GangwayLowerSpeed = Config.Bind("10. Gangway", "GangwayLowerSpeed", 1.9f,
                 new ConfigDescription("How fast the boat may still be moving, in knots, for a gangway to be lowered. A plank put down at speed stops the boat dead. 0 for no limit.",
                     new AcceptableValueRange<float>(0f, 20f)));
             GangwayLashShips = Config.Bind("10. Gangway", "GangwayLashShips", true,
