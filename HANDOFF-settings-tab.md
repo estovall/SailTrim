@@ -1,6 +1,116 @@
 # SailTrim pick-up notes
 
-## Status, 2026-09-22: 1.10.0 is released
+## Status, 2026-09-23: 1.10.0 is released; the chart work on top of it is untested
+
+**1.10.0 is published** (Hexium `Max/SailTrim 1.10.0`, package 1207, tagged `v1.10.0`). Everything through that
+tag was play-tested by Max, including seven boats lashed alongside in a storm.
+
+**Everything since the tag is built, installed on the home PC and only half tested.** It is one feature and its
+consequences: a readout on the chart, and a course to steer.
+
+### What the chart work is
+
+- **The sailing HUD goes away while the big map is up** (`HudHideOnMap`). The map covers the world the HUD is
+  drawn over, and now that the HUD can be put anywhere it is often somewhere the map sits on top of.
+- **A readout in the map's bottom-left corner**: trim state, speed, sheet, heel, then heading against the course
+  she is actually making good, and the mark. Anchored and pivoted on the map's own corner so it stays there at
+  any screen size. It is up whenever the chart is, aboard or not, because you choose your marks before you leave.
+- **Set and drift**, written and drawn. A boat does not travel where her bow points: leeway puts the track off
+  the heading, and over a long board that is a mile. The panel gives both bearings and the sideways rate; a
+  dotted line from the boat shows where the track actually leads, `TrackMinutes` ahead, fading as it goes.
+- **A mark to steer for, taken off a buoy** (`SetMarkKey`, C, cursor over a buoy on the big map). Buoys only, so
+  that putting one out is worth the trouble. It gives distance, the **course to steer** (the bearing with the
+  measured leeway taken out of it) and how far off it she is running, and it survives a restart.
+- **The no-go is respected.** A course worked from geometry alone will ask for a bearing inside the no-go and a
+  helmsman will sail it and stop dead. A mark to windward reports as a beat with the board she is nearest on.
+  **Advice that ignores the wind is worse than no advice, because it gets followed.**
+- **Weather helm coaching stays at the helm**, not on the chart: it is about what she is doing this second and
+  you must be looking at the water to act on it. The course is the opposite case and lives only on the chart --
+  Max's call, and right: a course in front of the helmsman takes the navigating out of navigating.
+- **Buoys are held on the rim of the corner map** when they are loaded but off it (`BuoyEdgeMarks`,
+  `BuoyEdgeRange`), in their flag colour, at most eight.
+
+### Also since the tag
+
+- **A boat breaking up gives its gangways back** (`GangwayRefund`). They are fittings somebody made and carried
+  aboard, not part of the hull. The fitting is struck off her record before the drop so nothing hands them out
+  twice.
+- **The game's own ship dials can be moved and sized** like our pieces: the layout list's first entry,
+  "everything", is that cluster, and ours is pinned inside it so moving it takes the lot. "Our readouts
+  together" is second, and the individual pieces below.
+- **An FAQ on the package page** (in `package/README.md`, which is what Hexium renders).
+
+### What has not been seen working
+
+- **The dotted track line** and **picking a buoy** were both reported missing. One cause is likely and it was
+  mine: `Plugin.Update` called `MapHud.Update()` inside an empty `catch {}`, so any exception silently killed
+  the whole readout. That now logs once with the exception. Two things it may have been are fixed anyway: the
+  buoy pick used a fixed 120 m (hopeless zoomed out, where a few pixels is half a zone) and now uses the map's
+  own `PinInteractRadius`; and the track dots trusted a bare `Image` with no sprite to draw, and now carry one.
+  **If they are still missing, `LogOutput.log` will say why** -- look for `SailTrim: map readout failed:`.
+- The minimap rim markers have never been seen either.
+- Whether `C` collides with anything on another machine.
+- Whether the weather helm advice names the correct side. It works out the low side from the heel and compares
+  with `m_rudderValue`; if Valheim's rudder sign is the other way round it will confidently name the wrong one.
+  Worth testing on purpose: heel her hard close-hauled and check the side it names is the low one.
+
+### Still open from before
+
+- **The dedicated server is on 1.8.0** and will refuse 1.10.0 clients: the version check is exact, so the server
+  and every client move together. `releases/SailTrim-1.10.0.zip` is committed ready for it.
+- **Crew weight (1.7.0) has never been tested with a real crew.** It has shipped twice now regardless.
+
+## Picking this up on another machine
+
+- Repo `C:\Users\maxst\dev\SailTrim`, game `C:\Program Files (x86)\Steam\steamapps\common\Valheim`.
+- Build: `dotnet build SailTrim/SailTrim.csproj -c Release`. Output at `SailTrim/bin/Release/SailTrim.dll`, no
+  target-framework subfolder. Deploy by copying it over `BepInEx\plugins\SailTrim.dll`; the game locks that file
+  while it runs.
+- **Check the build succeeded before copying.** Piping `dotnet build` through `tail` hides a failure's exit code
+  and a stale DLL then gets deployed and play-tested as if it were the fix. That has happened here.
+- Publishing: `publish-mod.ps1 -Zip <absolute path> -Author Max -Categories vehicles,mechanics,user-interface`.
+  It wants `hexium-token.txt` beside it (gitignored): copy from
+  `C:\Users\maxst\OneDrive\Documents\Hexium_API_Key.txt`, run, delete. Never print the key. The manifest
+  description has a hard **256 character** limit and a longer one is refused at submission.
+- Game APIs: decompile, do not remember:
+  `ilspycmd -t <Type> "<Valheim>/valheim_Data/Managed/assembly_valheim.dll"`.
+- **Prefab names live in the bundles on disk, so read them:**
+  `grep -ria -o "<stem>[a-z_0-9]*" valheim_Data/StreamingAssets/SoftRef/Bundles/ | sed 's/.*://' | sort -u`.
+  Two play-tests went on guessing at the Wood Iron Beam. Note also that a piece's build-menu label and its
+  prefab name are different things: `piece_woodironbeam` is the label, `woodiron_beam` is the prefab.
+
+### Four things that each cost a play-test
+
+- **A ZDOID does not survive a world load.** `ZDO.Load` hands every ZDO a fresh one, so anything saved that
+  points at another object by ZDOID means nothing when the world returns. Keep a tag of your own and repair the
+  id from it. This is why moorings did not survive a restart and gangway state did.
+- **A default changed in code does not change a value already written to a config file.** A switch left `true`
+  in Max's config painted the hull's timber over the gangway's ironwork for two rounds while the code looked
+  right. Check `BepInEx\config\com.maxst.sailtrim.cfg` before re-reading the code.
+- **Never swallow an exception from a per-frame call.** An empty catch round `MapHud.Update()` made a whole
+  feature look unwritten.
+- **Ask the game rather than reasoning about it.** The empty-boat coast looked broken for two rounds. Four lines
+  of logging showed the override was working perfectly and the *curve* was wrong: an exponential steep enough to
+  stop her inside the window spends nine tenths of itself in the first second.
+
+### The survey tool (`SailTrim/Survey.cs`)
+
+Set `11. Development / SurveyKey` to a key and press it near some boats. It writes into
+`BepInEx\cache\SailTrim\survey\`:
+
+- `survey.txt` - per boat the float collider and hull bounds, and per mount the rail found, the deck drop and
+  the rest angle, plus a **section across the beam** (`profile`), and a **swing** table that walks the gangway
+  through its travel running `Physics.ComputePenetration` against the hull at each step.
+- `hierarchy.txt` - every transform of every boat and of our own rig, with mesh, vertex count, own size, scale,
+  material, shader, probe usage, motion vectors, shadows, layer and body/interpolation, then a **coincidence
+  report** naming any two of our own meshes that share a place.
+- Images of each boat from several angles, and a frame at each step of the swing.
+
+Nearly every gangway fix came from a number in one of those two files rather than from a screenshot. Extend it
+rather than squinting.
+
+## Previously, 2026-09-22: 1.10.0 was released
+
 
 Everything below through 1.9.0 is published, and so is a round of work from the users: boats carry their way off
 instead of stopping dead (both stepping off under sail and making fast), the gangway keeps the spot it was set
