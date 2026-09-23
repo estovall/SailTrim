@@ -67,8 +67,10 @@ namespace SailTrim
             // Buoys only. A buoy is a thing somebody went out and set in the water, and giving them the job of
             // being the marks you steer for is what makes putting one out worth the trouble; a pin is a note to
             // yourself and costs nothing.
+            // The map's own reach for "the cursor is on that", which grows as you zoom out. A fixed number of
+            // metres is generous close in and hopeless zoomed out, where a few pixels is half a zone.
             Vector3 at = map.ScreenToWorldPoint(ZInput.pointerPosition);
-            var buoy = BuoyPiece.Nearest(at, 120f);
+            var buoy = BuoyPiece.Nearest(at, Mathf.Max(60f, map.PinInteractRadius));
             if (buoy == null) { Course.Clear(); return; }
             Course.Set(buoy.transform.position, buoy.MarkName);
         }
@@ -163,6 +165,25 @@ namespace SailTrim
             return rt;
         }
 
+        private static Sprite _dotSprite;
+
+        private static Sprite DotSprite()
+        {
+            if (_dotSprite != null) return _dotSprite;
+            var tex = new Texture2D(8, 8, TextureFormat.RGBA32, false);
+            var px = new Color[64];
+            for (int y = 0; y < 8; y++)
+                for (int x = 0; x < 8; x++)
+                {
+                    float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(4f, 4f));
+                    px[y * 8 + x] = new Color(1f, 1f, 1f, d <= 3.6f ? 1f : 0f);
+                }
+            tex.SetPixels(px);
+            tex.Apply();
+            _dotSprite = Sprite.Create(tex, new Rect(0, 0, 8, 8), new Vector2(0.5f, 0.5f));
+            return _dotSprite;
+        }
+
         private static RectTransform Dot(RectTransform parent)
         {
             var go = new GameObject("SailTrim_Track", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
@@ -171,6 +192,7 @@ namespace SailTrim
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
             rt.sizeDelta = new Vector2(5f, 5f);
             var img = go.GetComponent<Image>();
+            img.sprite = DotSprite();
             img.raycastTarget = false;
             return rt;
         }
@@ -340,7 +362,7 @@ namespace SailTrim
             if (map != null)
             {
                 Vector3 at = map.ScreenToWorldPoint(ZInput.pointerPosition);
-                overBuoy = BuoyPiece.Nearest(at, 120f) != null;
+                overBuoy = BuoyPiece.Nearest(at, Mathf.Max(60f, map.PinInteractRadius)) != null;
             }
             string key = Plugin.SetMarkKey.Value.ToString();
             if (overBuoy) { _prompt.text = $"[{key}] steer for this buoy"; _prompt.color = ColTrimmed; }

@@ -734,13 +734,23 @@ namespace SailTrim
             return ship != null;
         }
 
+        private static readonly System.Collections.Generic.HashSet<string> _said = new System.Collections.Generic.HashSet<string>();
+
+        internal static void Once(string what, System.Exception e)
+        {
+            if (!_said.Add(what)) return;
+            Log.LogError("SailTrim: " + what + " failed: " + e);
+        }
+
         private void Update()
         {
             SailTrimNet.ClientUpdate();
             Survey.Update();
-            try { HudLayout.Update(); } catch { }
-            try { MapHud.Update(); } catch { }
-            try { Gangway.Tick(); } catch { }
+            // Say it once and carry on. A silent catch round a per-frame call hides the reason a whole feature
+            // does nothing, and a feature that does nothing looks exactly like a feature that was never written.
+            try { HudLayout.Update(); } catch (System.Exception e) { Once("hud layout", e); }
+            try { MapHud.Update(); } catch (System.Exception e) { Once("map readout", e); }
+            try { Gangway.Tick(); } catch (System.Exception e) { Once("gangway tick", e); }
             if (!Enabled.Value) { _wasPiloting = false; return; }
 
             var player = Player.m_localPlayer;
