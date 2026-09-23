@@ -181,14 +181,13 @@ namespace SailTrim
             string hint = "";
             if (piloting)
             {
-                // Weather helm first: she is rounding up now, and a player who does not know to carry helm to
-                // leeward will fight her all the way to windward and wonder why she keeps stalling. Then the
-                // mark, if one is set, because that is what the next few minutes are about.
+                // Handling only. Weather helm belongs here because it is about what she is doing this second
+                // and you have to be looking at the water to act on it. Where the mark is and how far off it you
+                // are running belongs on the chart, and only on the chart: a course is a thing you go and work
+                // out, not something that reads itself out at you while you steer.
                 string helm = Course.HelmAdvice(ship, st);
-                var fix = Course.Reckon(ship);
                 if (helm != "") hint = helm;
                 else if (st.SheetHand != 0L) hint = "A crew member is on the sheet with you";
-                else if (fix.Valid) hint = Course.Line(fix);
                 else if (Plugin.ControlHints.Value && !Plugin.ShowControls.Value && !_hintDismissed && !ship.IsSailUp())
                 {
                     string use = Localization.instance != null ? Localization.instance.Localize("$KEY_Use") : "E";
