@@ -20,7 +20,7 @@ namespace SailTrim
 
         private static readonly Part[] Order = { Part.ShipHud, Part.Gauge, Part.State, Part.Info, Part.Hint, Part.Controls, Part.Map };
 
-        private static readonly string[] Names = { "the ship's own dials", "speed gauge", "state line", "readings line", "hint line", "controls list", "map readout" };
+        private static readonly string[] Names = { "everything", "speed gauge", "state line", "readings line", "hint line", "controls list", "map readout" };
 
         private static ConfigEntry<string>[] _entries;
         private static Vector3[] _live;     // x, y, scale as they stand this instant, saved or not
@@ -45,32 +45,49 @@ namespace SailTrim
         }
 
         // ---- what the settings page drives ----
-        // Choice 0 is the whole HUD, which is the settings that move all of it at once; 1 and up are the pieces.
-        // Wanting to shift the lot one way is the commonest thing to want, and it was the one thing the list of
-        // pieces could not express.
+        // The list the player sees is not quite the list of pieces:
+        //
+        //   0  everything            the game's own ship cluster. Ours is pinned to the wind dial inside it, so
+        //                            moving this really does move the lot, which is what the word has to mean.
+        //   1  our readouts together our whole overlay, within wherever the cluster sits.
+        //   2+ the pieces themselves, as adjustments within that.
+        //
+        // Before this there were two entries that each moved a whole cluster and one of them was called
+        // "everything" while moving only half of it.
+        private const int All = 0, Ours = 1;
+
         internal static int Count => Order.Length + 1;
 
-        internal static string NameOf(int i) => i == 0 ? "everything" : (i - 1 >= 0 && i - 1 < Names.Length ? Names[i - 1] : "?");
+        internal static string NameOf(int i)
+        {
+            if (i == All) return Names[0];
+            if (i == Ours) return "our readouts together";
+            int k = i - 1;
+            return k >= 1 && k < Names.Length ? Names[k] : "?";
+        }
+
+        /// <summary>The slot in _live a choice writes to, or -1 when it drives the settings that move our overlay.</summary>
+        private static int SlotOf(int i) => i == Ours ? -1 : (i == All ? 0 : i - 1);
 
         internal static Vector3 Live(int i)
         {
-            if (i == 0) return new Vector3(Plugin.HudOffsetX.Value, Plugin.HudOffsetY.Value, Plugin.HudScale.Value);
-            int k = i - 1;
-            return _live != null && k >= 0 && k < _live.Length ? _live[k] : new Vector3(0f, 0f, 1f);
+            int k = SlotOf(i);
+            if (k < 0) return new Vector3(Plugin.HudOffsetX.Value, Plugin.HudOffsetY.Value, Plugin.HudScale.Value);
+            return _live != null && k < _live.Length ? _live[k] : new Vector3(0f, 0f, 1f);
         }
 
         /// <summary>Move or size a piece from the settings page. Nulls leave that number alone.</summary>
         internal static void Nudge(int i, float? x, float? y, float? scale)
         {
-            if (i == 0)
+            int k = SlotOf(i);
+            if (k < 0)
             {
                 if (x.HasValue) Plugin.HudOffsetX.Value = x.Value;
                 if (y.HasValue) Plugin.HudOffsetY.Value = y.Value;
                 if (scale.HasValue) Plugin.HudScale.Value = Mathf.Clamp(scale.Value, 0.4f, 2f);
                 return;
             }
-            int k = i - 1;
-            if (_live == null || k < 0 || k >= _live.Length) return;
+            if (_live == null || k >= _live.Length) return;
             var v = _live[k];
             if (x.HasValue) v.x = x.Value;
             if (y.HasValue) v.y = y.Value;
