@@ -82,6 +82,32 @@ namespace SailTrim
             return true;
         }
 
+        private struct Boost { public float Accel, MaxKnots; }
+        private static readonly Dictionary<Ship, Boost> _rowBoost = new Dictionary<Ship, Boost>();
+
+        /// <summary>
+        /// A crew at the oars with the sail still drawing: forward push of <paramref name="accel"/> m/s^2 up to
+        /// <paramref name="maxKnots"/>, applied by SailTrim on the owner each physics step. 0 clears it. The game
+        /// itself refuses rowing while sail is set; this is the extra a full crew gives a chase.
+        /// </summary>
+        public static void SetRowBoost(Ship ship, float accel, float maxKnots)
+        {
+            if (ship == null) return;
+            if (accel <= 0f) _rowBoost.Remove(ship); else _rowBoost[ship] = new Boost { Accel = accel, MaxKnots = maxKnots };
+        }
+
+        internal static void ApplyRowBoost(Ship ship, float dt)
+        {
+            if (ship == null || ship.m_body == null || !_rowBoost.TryGetValue(ship, out Boost b)) return;
+            Vector3 fwd = ship.transform.forward; fwd.y = 0f;
+            if (fwd.sqrMagnitude < 1e-4f) return;
+            fwd.Normalize();
+            float kn = Vector3.Dot(ship.m_body.linearVelocity, fwd) * 1.94384f;
+            if (kn >= b.MaxKnots) return;
+            float fade = Mathf.Clamp01((b.MaxKnots - kn) / 2f);
+            ship.m_body.AddForce(fwd * (b.Accel * fade * ship.m_body.mass * dt), ForceMode.Impulse);
+        }
+
         /// <summary>Wind direction the true wind comes from, in the world, flat.</summary>
         public static Vector3 TrueWindFrom()
         {

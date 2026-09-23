@@ -373,6 +373,7 @@ namespace SailTrim
             if (st == null) return;
             st.StowIfEmpty();
             if (st.ManualMode) st.ApplyHullEffects(fixedDeltaTime);
+            SailTrimApi.ApplyRowBoost(__instance, fixedDeltaTime);
         }
 
         // Camera roll with the ship: blend between "level" and vanilla's tilted result by config.
