@@ -18,7 +18,7 @@ namespace SailTrim
     internal static class MapHud
     {
         private static RectTransform _panel;
-        private static TMP_Text _title, _line1, _line2, _line3, _line4, _line5;
+        private static TMP_Text _title, _line1, _line2, _line3, _line4, _line5, _prompt;
         private static bool _failed;
         private static Vector2 _home;
 
@@ -33,21 +33,24 @@ namespace SailTrim
 
         internal static void Update()
         {
+            try { Edge(); } catch { }
             if (_failed || !Plugin.MapHudEnabled.Value) { Hide(); return; }
             if (!LargeMapOpen) { Hide(); return; }
 
             var player = Player.m_localPlayer;
             var ship = player != null ? Plugin.GetShipAboard(player) : null;
             var st = ship != null ? SailTrimShip.Get(ship) : null;
-            if (st == null) { Hide(); return; }
 
+            // The panel is up whenever the chart is, aboard or not. It used to need a boat under you, which meant
+            // the one line telling you how to set a mark could only be read by someone already sailing -- and you
+            // pick your marks before you leave, standing at the fire with the chart open.
             if (_panel == null) Build();
             if (_panel == null) return;
             _panel.gameObject.SetActive(true);
             HudLayout.Apply(HudLayout.Part.Map, _panel, _home);
             PickMark();
-            Write(ship, st);
-            Track(ship);
+            if (st != null) { Write(ship, st); Track(ship); }
+            else Ashore();
         }
 
         /// <summary>
@@ -111,6 +114,55 @@ namespace SailTrim
             }
         }
 
+        private static readonly System.Collections.Generic.List<RectTransform> _edge =
+            new System.Collections.Generic.List<RectTransform>();
+
+        /// <summary>
+        /// Buoys that are loaded but off the corner map, held against its rim in the direction they lie. A buoy
+        /// you cannot see is a buoy you have to open the chart for, and the whole point of a channel mark is that
+        /// a glance tells you where it is. Only ones near enough to be real: a rim full of marks from three zones
+        /// away would say nothing.
+        /// </summary>
+        private static void Edge()
+        {
+            var map = Minimap.instance;
+            var player = Player.m_localPlayer;
+            int used = 0;
+            if (Plugin.BuoyEdgeMarks.Value && map != null && player != null
+                && map.m_mode == Minimap.MapMode.Small && map.m_pinRootSmall != null && map.m_mapImageSmall != null)
+            {
+                float radius = map.m_mapImageSmall.rectTransform.rect.width * 0.5f;
+                foreach (var b in BuoyPiece.All)
+                {
+                    if (b == null || used >= 8) continue;
+                    if (Vector3.Distance(b.transform.position, player.transform.position) > Plugin.BuoyEdgeRange.Value) continue;
+                    map.WorldToMapPoint(b.transform.position, out float mx, out float my);
+                    Vector2 at = map.MapPointToLocalGuiPos(mx, my, map.m_mapImageSmall);
+                    if (at.magnitude < radius * 0.92f) continue;      // already drawn on the map itself
+                    at = at.normalized * (radius * 0.92f);
+
+                    if (used >= _edge.Count) _edge.Add(Dot(map.m_pinRootSmall, 9f));
+                    var rt = _edge[used];
+                    if (rt == null) { used++; continue; }
+                    rt.SetParent(map.m_pinRootSmall, false);
+                    rt.anchoredPosition = at;
+                    rt.gameObject.SetActive(true);
+                    var im = rt.GetComponent<Image>();
+                    if (im != null) im.color = b.MarkColor;
+                    used++;
+                }
+            }
+            for (int i = used; i < _edge.Count; i++)
+                if (_edge[i] != null && _edge[i].gameObject.activeSelf) _edge[i].gameObject.SetActive(false);
+        }
+
+        private static RectTransform Dot(RectTransform parent, float size)
+        {
+            var rt = Dot(parent);
+            if (rt != null) rt.sizeDelta = new Vector2(size, size);
+            return rt;
+        }
+
         private static RectTransform Dot(RectTransform parent)
         {
             var go = new GameObject("SailTrim_Track", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
@@ -160,11 +212,12 @@ namespace SailTrim
             _line2 = Line("Line2", src, 17f, 52f);
             _line3 = Line("Line3", src, 17f, 72f);
             _line4 = Line("Line4", src, 17f, 94f);
-            _line5 = Line("Line5", src, 15f, 113f);
+            _line5 = Line("Line5", src, 16f, 113f);
+            _prompt = Line("Prompt", src, 14f, 133f);
             Plugin.Log.LogInfo("SailTrim: map readout built");
         }
 
-        private const float Width = 260f, Height = 132f;
+        private const float Width = 260f, Height = 152f;
 
         /// <summary>A line of the block, measured down from the top-left of the panel.</summary>
         private static TMP_Text Line(string name, TMP_Text src, float size, float down)
@@ -241,22 +294,58 @@ namespace SailTrim
             Mark(ship, st);
         }
 
+        /// <summary>Standing ashore with the chart open: no boat to report on, but marks can still be set.</summary>
+        private static void Ashore()
+        {
+            _title.text = "Not aboard";
+            _title.color = ColText;
+            _line1.text = "";
+            _line2.text = "";
+            _line3.text = "";
+            _line4.text = Course.HasMark ? $"steering for the {Course.MarkName}" : "no mark set";
+            _line4.color = Course.HasMark ? ColTrimmed : ColText;
+            _line5.text = "";
+            Prompt();
+        }
+
         private static void Mark(Ship ship, SailTrimShip st)
         {
             var fix = Course.Reckon(ship);
             if (!fix.Valid)
             {
-                _line4.text = "no mark set";
+                _line4.text = Course.HasMark ? $"steering for the {Course.MarkName}" : "no mark set";
                 _line4.color = ColText;
-                _line5.text = $"[{Plugin.SetMarkKey.Value}] over a buoy to steer for it";
-                _line5.color = ColText;
-                return;
+                _line5.text = "";
             }
-            _line4.text = Course.Line(fix);
-            _line4.color = Mathf.Abs(fix.Off) < 3f ? ColTrimmed : (Mathf.Abs(fix.Off) > 15f ? ColBad : ColAdjust);
-            string helm = Course.HelmAdvice(ship, st);
-            _line5.text = helm != "" ? helm : $"[{Plugin.SetMarkKey.Value}] away from a buoy to give it up";
-            _line5.color = helm != "" ? ColAdjust : ColText;
+            else
+            {
+                _line4.text = Course.Line(fix);
+                _line4.color = Mathf.Abs(fix.Off) < 3f ? ColTrimmed : (Mathf.Abs(fix.Off) > 15f ? ColBad : ColAdjust);
+                string helm = Course.HelmAdvice(ship, st);
+                _line5.text = helm;
+                _line5.color = ColAdjust;
+            }
+            Prompt();
+        }
+
+        /// <summary>
+        /// Always on its own line, never sharing with anything that might have something to say. It was sharing
+        /// with the helm advice, which meant the one line explaining how any of this works was hidden exactly
+        /// when the boat was interesting enough to be giving advice about.
+        /// </summary>
+        private static void Prompt()
+        {
+            var map = Minimap.instance;
+            bool overBuoy = false;
+            if (map != null)
+            {
+                Vector3 at = map.ScreenToWorldPoint(ZInput.pointerPosition);
+                overBuoy = BuoyPiece.Nearest(at, 120f) != null;
+            }
+            string key = Plugin.SetMarkKey.Value.ToString();
+            if (overBuoy) { _prompt.text = $"[{key}] steer for this buoy"; _prompt.color = ColTrimmed; }
+            else if (Course.HasMark) { _prompt.text = $"[{key}] here to give up the mark"; _prompt.color = ColText; }
+            else { _prompt.text = $"put the cursor on a buoy and press [{key}]"; _prompt.color = ColText; }
         }
 
         private static string StateWord(SailTrimShip.TrimState s)

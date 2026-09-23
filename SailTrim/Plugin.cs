@@ -161,6 +161,8 @@ namespace SailTrim
         internal static ConfigEntry<int> SurveyWidth;
         internal static ConfigEntry<bool> BuoyLight;
         internal static ConfigEntry<bool> BuoyPins;
+        internal static ConfigEntry<bool> BuoyEdgeMarks;
+        internal static ConfigEntry<float> BuoyEdgeRange;
 
         // ---- Config: visuals ----
         internal static ConfigEntry<float> YardTurnRate;
@@ -599,6 +601,11 @@ namespace SailTrim
             BuoyLight = Config.Bind("9. Buoy", "BuoyLight", true, "The buoy's lantern burns at night.");
             HudLayout.Bind(Config);
             Course.Load();
+            BuoyEdgeMarks = Config.Bind("9. Buoy", "BuoyEdgeMarks", true,
+                "Buoys that are loaded but off the corner map are held against its rim in the direction they lie, in their own colour, so a glance tells you where a channel mark is without opening the chart.");
+            BuoyEdgeRange = Config.Bind("9. Buoy", "BuoyEdgeRange", 500f,
+                new ConfigDescription("How far away a buoy may be and still be held on the rim of the corner map.",
+                    new AcceptableValueRange<float>(50f, 3000f)));
             BuoyPins = Config.Bind("9. Buoy", "BuoyPins", true, "Every loaded buoy shows on the map as a small disc in its colour (press E at a buoy to change it).");
 
             // Gameplay-affecting settings the server owns when LockConfig is on.

@@ -405,6 +405,10 @@ namespace SailTrim
         }
 
         /// <summary>What the buoy calls itself: its colour, which is how a channel is read.</summary>
+        /// <summary>Its flag colour, for a mark on the rim of the corner map.</summary>
+        internal Color MarkColor =>
+            _shownColor >= 0 && _shownColor < Buoy.PinColors.Length ? Buoy.PinColors[_shownColor] : Color.white;
+
         internal string MarkName =>
             _shownColor >= 0 && _shownColor < Buoy.ColorNames.Length ? Buoy.ColorNames[_shownColor] + " buoy" : "buoy";
 
