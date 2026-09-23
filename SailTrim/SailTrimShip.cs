@@ -240,6 +240,21 @@ namespace SailTrim
         // Sail amount and rowing (manual mode; pilot's client)
         // ------------------------------------------------------------------
         /// <summary>Sail size to feed the force model: the manual amount once known, else whatever vanilla says.</summary>
+        /// <summary>An AI helm on the owner's client sets the sheet, the sail and the rowing directly; the owner
+        /// mirrors them into the ZDO on the next SyncControls as it does for a pilot.</summary>
+        internal void AiSet(float sheetAngle, float sailAmount, int rowDir)
+        {
+            if (_ship == null) return;
+            ManualMode = true;
+            SheetAngle = Mathf.Clamp(sheetAngle, 0f, Plugin.MaxSheetAngle.Value);
+            float next = Mathf.Clamp01(sailAmount);
+            if (SailAmount < 0f || Mathf.Abs(next - SailAmount) > 0.002f) { SailAmount = next; _lastSailChangeTime = Time.time; }
+            RowDir = SailAmount > 0.001f ? 0 : rowDir;
+            Ship.Speed want = SailAmount > 0.001f ? Ship.Speed.Full
+                : (RowDir > 0 ? Ship.Speed.Slow : (RowDir < 0 ? Ship.Speed.Back : Ship.Speed.Stop));
+            if (_ship.m_speed != want) _ship.m_speed = want;
+        }
+
         internal float ManualSailSize(float vanillaSize)
         {
             return SailAmount >= 0f ? SailAmount : vanillaSize;
@@ -981,7 +996,7 @@ namespace SailTrim
         internal void StowIfEmpty()
         {
             if (_nview == null || !_nview.IsValid() || !_nview.IsOwner() || _ship == null) return;
-            if (_ship.m_players != null && _ship.m_players.Count > 0) return;
+            if (SailTrimApi.CrewCount(_ship) > 0) return;
             if (SailAmount <= 0.001f && RowDir == 0) return;
             SailAmount = 0f;
             RowDir = 0;

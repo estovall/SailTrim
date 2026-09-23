@@ -1,3 +1,5 @@
+using System.Reflection.Emit;
+using System.Reflection;
 using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
@@ -154,6 +156,41 @@ namespace SailTrim
                 if (kv.Key.m_iconElement != null) kv.Key.m_iconElement.color = kv.Value;
         }
 
+        // A crew that is not made of players (DirectionalCombat's vikings, through SailTrimApi.SetAiCrew) must
+        // count as crew to the hull physics: vanilla resets speed and rudder and takes nine tenths of the boat's
+        // way every step when m_players is empty. Every read of m_players.Count inside CustomFixedUpdate becomes
+        // SailTrimApi.CrewCount(ship), which is players plus the AI crew.
+        [HarmonyPatch(typeof(Ship), nameof(Ship.CustomFixedUpdate))]
+        [HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> Ship_CustomFixedUpdate_CrewCount(IEnumerable<CodeInstruction> instructions)
+        {
+            var players = AccessTools.Field(typeof(Ship), "m_players");
+            var getCount = AccessTools.PropertyGetter(typeof(List<Player>), "Count");
+            var crewCount = AccessTools.Method(typeof(SailTrimApi), nameof(SailTrimApi.CrewCount));
+            var list = new List<CodeInstruction>(instructions);
+            int replaced = 0;
+            for (int i = 0; i + 1 < list.Count; i++)
+            {
+                if (list[i].opcode == OpCodes.Ldfld && list[i].operand as FieldInfo == players
+                    && list[i + 1].opcode == OpCodes.Callvirt && list[i + 1].operand as MethodInfo == getCount)
+                {
+                    list[i] = new CodeInstruction(OpCodes.Call, crewCount).WithLabels(list[i].labels);
+                    list.RemoveAt(i + 1);
+                    replaced++;
+                }
+            }
+            Plugin.Log.LogInfo($"SailTrim: Ship.CustomFixedUpdate counts AI crew ({replaced} sites)");
+            return list;
+        }
+
+        // The rudder animation and the rowing sound key on a controlling player; an AI crew counts as one.
+        [HarmonyPatch(typeof(Ship), "HaveControllingPlayer")]
+        [HarmonyPostfix]
+        private static void Ship_HaveControllingPlayer(Ship __instance, ref bool __result)
+        {
+            if (!__result && SailTrimApi.AiCrew(__instance) > 0) __result = true;
+        }
+
         // A moored boat holds its spot on its owner's client, whatever else is on or off.
         // An empty boat stops dead: vanilla takes nine tenths of her fore-and-aft and sideways speed every
         // physics step the moment the last person steps off (Ship.CustomFixedUpdate, "if (m_players.Count == 0)").
@@ -181,7 +218,7 @@ namespace SailTrim
             var nv = __instance.m_nview;
             if (body == null || nv == null || !nv.IsValid() || !nv.IsOwner()) return;
 
-            bool empty = __instance.m_players == null || __instance.m_players.Count == 0;
+            bool empty = SailTrimApi.CrewCount(__instance) == 0;
             if (!empty) { _emptySince.Remove(__instance); _coastSaid.Remove(__instance); _coastFrom.Remove(__instance); return; }
 
             float coast = Plugin.EmptyCoast.Value;

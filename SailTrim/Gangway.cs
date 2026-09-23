@@ -1159,6 +1159,13 @@ namespace SailTrim
         internal Transform Visual => _visual != null ? _visual.transform : null;
 
         internal float Deploy => _deploy;
+        internal int Side => _side;
+        /// <summary>Out over the side, unfolded and resting: something to walk on.</summary>
+        internal bool IsDown => _walkable;
+        /// <summary>The hinge at the rail: where the plank starts on this deck.</summary>
+        internal Vector3 HingePoint => transform.position;
+        /// <summary>The far end of the plank, where it rests (the plank runs along the mount's own x axis).</summary>
+        internal Vector3 FootPoint => transform.TransformPoint(new Vector3(Length, -0.05f, 0f));
 
         /// <summary>
         /// Put the rig at a given point of its travel and leave it there. The survey walks the whole swing this
