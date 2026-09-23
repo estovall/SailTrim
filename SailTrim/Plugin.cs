@@ -35,6 +35,8 @@ namespace SailTrim
         internal static ConfigEntry<bool> HudHideOnMap;
         internal static ConfigEntry<bool> MapHudEnabled;
         internal static ConfigEntry<KeyCode> SetMarkKey;
+        internal static ConfigEntry<float> NoGoAngle;
+        internal static ConfigEntry<float> TrackMinutes;
         internal static ConfigEntry<string> MarkPos;
         internal static ConfigEntry<string> MarkName;
         internal static ConfigEntry<float> HudScale;
@@ -276,6 +278,12 @@ namespace SailTrim
                 "Put the sailing HUD away while the big map is open. The map covers the world the HUD is drawn over, and a HUD moved in towards the middle of the screen is a HUD the map will sit on top of.");
             MapHudEnabled = Config.Bind("1. General", "MapHudEnabled", true,
                 "Show a small readout in the corner of the big map while you are aboard a boat: how she is trimmed, her speed, and her heading against the course she is actually making good.");
+            TrackMinutes = Config.Bind("1. General", "TrackMinutes", 3f,
+                new ConfigDescription("How far ahead the dotted track on the map reaches, in minutes at the speed and heading she is making good now. 0 draws nothing.",
+                    new AcceptableValueRange<float>(0f, 15f)));
+            NoGoAngle = Config.Bind("1. General", "NoGoAngle", 37f,
+                new ConfigDescription("How close to the wind she will not sail, in degrees, used when working out a course to a mark. Vanilla's own indicator turns red at about this. A course inside it is reported as a beat rather than handed to you as a bearing you cannot hold.",
+                    new AcceptableValueRange<float>(5f, 80f)));
             SetMarkKey = Config.Bind("1. General", "SetMarkKey", KeyCode.C,
                 "On the big map, with the cursor over one of your pins: make that pin the mark you are steering for. The readouts then give the bearing to it, the course to steer to allow for leeway, and how far off it you are running. Press it away from any pin to give up the mark.");
             MarkPos = Config.Bind("1. General", "MarkPos", "",

@@ -47,6 +47,7 @@ namespace SailTrim
             HudLayout.Apply(HudLayout.Part.Map, _panel, _home);
             PickMark();
             Write(ship, st);
+            Track(ship);
         }
 
         /// <summary>
@@ -60,14 +61,66 @@ namespace SailTrim
             if (!ZInput.GetKeyDown(Plugin.SetMarkKey.Value, false)) return;
             var map = Minimap.instance;
             if (map == null) return;
-            var pin = map.GetClosestPinToCursor();
-            if (pin == null) { Course.Clear(); return; }
-            Course.Set(pin.m_pos, pin.m_name);
+            // Buoys only. A buoy is a thing somebody went out and set in the water, and giving them the job of
+            // being the marks you steer for is what makes putting one out worth the trouble; a pin is a note to
+            // yourself and costs nothing.
+            Vector3 at = map.ScreenToWorldPoint(ZInput.pointerPosition);
+            var buoy = BuoyPiece.Nearest(at, 120f);
+            if (buoy == null) { Course.Clear(); return; }
+            Course.Set(buoy.transform.position, buoy.MarkName);
         }
 
         private static void Hide()
         {
             if (_panel != null && _panel.gameObject.activeSelf) _panel.gameObject.SetActive(false);
+            foreach (var d in _dots) if (d != null && d.gameObject.activeSelf) d.gameObject.SetActive(false);
+        }
+
+        private static readonly RectTransform[] _dots = new RectTransform[Dots];
+        private const int Dots = 14;
+
+        /// <summary>
+        /// The course she is making good, drawn on the chart as a dotted line from the boat. Two numbers for a
+        /// heading and a track tell you there is leeway; a line laid over the water tells you where it puts you,
+        /// which is the question actually being asked when you look at a chart with a headland on it.
+        /// </summary>
+        private static void Track(Ship ship)
+        {
+            var map = Minimap.instance;
+            if (map == null || map.m_pinRootLarge == null || map.m_mapImageLarge == null) return;
+            Vector3 vel = ship.m_body != null ? ship.m_body.linearVelocity : Vector3.zero;
+            Vector3 flat = new Vector3(vel.x, 0f, vel.z);
+            if (flat.magnitude * 1.94384f < 0.4f) { foreach (var d in _dots) if (d != null) d.gameObject.SetActive(false); return; }
+
+            // Where she gets to in the next few minutes at this speed on this track, which is the span a chart
+            // glance is about.
+            Vector3 step = flat.normalized * (flat.magnitude * Plugin.TrackMinutes.Value * 60f / Dots);
+            Vector3 from = ship.transform.position;
+            for (int i = 0; i < Dots; i++)
+            {
+                if (_dots[i] == null) _dots[i] = Dot(map.m_pinRootLarge);
+                if (_dots[i] == null) return;
+                Vector3 at = from + step * (i + 1);
+                map.WorldToMapPoint(at, out float mx, out float my);
+                _dots[i].anchoredPosition = map.MapPointToLocalGuiPos(mx, my, map.m_mapImageLarge);
+                _dots[i].gameObject.SetActive(true);
+                // Fading out along its length: the far end is a guess that assumes nothing changes, and it should
+                // not look as certain as the near end.
+                var img = _dots[i].GetComponent<Image>();
+                if (img != null) img.color = new Color(1f, 0.85f, 0.35f, 0.75f * (1f - (float)i / Dots));
+            }
+        }
+
+        private static RectTransform Dot(RectTransform parent)
+        {
+            var go = new GameObject("SailTrim_Track", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            var rt = go.GetComponent<RectTransform>();
+            rt.SetParent(parent, false);
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(5f, 5f);
+            var img = go.GetComponent<Image>();
+            img.raycastTarget = false;
+            return rt;
         }
 
         private static void Build()
@@ -195,14 +248,14 @@ namespace SailTrim
             {
                 _line4.text = "no mark set";
                 _line4.color = ColText;
-                _line5.text = $"[{Plugin.SetMarkKey.Value}] over one of your pins to steer for it";
+                _line5.text = $"[{Plugin.SetMarkKey.Value}] over a buoy to steer for it";
                 _line5.color = ColText;
                 return;
             }
             _line4.text = Course.Line(fix);
             _line4.color = Mathf.Abs(fix.Off) < 3f ? ColTrimmed : (Mathf.Abs(fix.Off) > 15f ? ColBad : ColAdjust);
             string helm = Course.HelmAdvice(ship, st);
-            _line5.text = helm != "" ? helm : $"[{Plugin.SetMarkKey.Value}] away from a pin to give it up";
+            _line5.text = helm != "" ? helm : $"[{Plugin.SetMarkKey.Value}] away from a buoy to give it up";
             _line5.color = helm != "" ? ColAdjust : ColText;
         }
 

@@ -382,6 +382,32 @@ namespace SailTrim
         /// <summary>Every loaded buoy's map pin and its colour, for the minimap patch to tint (the game paints every pin white each frame).</summary>
         internal static readonly Dictionary<Minimap.PinData, Color> Pins = new Dictionary<Minimap.PinData, Color>();
 
+        /// <summary>Every loaded buoy, so one can be picked off the map to steer for.</summary>
+        internal static readonly List<BuoyPiece> All = new List<BuoyPiece>();
+
+        private void OnEnable() { if (!All.Contains(this)) All.Add(this); }
+        private void OnDisable() { All.Remove(this); }
+
+        /// <summary>The buoy nearest this spot on the chart, within a radius, or none.</summary>
+        internal static BuoyPiece Nearest(Vector3 pos, float radius)
+        {
+            BuoyPiece best = null;
+            float bestD = radius;
+            foreach (var b in All)
+            {
+                if (b == null) continue;
+                Vector3 d = b.transform.position - pos;
+                d.y = 0f;
+                float m = d.magnitude;
+                if (m < bestD) { bestD = m; best = b; }
+            }
+            return best;
+        }
+
+        /// <summary>What the buoy calls itself: its colour, which is how a channel is read.</summary>
+        internal string MarkName =>
+            _shownColor >= 0 && _shownColor < Buoy.ColorNames.Length ? Buoy.ColorNames[_shownColor] + " buoy" : "buoy";
+
         private void Awake()
         {
             _nview = GetComponent<ZNetView>();

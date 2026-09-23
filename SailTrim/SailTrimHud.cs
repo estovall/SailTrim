@@ -412,10 +412,14 @@ namespace SailTrim
                 _stateText.textWrappingMode = TextWrappingModes.Normal;
                 _stateText.alignment = TextAlignmentOptions.Top;
                 _homeInfo = new Vector2(0f, -d * 0.98f);
-                _infoText = MakeText("Info", _container, fontSource, d * 0.13f, _homeInfo, new Vector2(d * 2.6f, d * 0.22f));
+                // Narrower than it was, and it wraps. These boxes are centred on the wind dial, which sits near
+                // the right edge of the screen, so half of any box hangs out that way: a long line with wrapping
+                // off ran clean off the screen.
+                _infoText = MakeText("Info", _container, fontSource, d * 0.13f, _homeInfo, new Vector2(d * 2.2f, d * 0.4f));
+                _infoText.textWrappingMode = TextWrappingModes.Normal;
                 _infoText.color = ColText;
                 _homeHint = new Vector2(0f, -d * 1.3f);
-                _hintText = MakeText("Hint", _container, fontSource, d * 0.12f, _homeHint, new Vector2(d * 2.6f, d * 0.4f));
+                _hintText = MakeText("Hint", _container, fontSource, d * 0.12f, _homeHint, new Vector2(d * 2.2f, d * 0.5f));
                 _hintText.color = ColGold;
                 _hintText.textWrappingMode = TextWrappingModes.Normal;
                 _hintText.alignment = TextAlignmentOptions.Top;

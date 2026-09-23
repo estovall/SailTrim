@@ -52,6 +52,13 @@ namespace SailTrim
             HasMark = true;
         }
 
+        private static float Wrap(float deg)
+        {
+            while (deg < 0f) deg += 360f;
+            while (deg >= 360f) deg -= 360f;
+            return deg;
+        }
+
         internal static float Bearing(Vector3 dir)
         {
             float b = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
@@ -70,6 +77,27 @@ namespace SailTrim
             public float Leeway;       // track minus heading, signed: positive is being set to starboard
             public float Steer;        // the bearing to hold so the track comes out on the mark
             public float Off;          // track minus bearing to mark, signed: positive is passing to starboard
+            public bool CanLay;        // is the course to steer outside the no-go, so she can actually sail it
+            public float BoardA, BoardB;   // the closest she can sail on either side of the wind
+            public float Best;         // of those two, the one nearer where she is pointing now
+        }
+
+        /// <summary>
+        /// The bearing straight into the wind. Anything within the no-go of this cannot be sailed, and a course
+        /// worked out from geometry alone will cheerfully ask for it: told to steer 010 with the wind out of 350,
+        /// a helmsman does what he is told and stops dead in irons. Advice that ignores the wind is worse than no
+        /// advice, because it is followed.
+        /// </summary>
+        private static bool Upwind(out float intoWind)
+        {
+            intoWind = 0f;
+            var env = EnvMan.instance;
+            if (env == null) return false;
+            Vector3 to = env.GetWindDir();
+            to.y = 0f;
+            if (to.sqrMagnitude < 1e-4f) return false;
+            intoWind = Bearing(-to.normalized);
+            return true;
         }
 
         internal static Fix Reckon(Ship ship)
@@ -104,6 +132,17 @@ namespace SailTrim
             f.Steer = f.ToMark - f.Leeway;
             if (f.Steer < 0f) f.Steer += 360f;
             if (f.Steer >= 360f) f.Steer -= 360f;
+
+            f.CanLay = true;
+            if (Upwind(out float intoWind))
+            {
+                float noGo = Mathf.Clamp(Plugin.NoGoAngle.Value, 5f, 80f);
+                f.CanLay = Mathf.Abs(Mathf.DeltaAngle(intoWind, f.Steer)) >= noGo;
+                f.BoardA = Wrap(intoWind - noGo);
+                f.BoardB = Wrap(intoWind + noGo);
+                f.Best = Mathf.Abs(Mathf.DeltaAngle(f.Heading, f.BoardA))
+                       <= Mathf.Abs(Mathf.DeltaAngle(f.Heading, f.BoardB)) ? f.BoardA : f.BoardB;
+            }
             return f;
         }
 
@@ -111,6 +150,11 @@ namespace SailTrim
         {
             if (!f.Valid) return "";
             string dist = f.Distance >= 1000f ? $"{f.Distance / 1000f:0.0} km" : $"{f.Distance:0} m";
+            // The mark is dead to windward: there is no course that fetches it, so say so and give the board
+            // she is already nearest to rather than a bearing she cannot hold.
+            if (!f.CanLay)
+                return $"{MarkName}  {dist}   dead to windward: beat on {f.Best:000}";
+
             string off = Mathf.Abs(f.Off) < 3f
                 ? "on for it"
                 : $"{Mathf.Abs(f.Off):0} {(f.Off > 0f ? "right" : "left")} of it";
