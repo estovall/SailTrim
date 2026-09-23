@@ -108,6 +108,29 @@ namespace SailTrim
 
         public static void RaiseGangways(Ship ship) => Gangway.RaiseAll(ship, false);
 
+        /// <summary>The side (-1 port, +1 starboard) whose plank is down, or 0.</summary>
+        public static int GangwayDownSide(Ship ship) => Gangway.Down(ship, -1) ? -1 : Gangway.Down(ship, 1) ? 1 : 0;
+
+        /// <summary>The boat this one is lashed to by a plank, from either side, or null (also when it is not loaded here).</summary>
+        public static Ship LashPartner(Ship ship)
+        {
+            if (ship == null) return null;
+            var t = Gangway.LashTarget(ship, -1) ?? Gangway.LashTarget(ship, 1);
+            if (t != null) return t;
+            ZDOID from = Gangway.LashedFrom(ship);
+            if (from.IsNone() || ZNetScene.instance == null) return null;
+            var go = ZNetScene.instance.FindInstance(from);
+            return go != null ? go.GetComponent<Ship>() : null;
+        }
+
+        /// <summary>Which boat's plank joins these two: this one's, or the partner's. Null when neither is down.</summary>
+        public static Ship PlankOwner(Ship ship, Ship partner)
+        {
+            if (ship != null && GangwayDownSide(ship) != 0 && (Gangway.LashTarget(ship, -1) == partner || Gangway.LashTarget(ship, 1) == partner)) return ship;
+            if (partner != null && GangwayDownSide(partner) != 0) return partner;
+            return null;
+        }
+
         /// <summary>Where a lowered plank starts (the hinge at the rail) and ends (where it rests), for walking it.</summary>
         public static bool GangwayEnds(Ship ship, int side, out Vector3 hinge, out Vector3 foot)
         {
