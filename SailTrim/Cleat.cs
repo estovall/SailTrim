@@ -858,6 +858,27 @@ namespace SailTrim
         }
 
         /// <summary>Owner: remember the spot to hold the boat at (tying up, or a gangway going down).</summary>
+        /// <summary>Move the spot a held boat is kept at (owner only): warping her along a line.</summary>
+        internal static void SetHold(Ship ship, Vector3 pos, float yaw)
+        {
+            var nv = ship != null ? ship.m_nview : null;
+            if (nv == null || !nv.IsValid() || !nv.IsOwner()) return;
+            var zdo = nv.GetZDO();
+            zdo.Set(PosHash, pos);
+            zdo.Set(YawHash, yaw);
+        }
+
+        internal static bool GetHold(Ship ship, out Vector3 pos, out float yaw)
+        {
+            pos = Vector3.zero; yaw = 0f;
+            var nv = ship != null ? ship.m_nview : null;
+            if (nv == null || !nv.IsValid()) return false;
+            var zdo = nv.GetZDO();
+            pos = zdo.GetVec3(PosHash, Vector3.zero);
+            yaw = zdo.GetFloat(YawHash, ship.transform.eulerAngles.y);
+            return pos != Vector3.zero;
+        }
+
         internal static void HoldHere(Ship ship)
         {
             var nv = ship != null ? ship.m_nview : null;

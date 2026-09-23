@@ -1166,6 +1166,10 @@ namespace SailTrim
         internal Vector3 HingePoint => transform.position;
         /// <summary>The far end of the plank, where it rests (the plank runs along the mount's own x axis).</summary>
         internal Vector3 FootPoint => transform.TransformPoint(new Vector3(Length, -0.05f, 0f));
+        /// <summary>The plank has found something to rest on.</summary>
+        internal bool Anchored => _anchored;
+        /// <summary>The boat the plank rests on, if it rests on a boat.</summary>
+        internal Ship RestsOnShip => _anchored && _anchorOn != null ? _anchorOn.GetComponentInParent<Ship>() : null;
 
         /// <summary>
         /// Put the rig at a given point of its travel and leave it there. The survey walks the whole swing this

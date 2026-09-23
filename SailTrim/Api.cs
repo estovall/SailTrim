@@ -157,6 +157,19 @@ namespace SailTrim
             return null;
         }
 
+        /// <summary>The boat a lowered plank's foot actually rests on, or null (in the water, on the shore, or still probing).</summary>
+        public static Ship GangwayLandedOn(Ship ship, int side)
+        {
+            if (ship == null) return null;
+            foreach (var m in ship.GetComponentsInChildren<GangwayMount>(true))
+                if (m.Side == side && m.IsDown) return m.RestsOnShip;
+            return null;
+        }
+
+        /// <summary>A held boat's spot (moored or lashed): move it to warp her along, e.g. hauling two hulls together.</summary>
+        public static void SetHoldSpot(Ship ship, Vector3 pos, float yaw) => Mooring.SetHold(ship, pos, yaw);
+        public static bool GetHoldSpot(Ship ship, out Vector3 pos, out float yaw) => Mooring.GetHold(ship, out pos, out yaw);
+
         /// <summary>Where a lowered plank starts (the hinge at the rail) and ends (where it rests), for walking it.</summary>
         public static bool GangwayEnds(Ship ship, int side, out Vector3 hinge, out Vector3 foot)
         {
