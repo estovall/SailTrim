@@ -34,6 +34,9 @@ namespace SailTrim
         internal static ConfigEntry<KeyCode> HudLayoutKey;
         internal static ConfigEntry<bool> HudHideOnMap;
         internal static ConfigEntry<bool> MapHudEnabled;
+        internal static ConfigEntry<KeyCode> SetMarkKey;
+        internal static ConfigEntry<string> MarkPos;
+        internal static ConfigEntry<string> MarkName;
         internal static ConfigEntry<float> HudScale;
         internal static ConfigEntry<float> HudOffsetX;
         internal static ConfigEntry<float> HudOffsetY;
@@ -273,6 +276,12 @@ namespace SailTrim
                 "Put the sailing HUD away while the big map is open. The map covers the world the HUD is drawn over, and a HUD moved in towards the middle of the screen is a HUD the map will sit on top of.");
             MapHudEnabled = Config.Bind("1. General", "MapHudEnabled", true,
                 "Show a small readout in the corner of the big map while you are aboard a boat: how she is trimmed, her speed, and her heading against the course she is actually making good.");
+            SetMarkKey = Config.Bind("1. General", "SetMarkKey", KeyCode.C,
+                "On the big map, with the cursor over one of your pins: make that pin the mark you are steering for. The readouts then give the bearing to it, the course to steer to allow for leeway, and how far off it you are running. Press it away from any pin to give up the mark.");
+            MarkPos = Config.Bind("1. General", "MarkPos", "",
+                "The mark currently being steered for, set from the map. Not meant to be edited by hand.");
+            MarkName = Config.Bind("1. General", "MarkName", "",
+                "The name of the mark currently being steered for. Not meant to be edited by hand.");
             HudLayoutKey = Config.Bind("1. General", "HudLayoutKey", KeyCode.None,
                 "Optional. The HUD is normally arranged on the SailTrim settings page, which is easier; bind a key here to do the same thing at the helm without opening the menu. Press this aboard a boat to move the HUD's pieces about with the arrow keys and watch them move. Tab picks the next piece, Page Up/Down sizes it, Backspace puts one back, Enter keeps the lot and Escape undoes it. For fitting the HUD round whatever else is on your screen.");
             HudAnchor = Config.Bind("1. General", "HudAnchor", HudCorner.WindDial,
@@ -581,6 +590,7 @@ namespace SailTrim
                 "Adds the Buoy build piece (hammer, Misc; 6 wood, 2 resin, no workbench). Placed on open water like a boat, it floats and holds its spot: channel markers, race marks.");
             BuoyLight = Config.Bind("9. Buoy", "BuoyLight", true, "The buoy's lantern burns at night.");
             HudLayout.Bind(Config);
+            Course.Load();
             BuoyPins = Config.Bind("9. Buoy", "BuoyPins", true, "Every loaded buoy shows on the map as a small disc in its colour (press E at a buoy to change it).");
 
             // Gameplay-affecting settings the server owns when LockConfig is on.

@@ -18,7 +18,7 @@ namespace SailTrim
     internal static class MapHud
     {
         private static RectTransform _panel;
-        private static TMP_Text _title, _line1, _line2, _line3;
+        private static TMP_Text _title, _line1, _line2, _line3, _line4, _line5;
         private static bool _failed;
         private static Vector2 _home;
 
@@ -45,7 +45,24 @@ namespace SailTrim
             if (_panel == null) return;
             _panel.gameObject.SetActive(true);
             HudLayout.Apply(HudLayout.Part.Map, _panel, _home);
+            PickMark();
             Write(ship, st);
+        }
+
+        /// <summary>
+        /// The mark is one of the player's own pins, chosen with the cursor over it. Using the pins there are
+        /// rather than inventing a marker of our own means the course is set with the tool a player already has
+        /// for saying "there", and it shows on the chart without us drawing anything.
+        /// </summary>
+        private static void PickMark()
+        {
+            if (Plugin.SetMarkKey.Value == KeyCode.None) return;
+            if (!ZInput.GetKeyDown(Plugin.SetMarkKey.Value, false)) return;
+            var map = Minimap.instance;
+            if (map == null) return;
+            var pin = map.GetClosestPinToCursor();
+            if (pin == null) { Course.Clear(); return; }
+            Course.Set(pin.m_pos, pin.m_name);
         }
 
         private static void Hide()
@@ -89,10 +106,12 @@ namespace SailTrim
             _line1 = Line("Line1", src, 17f, 32f);
             _line2 = Line("Line2", src, 17f, 52f);
             _line3 = Line("Line3", src, 17f, 72f);
+            _line4 = Line("Line4", src, 17f, 94f);
+            _line5 = Line("Line5", src, 15f, 113f);
             Plugin.Log.LogInfo("SailTrim: map readout built");
         }
 
-        private const float Width = 260f, Height = 92f;
+        private const float Width = 260f, Height = 132f;
 
         /// <summary>A line of the block, measured down from the top-left of the panel.</summary>
         private static TMP_Text Line(string name, TMP_Text src, float size, float down)
@@ -166,6 +185,25 @@ namespace SailTrim
                 _line3.text = $"set {Mathf.Abs(off):0} {(off > 0f ? "stbd" : "port")}   drift {sideways:0.0} kn";
                 _line3.color = Mathf.Abs(off) > 8f ? ColBad : ColAdjust;
             }
+            Mark(ship, st);
+        }
+
+        private static void Mark(Ship ship, SailTrimShip st)
+        {
+            var fix = Course.Reckon(ship);
+            if (!fix.Valid)
+            {
+                _line4.text = "no mark set";
+                _line4.color = ColText;
+                _line5.text = $"[{Plugin.SetMarkKey.Value}] over one of your pins to steer for it";
+                _line5.color = ColText;
+                return;
+            }
+            _line4.text = Course.Line(fix);
+            _line4.color = Mathf.Abs(fix.Off) < 3f ? ColTrimmed : (Mathf.Abs(fix.Off) > 15f ? ColBad : ColAdjust);
+            string helm = Course.HelmAdvice(ship, st);
+            _line5.text = helm != "" ? helm : $"[{Plugin.SetMarkKey.Value}] away from a pin to give it up";
+            _line5.color = helm != "" ? ColAdjust : ColText;
         }
 
         private static string StateWord(SailTrimShip.TrimState s)
