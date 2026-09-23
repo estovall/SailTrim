@@ -1,5 +1,25 @@
 # SailTrim pick-up notes
 
+## 1.11.0 (2026-09-23, built, NOT published): an API for an AI crew, for DirectionalCombat's viking ships
+
+`SailTrim/Api.cs`, `public static class SailTrimApi`. DirectionalCombat references `dist/SailTrim.dll` and
+declares a hard BepInEx dependency on `com.maxst.sailtrim`. Nothing changes for a player; the additions:
+
+- `SetAiCrew(ship, n)` and `CrewCount(ship)`: a crew that is not players. A transpiler on
+  `Ship.CustomFixedUpdate` replaces every `m_players.Count` with `CrewCount` (the game otherwise resets speed
+  and rudder and takes nine tenths of the boat's way per step when nobody is aboard); `HaveControllingPlayer`
+  is true with AI crew (rudder animation, rowing); `StowIfEmpty` and the empty-coast patch count it too. The
+  log says `Ship.CustomFixedUpdate counts AI crew (N sites)` at patch time; N should be 3.
+- `AiControl(ship, sheet, sail, row, rudder)`: `SailTrimShip.AiSet` sets sheet, sail amount, rowing and
+  manual mode directly on the owner and picks the vanilla speed setting; the rudder value is set on the ship.
+- `GetTrim(ship)` (wind-from angle, ideal sheet, speed, states), `TrueWindFrom()`.
+- Gangway from code: `FitGangway`, `LowerGangway(ship, side, onto)`, `RaiseGangways`, `GangwayEnds`
+  (hinge and foot of a lowered plank; `GangwayMount` got `Side`, `IsDown`, `HingePoint`, `FootPoint`).
+
+The Flotilla server runs 1.10.0 and the version check is exact: do not put 1.11.0 in the Flotilla profile
+until the server has it. It lives in the DirectionalCombat profile as a local mod
+(`DirectionalCombat/tools/deploy-sailtrim.ps1` copies `dist/SailTrim.dll` there after a build).
+
 ## Status, 2026-09-23: 1.10.0 is released; the chart work on top of it is untested
 
 **1.10.0 is published** (Hexium `Max/SailTrim 1.10.0`, package 1207, tagged `v1.10.0`). Everything through that
