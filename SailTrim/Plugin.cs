@@ -32,6 +32,8 @@ namespace SailTrim
         internal static ConfigEntry<bool> ControlHints;
         internal static ConfigEntry<HudCorner> HudAnchor;
         internal static ConfigEntry<KeyCode> HudLayoutKey;
+        internal static ConfigEntry<bool> HudHideOnMap;
+        internal static ConfigEntry<bool> MapHudEnabled;
         internal static ConfigEntry<float> HudScale;
         internal static ConfigEntry<float> HudOffsetX;
         internal static ConfigEntry<float> HudOffsetY;
@@ -266,6 +268,10 @@ namespace SailTrim
                 "Master switch. When false the boat sails exactly like vanilla (patches stay loaded but pass through).");
             ShowHud = Config.Bind("1. General", "ShowHud", true,
                 "Show the trim overlay on the ship HUD: sail icon on the wind circle, speed gauge, state and heel text.");
+            HudHideOnMap = Config.Bind("1. General", "HudHideOnMap", true,
+                "Put the sailing HUD away while the big map is open. The map covers the world the HUD is drawn over, and a HUD moved in towards the middle of the screen is a HUD the map will sit on top of.");
+            MapHudEnabled = Config.Bind("1. General", "MapHudEnabled", true,
+                "Show a small readout in the corner of the big map while you are aboard a boat: how she is trimmed, her speed, and her heading against the course she is actually making good.");
             HudLayoutKey = Config.Bind("1. General", "HudLayoutKey", KeyCode.None,
                 "Optional. The HUD is normally arranged on the SailTrim settings page, which is easier; bind a key here to do the same thing at the helm without opening the menu. Press this aboard a boat to move the HUD's pieces about with the arrow keys and watch them move. Tab picks the next piece, Page Up/Down sizes it, Backspace puts one back, Enter keeps the lot and Escape undoes it. For fitting the HUD round whatever else is on your screen.");
             HudAnchor = Config.Bind("1. General", "HudAnchor", HudCorner.WindDial,
@@ -705,6 +711,7 @@ namespace SailTrim
             SailTrimNet.ClientUpdate();
             Survey.Update();
             try { HudLayout.Update(); } catch { }
+            try { MapHud.Update(); } catch { }
             try { Gangway.Tick(); } catch { }
             if (!Enabled.Value) { _wasPiloting = false; return; }
 

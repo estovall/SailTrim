@@ -80,6 +80,9 @@ namespace SailTrim
             if (ship == null || !hud.m_shipHudRoot.activeInHierarchy) { SetVisible(false); return; }
             var st = SailTrimShip.Get(ship);
             if (st == null || (!piloting && !st.ManualMode)) { SetVisible(false); return; }
+            // The map covers the world this is drawn over, and a HUD moved in towards the middle of the screen
+            // is a HUD the map will sit on. MapHud carries what still matters while the chart is up.
+            if (Plugin.HudHideOnMap.Value && MapHud.LargeMapOpen) { SetVisible(false); return; }
 
             if (!_built && !_buildFailed) Build(hud);
             if (!_built) return;

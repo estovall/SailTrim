@@ -16,11 +16,11 @@ namespace SailTrim
     /// </summary>
     internal static class HudLayout
     {
-        internal enum Part { Gauge, State, Info, Hint, Controls }
+        internal enum Part { Gauge, State, Info, Hint, Controls, Map }
 
-        private static readonly Part[] Order = { Part.Gauge, Part.State, Part.Info, Part.Hint, Part.Controls };
+        private static readonly Part[] Order = { Part.Gauge, Part.State, Part.Info, Part.Hint, Part.Controls, Part.Map };
 
-        private static readonly string[] Names = { "speed gauge", "state line", "readings line", "hint line", "controls list" };
+        private static readonly string[] Names = { "speed gauge", "state line", "readings line", "hint line", "controls list", "map readout" };
 
         private static ConfigEntry<string>[] _entries;
         private static Vector3[] _live;     // x, y, scale as they stand this instant, saved or not
