@@ -20,6 +20,19 @@ namespace SailTrim
                 __instance.m_lastGroundBody = footing.Ship.m_body;
         }
 
+        // A boat that breaks up gives its gangways back. They are fittings somebody made and carried aboard,
+        // not part of the hull, so the wreck should not also cost the fine wood and iron nails in them.
+        [HarmonyPatch(typeof(WearNTear), "Destroy")]
+        [HarmonyPrefix]
+        private static void WearNTear_Destroy_Gangways(WearNTear __instance, bool blockDrop)
+        {
+            if (blockDrop || !Plugin.GangwayRefund.Value) return;
+            var ship = __instance != null ? __instance.GetComponent<Ship>() : null;
+            if (ship == null) return;
+            try { Gangway.DropFitted(ship); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: gangway refund: " + e); }
+        }
+
         // Attach our per-ship state as soon as the ship exists.
         [HarmonyPatch(typeof(Ship), "Awake")]
         [HarmonyPostfix]

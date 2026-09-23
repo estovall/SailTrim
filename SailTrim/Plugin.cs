@@ -147,6 +147,7 @@ namespace SailTrim
         internal static ConfigEntry<float> GangwayRetractDelay;
         internal static ConfigEntry<bool> GangwayTiesCleat;
         internal static ConfigEntry<bool> GangwayLashShips;
+        internal static ConfigEntry<bool> GangwayRefund;
 
         internal static ConfigEntry<int> GangwayFineWoodCost;
         internal static ConfigEntry<int> GangwayIronNailCost;
@@ -557,6 +558,8 @@ namespace SailTrim
             GangwayRetractDelay = Config.Bind("10. Gangway", "GangwayRetractDelay", 2f,
                 new ConfigDescription("Seconds at the helm before a gangway that is still down comes up by itself.",
                     new AcceptableValueRange<float>(0f, 10f)));
+            GangwayRefund = Config.Bind("10. Gangway", "GangwayRefund", true,
+                "A boat that breaks up drops the gangways that were fitted to it. They are fittings you made and carried aboard rather than part of the hull, so losing the boat need not also cost you the fine wood and iron nails in them.");
             GangwayLashShips = Config.Bind("10. Gangway", "GangwayLashShips", true,
                 "Let a gangway come down on another boat's deck when it can reach it. Both boats then hold where they lie, as a gangway onto a dock holds the one boat, so the plank stays put between them and you can walk across. Taking the helm of either boat raises it.");
             GangwayTiesCleat = Config.Bind("10. Gangway", "GangwayTiesCleat", true,

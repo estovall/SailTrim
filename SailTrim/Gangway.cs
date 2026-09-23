@@ -953,6 +953,36 @@ namespace SailTrim
             return inv != null && inv.CountItems("Gangway") > 0;
         }
 
+        /// <summary>
+        /// The boat has been destroyed: put the gangways back in the world. A gangway is a thing you made and
+        /// fitted, not part of the hull, so losing the boat should not also cost you the fine wood and the iron
+        /// nails in it. One item for each side that had one, dropped where she went.
+        /// </summary>
+        internal static void DropFitted(Ship ship)
+        {
+            var nv = ship != null ? ship.m_nview : null;
+            if (nv == null || !nv.IsValid() || !nv.IsOwner()) return;
+            if (_itemPrefab == null) return;
+            var drop = _itemPrefab.GetComponent<ItemDrop>();
+            if (drop == null || drop.m_itemData == null) return;
+
+            int n = 0;
+            foreach (int side in Sides) if (Fitted(ship, side)) n++;
+            if (n == 0) return;
+
+            // Take them off the boat's record first, so nothing can hand them out twice.
+            var zdo = nv.GetZDO();
+            zdo.Set(StateHash, State(ship) & ~(FittedPort | FittedStbd | DownPort | DownStbd));
+
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 at = ship.transform.position + Vector3.up * 1.2f
+                           + ship.transform.right * (i == 0 ? 0.6f : -0.6f);
+                ItemDrop.DropItem(drop.m_itemData, 1, at, Quaternion.identity);
+            }
+            Plugin.Log.LogInfo($"SailTrim: {ship.name} broke up, {n} gangway(s) given back");
+        }
+
         internal static bool ConsumeKit(Humanoid user)
         {
             var inv = user != null ? user.GetInventory() : null;

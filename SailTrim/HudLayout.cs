@@ -16,11 +16,11 @@ namespace SailTrim
     /// </summary>
     internal static class HudLayout
     {
-        internal enum Part { Gauge, State, Info, Hint, Controls, Map }
+        internal enum Part { Gauge, State, Info, Hint, Controls, Map, ShipHud }
 
-        private static readonly Part[] Order = { Part.Gauge, Part.State, Part.Info, Part.Hint, Part.Controls, Part.Map };
+        private static readonly Part[] Order = { Part.ShipHud, Part.Gauge, Part.State, Part.Info, Part.Hint, Part.Controls, Part.Map };
 
-        private static readonly string[] Names = { "speed gauge", "state line", "readings line", "hint line", "controls list", "map readout" };
+        private static readonly string[] Names = { "the ship's own dials", "speed gauge", "state line", "readings line", "hint line", "controls list", "map readout" };
 
         private static ConfigEntry<string>[] _entries;
         private static Vector3[] _live;     // x, y, scale as they stand this instant, saved or not
@@ -143,9 +143,32 @@ namespace SailTrim
                    "Backspace reset piece   Delete reset all   Enter keep   Esc undo</color>";
         }
 
+        // The game's own ship UI: the wind dial, the rudder, the whole cluster. Ours is pinned to a piece of
+        // it, so moving this moves both together and the pieces below are adjustments within that. Its home is
+        // taken the first time it is seen, and written back whenever the offset is nothing, so a player who
+        // clears it gets the game's own arrangement rather than ours.
+        private static RectTransform _shipHud;
+        private static Vector2 _shipHudHome;
+        private static bool _shipHudKnown;
+
+        internal static void ApplyShipHud()
+        {
+            var hud = Hud.instance;
+            var root = hud != null && hud.m_shipHudRoot != null ? hud.m_shipHudRoot.transform as RectTransform : null;
+            if (root == null) return;
+            if (!_shipHudKnown || _shipHud != root)
+            {
+                _shipHud = root;
+                _shipHudHome = root.anchoredPosition;
+                _shipHudKnown = true;
+            }
+            Apply(Part.ShipHud, root, _shipHudHome);
+        }
+
         internal static void Update()
         {
             if (_entries == null) return;
+            ApplyShipHud();
             var player = Player.m_localPlayer;
             if (Plugin.HudLayoutKey.Value != KeyCode.None && player != null && player.TakeInput()
                 && ZInput.GetKeyDown(Plugin.HudLayoutKey.Value, false))
