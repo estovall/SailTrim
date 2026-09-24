@@ -78,6 +78,14 @@ namespace SailTrim
                 var other = go != null ? go.GetComponent<Ship>() : null;
                 if (other != null) Gangway.RaiseAll(other, false);
             }
+            // A second plank across her (boarded from both beams): that one up as well.
+            Gangway.LashedFromBoth(ship, out _, out ZDOID from2);
+            if (!from2.IsNone() && ZNetScene.instance != null)
+            {
+                var go3 = ZNetScene.instance.FindInstance(from2);
+                var other3 = go3 != null ? go3.GetComponent<Ship>() : null;
+                if (other3 != null) { Gangway.RaiseAll(other3, false); Gangway.ForceClear(other3); }
+            }
             // Written straight into the records as well, on this boat and on whoever is lashed to her, so
             // nothing waits on an RPC and nothing stale holds her.
             Gangway.ForceClear(ship);
@@ -220,6 +228,22 @@ namespace SailTrim
         public static bool GangwayDown(Ship ship, int side) => Gangway.Down(ship, side);
         public static bool AnyGangwayDown(Ship ship) => Gangway.AnyDown(ship);
         public static bool LashedAlongside(Ship ship) => Gangway.LashedAlongside(ship);
+
+        /// <summary>Every boat whose plank lies across this one (a boat can be boarded from both beams).</summary>
+        public static List<Ship> LashedBy(Ship ship)
+        {
+            var list = new List<Ship>();
+            if (ship == null || ZNetScene.instance == null) return list;
+            Gangway.LashedFromBoth(ship, out ZDOID a, out ZDOID b);
+            foreach (var id in new[] { a, b })
+            {
+                if (id.IsNone()) continue;
+                var go = ZNetScene.instance.FindInstance(id);
+                var s = go != null ? go.GetComponent<Ship>() : null;
+                if (s != null) list.Add(s);
+            }
+            return list;
+        }
 
         /// <summary>Fit a gangway to a rail without a kit (side -1 port, +1 starboard). Runs on the owner through the RPC.</summary>
         public static void FitGangway(Ship ship, int side) => Gangway.Request(ship, side, 0);

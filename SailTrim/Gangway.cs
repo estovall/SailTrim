@@ -51,6 +51,11 @@ namespace SailTrim
         private const string LashPortTagKey = "SailTrim_LashPortTag";
         private const string LashStbdTagKey = "SailTrim_LashStbdTag";
         private const string LashedByTagKey = "SailTrim_LashedByTag";
+        // A second boat's plank across this one (a boat can be boarded from both beams at once). The same record
+        // again, in a second slot: whichever boat laid its plank first keeps the first.
+        private const string LashedBy2Key = "SailTrim_LashedBy2";
+        private const string LashedBy2TagKey = "SailTrim_LashedBy2Tag";
+        private static readonly string[][] LashedSlots = { new[] { LashedByKey, LashedByTagKey }, new[] { LashedBy2Key, LashedBy2TagKey } };
 
         private static string LashTagKey(int side) => side < 0 ? LashPortTagKey : LashStbdTagKey;
 
@@ -160,16 +165,26 @@ namespace SailTrim
             var zdo = nv.GetZDO();
             if (on != 0)
             {
-                zdo.Set(LashedByKey, from);
+                ZDOID first = zdo.GetZDOID(LashedByKey);
+                string key = LashedByKey, tagKey = LashedByTagKey;
+                if (!first.IsNone() && first != from && LashValid(zdo, first))
+                {
+                    key = LashedBy2Key; tagKey = LashedBy2TagKey;
+                }
+                zdo.Set(key, from);
                 var fz = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(from) : null;
-                zdo.Set(LashedByTagKey, fz != null ? fz.GetLong(Tag.Key, 0L) : 0L);
+                zdo.Set(tagKey, fz != null ? fz.GetLong(Tag.Key, 0L) : 0L);
                 Tag.Of(nv);
                 Mooring.HoldHere(ship);
                 ship.m_speed = Ship.Speed.Stop;
                 var st = SailTrimShip.Get(ship);
                 if (st != null) st.OnMoored();
             }
-            else if (zdo.GetZDOID(LashedByKey) == from) { zdo.Set(LashedByKey, ZDOID.None); zdo.Set(LashedByTagKey, 0L); }
+            else
+            {
+                if (zdo.GetZDOID(LashedByKey) == from) { zdo.Set(LashedByKey, ZDOID.None); zdo.Set(LashedByTagKey, 0L); }
+                if (zdo.GetZDOID(LashedBy2Key) == from) { zdo.Set(LashedBy2Key, ZDOID.None); zdo.Set(LashedBy2TagKey, 0L); }
+            }
         }
 
         /// <summary>Ships whose lashing partner has not been seen lately, and since when (see LashedFrom).</summary>
@@ -186,10 +201,36 @@ namespace SailTrim
         {
             var nv = ship != null ? ship.m_nview : null;
             if (nv == null || !nv.IsValid()) return ZDOID.None;
-            var zdo = nv.GetZDO();
             // LashedFrom is asked every physics step by the mooring, so the repair is not: it only matters
             // after a world load, and once a second is sooner than anyone will notice.
             if (Time.time >= _relinkAt) { _relinkAt = Time.time + 1f; RelinkLash(ship); }
+            ZDOID a = LashedFromSlot(ship, LashedByKey, LashedByTagKey);
+            return a.IsNone() ? LashedFromSlot(ship, LashedBy2Key, LashedBy2TagKey) : a;
+        }
+
+        /// <summary>Both boats whose planks lie across this one (either may be None).</summary>
+        internal static void LashedFromBoth(Ship ship, out ZDOID first, out ZDOID second)
+        {
+            first = LashedFromSlot(ship, LashedByKey, LashedByTagKey);
+            second = LashedFromSlot(ship, LashedBy2Key, LashedBy2TagKey);
+        }
+
+        /// <summary>Is this boat's own record still true: its plank down and lashed to us?</summary>
+        private static bool LashValid(ZDO zdo, ZDOID from)
+        {
+            var oz = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(from) : null;
+            if (oz == null) return true;   // not loaded yet: assume it holds (see LashedFromSlot)
+            bool down = (oz.GetInt(StateHash) & (DownPort | DownStbd)) != 0;
+            long us = zdo.GetLong(Tag.Key, 0L);
+            bool ours = oz.GetZDOID(LashPortKey) == zdo.m_uid || oz.GetZDOID(LashStbdKey) == zdo.m_uid
+                     || (us != 0L && (oz.GetLong(LashPortTagKey, 0L) == us || oz.GetLong(LashStbdTagKey, 0L) == us));
+            return down && ours;
+        }
+
+        private static ZDOID LashedFromSlot(Ship ship, string LashedByKey, string LashedByTagKey)
+        {
+            var nv = ship.m_nview;
+            var zdo = nv.GetZDO();
             ZDOID from = zdo.GetZDOID(LashedByKey);
             if (from.IsNone()) return ZDOID.None;
             var oz = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(from) : null;
@@ -218,6 +259,11 @@ namespace SailTrim
         /// boat whose plank is on it, and that boat's record of which side it lashed from is repaired too.
         /// </summary>
         private static void RelinkLash(Ship ship)
+        {
+            foreach (var slot in LashedSlots) RelinkLash(ship, slot[0], slot[1]);
+        }
+
+        private static void RelinkLash(Ship ship, string LashedByKey, string LashedByTagKey)
         {
             var nv = ship != null ? ship.m_nview : null;
             if (nv == null || !nv.IsValid() || !nv.IsOwner()) return;
@@ -347,6 +393,8 @@ namespace SailTrim
             }
             zdo.Set(LashedByKey, ZDOID.None);
             zdo.Set(LashedByTagKey, 0L);
+            zdo.Set(LashedBy2Key, ZDOID.None);
+            zdo.Set(LashedBy2TagKey, 0L);
             zdo.Set(LashLockKey, false);
             _lashMissingSince.Remove(ship);
         }
