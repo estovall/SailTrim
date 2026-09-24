@@ -987,6 +987,13 @@ namespace SailTrim
                     float frac = (way.Until - Time.time) / way.T;
                     Vector3 spot = zdo.GetVec3(PosHash, body.position) + way.V0 * (frac * dt);
                     zdo.Set(PosHash, spot);
+                    // Her speed is the shared way fading out, whatever her sail is doing: a pilot's sail kept one
+                    // boat driving while the other slowed, and a boat with no way given coasted on past a
+                    // stopped one. The hull is steered by the spot; the sail is only for the look until she stops.
+                    Vector3 vel = body.linearVelocity;
+                    Vector3 want = way.V0 * frac;
+                    body.linearVelocity = new Vector3(want.x, vel.y, want.z);
+                    Vector3 av0 = body.angularVelocity; av0.y *= Mathf.Exp(-dt * 2f); body.angularVelocity = av0;
                 }
                 else _wayOn.Remove(ship);
             }
