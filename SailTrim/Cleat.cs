@@ -858,6 +858,21 @@ namespace SailTrim
         }
 
         /// <summary>Owner: remember the spot to hold the boat at (tying up, or a gangway going down).</summary>
+        private struct Way { public Vector3 V0; public float Until, T; }
+        private static readonly Dictionary<Ship, Way> _wayOn = new Dictionary<Ship, Way>();
+
+        /// <summary>
+        /// A boat made fast under way (lashed alongside by a boarding party) carries her way and loses it over
+        /// <paramref name="seconds"/>: her hold spot runs on with her speed, decaying to nothing, and the sail is
+        /// left to her pilot meanwhile. Instead of the two-second stop against a wall.
+        /// </summary>
+        internal static void SettleWay(Ship ship, float seconds)
+        {
+            if (ship == null || ship.m_body == null) return;
+            Vector3 v = ship.m_body.linearVelocity; v.y = 0f;
+            _wayOn[ship] = new Way { V0 = v, Until = Time.time + seconds, T = Mathf.Max(0.5f, seconds) };
+        }
+
         /// <summary>Move the spot a held boat is kept at (owner only): warping her along a line.</summary>
         internal static void SetHold(Ship ship, Vector3 pos, float yaw)
         {
@@ -952,8 +967,25 @@ namespace SailTrim
                     }
                 }
             }
-            ship.m_speed = Ship.Speed.Stop;
-            ship.m_rudderValue = 0f;
+            // Carrying her way after a boarding party made fast: the spot runs on with her and slows to a stop
+            // over the settle time; sail and rudder are hers until then.
+            bool waying = false;
+            if (_wayOn.TryGetValue(ship, out Way way))
+            {
+                if (Time.time < way.Until)
+                {
+                    waying = true;
+                    float frac = (way.Until - Time.time) / way.T;
+                    Vector3 spot = zdo.GetVec3(PosHash, body.position) + way.V0 * (frac * dt);
+                    zdo.Set(PosHash, spot);
+                }
+                else _wayOn.Remove(ship);
+            }
+            if (!waying)
+            {
+                ship.m_speed = Ship.Speed.Stop;
+                ship.m_rudderValue = 0f;
+            }
 
             // Just made fast: let her run on and lose it rather than stopping against a wall. The spot she is
             // held at does NOT move with her while she settles: a gangway is aimed at something before it goes
@@ -978,7 +1010,7 @@ namespace SailTrim
             // tie-up spot is gentle, in case the hull is against the dock.
             // Nine tenths of the speed every step is a wall at fifty steps a second; for the first moments after
             // she is made fast she loses it over a couple of seconds instead, and only then is held hard.
-            float keep = settling ? Mathf.Exp(-dt * 2.2f) : 0.1f;
+            float keep = waying ? Mathf.Exp(-dt * 3f / way.T) : settling ? Mathf.Exp(-dt * 2.2f) : 0.1f;
             Vector3 v = body.linearVelocity;
             v.x *= keep; v.z *= keep;
             Vector3 d = zdo.GetVec3(PosHash, body.position) - body.position; d.y = 0f;
