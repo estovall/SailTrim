@@ -134,6 +134,13 @@ namespace SailTrim
 
         public static void RaiseGangways(Ship ship) => Gangway.RaiseAll(ship, false);
 
+        /// <summary>Lock this boat's lash: the boat it is lashed to cannot cast it off from its helm. Owner only.</summary>
+        public static void LockLash(Ship ship, bool locked)
+        {
+            if (ship == null || ship.m_nview == null || !ship.m_nview.IsValid() || !ship.m_nview.IsOwner()) return;
+            ship.m_nview.GetZDO().Set(Gangway.LashLockKey, locked);
+        }
+
         /// <summary>The side (-1 port, +1 starboard) whose plank is down, or 0.</summary>
         public static int GangwayDownSide(Ship ship) => Gangway.Down(ship, -1) ? -1 : Gangway.Down(ship, 1) ? 1 : 0;
 

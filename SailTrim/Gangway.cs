@@ -300,10 +300,19 @@ namespace SailTrim
         /// the same delay, ask for that plank to come up. This boat cannot cast itself off, because the gangway
         /// is not its own, and a crew held alongside with no way to get under way would be caught there.
         /// </summary>
+        internal const string LashLockKey = "SailTrim_LashLock";
+        /// <summary>A lash the other boat will not let go of (a boarding party's): the helm here cannot raise it.</summary>
+        internal static bool LashLocked(Ship other) => other != null && other.m_nview != null && other.m_nview.IsValid() && other.m_nview.GetZDO().GetBool(LashLockKey);
+
         internal static void LashedAtHelm(Ship ship, float dt)
         {
             ZDOID from = LashedFrom(ship);
             if (from.IsNone()) { _lashTime.Remove(ship); return; }
+            {
+                var lgo = ZNetScene.instance != null ? ZNetScene.instance.FindInstance(from) : null;
+                var lother = lgo != null ? lgo.GetComponent<Ship>() : null;
+                if (LashLocked(lother)) { _lashTime.Remove(ship); return; }
+            }
             if (!_lashTime.TryGetValue(ship, out float t)) t = 0f;
             t += dt;
             if (t < Plugin.GangwayRetractDelay.Value) { _lashTime[ship] = t; return; }
