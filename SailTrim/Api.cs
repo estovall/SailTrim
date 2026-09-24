@@ -40,6 +40,54 @@ namespace SailTrim
             return (ship.m_players != null ? ship.m_players.Count : 0) + AiCrew(ship);
         }
 
+        // ---- what holds a boat ----
+        /// <summary>Everything that can be stopping a boat, in one line, for a log.</summary>
+        public static string Holds(Ship ship)
+        {
+            if (ship == null) return "no ship";
+            var nv = ship.m_nview;
+            var st = SailTrimShip.Get(ship);
+            var partner = LashPartner(ship);
+            ZDOID from = Gangway.LashedFrom(ship);
+            string owner = nv != null && nv.IsValid() ? (nv.IsOwner() ? "me" : nv.GetZDO().GetOwner().ToString()) : "no view";
+            bool locked = nv != null && nv.IsValid() && nv.GetZDO().GetBool(Gangway.LashLockKey);
+            var towedBy = TowedBy(ship); var towing = Towing(ship);
+            return "moored=" + Mooring.IsMoored(ship) + " gangwayDown=" + GangwayDownSide(ship)
+                 + " lashedTo=" + (partner != null ? partner.name : "none") + " lashedFrom=" + (from.IsNone() ? "none" : from.ToString())
+                 + " lashLock=" + locked + " aiCrew=" + AiCrew(ship) + " crewCount=" + CrewCount(ship)
+                 + " players=" + (ship.m_players != null ? ship.m_players.Count : -1) + " owner=" + owner
+                 + " speed=" + ship.m_speed + " rudder=" + ship.m_rudderValue.ToString("F2")
+                 + " controlling=" + (ship.m_shipControlls != null && ship.m_shipControlls.HaveValidUser())
+                 + " manual=" + (st != null && st.ManualMode) + " sail=" + (st != null ? st.SailAmount : -1f).ToString("F2")
+                 + " sheet=" + (st != null ? st.SheetAngle : 0f).ToString("F0")
+                 + " towedBy=" + (towedBy != null ? towedBy.name : "none") + " towing=" + (towing != null ? towing.name : "none");
+        }
+
+        /// <summary>Let go of everything holding a boat: her own planks, any plank lying across her from another
+        /// boat, her mooring line, her lash lock, her AI crew count. For a captured boat that will not sail.</summary>
+        public static void FreeAll(Ship ship)
+        {
+            if (ship == null || ship.m_nview == null || !ship.m_nview.IsValid()) return;
+            Gangway.RaiseAll(ship, false);
+            var partner = LashPartner(ship);
+            if (partner != null) Gangway.RaiseAll(partner, false);
+            ZDOID from = Gangway.LashedFrom(ship);
+            if (!from.IsNone() && ZNetScene.instance != null)
+            {
+                var go = ZNetScene.instance.FindInstance(from);
+                var other = go != null ? go.GetComponent<Ship>() : null;
+                if (other != null) Gangway.RaiseAll(other, false);
+            }
+            if (ship.m_nview.IsOwner())
+            {
+                var z = ship.m_nview.GetZDO();
+                z.Set(Mooring.CleatKey, ZDOID.None);
+                z.Set(Gangway.LashLockKey, false);
+            }
+            SetAiCrew(ship, 0);
+            SetRowBoost(ship, 0f, 0f);
+        }
+
         // ---- tow line ----
         /// <summary>Give a boat a tow bollard at her stern (persisted in her ZDO); she can then take another boat in tow.</summary>
         public static void SetTowCapable(Ship ship, bool on) => Tow.SetCapable(ship, on);
