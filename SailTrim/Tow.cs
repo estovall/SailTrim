@@ -174,7 +174,9 @@ namespace SailTrim
         {
             var towed = Tow.Towing(_ship);
             if (towed == null) { if (_rope.enabled) _rope.enabled = false; return; }
-            if (_rope.sharedMaterial == null) { var m = CleatPiece.RopeMaterial(); if (m != null) _rope.sharedMaterial = m; }
+            // No material, or another mod's error-shader copy of the placeholder (a magenta line): the rope's own.
+            var cur = _rope.sharedMaterial;
+            if (cur == null || cur.shader == null || cur.shader.name.Contains("InternalError")) { var m = CleatPiece.RopeMaterial(); if (m != null) _rope.sharedMaterial = m; }
             if (!_rope.enabled) _rope.enabled = true;
             Vector3 a = Tow.SternPoint(_ship), b = Tow.BowPoint(towed);
             float slack = Mathf.Clamp01(1f - (Vector3.Distance(a, b) / Plugin.TowLength.Value)) * 1.5f;
