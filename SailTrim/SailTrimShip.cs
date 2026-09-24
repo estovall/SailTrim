@@ -42,6 +42,7 @@ namespace SailTrim
         private const float LiftNorm = 1.15f; // peak of LiftKeys, so ideal trim ~= 1.0 of the vanilla force scale
 
         private Ship _ship;
+        internal Ship Ship => _ship;
         private ZNetView _nview;
         private Rigidbody _body;
 

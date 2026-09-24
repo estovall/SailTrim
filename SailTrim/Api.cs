@@ -120,6 +120,18 @@ namespace SailTrim
         }
 
         /// <summary>Set the sheet only (sail amount, rudder and rowing untouched): crew trimming for the helmsman.</summary>
+        private static readonly System.Collections.Generic.HashSet<Ship> _crewOars = new System.Collections.Generic.HashSet<Ship>();
+
+        /// <summary>Another mod's crew row this boat on the forward row key, sail set or not (a row boost of its
+        /// own). While on, the pilot's forward row key with sail set neither warns nor stows the sail.</summary>
+        public static void SetCrewOars(Ship ship, bool on)
+        {
+            if (ship == null) return;
+            if (on) _crewOars.Add(ship); else _crewOars.Remove(ship);
+        }
+
+        public static bool CrewOars(Ship ship) => ship != null && _crewOars.Contains(ship);
+
         public static void SetSheet(Ship ship, float sheetDeg)
         {
             var st = SailTrimShip.Get(ship);

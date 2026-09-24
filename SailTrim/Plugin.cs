@@ -825,6 +825,8 @@ namespace SailTrim
                 else if (RowBackKey.Value != KeyCode.None && ZInput.GetKey(RowBackKey.Value, false)) held = -1;
             }
             bool sailSet = st.SailAmount > 0.001f;
+            // Crew at the oars (SetCrewOars): rowing ahead with the sail set is theirs to do; leave the sail be.
+            if (held == 1 && sailSet && SailTrimApi.CrewOars(st.Ship)) { _rowHold = 0f; _rowWarned = false; _rowPrevHeld = held; return; }
 
             if (held != 0)
             {
