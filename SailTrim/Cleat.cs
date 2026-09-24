@@ -870,7 +870,16 @@ namespace SailTrim
         {
             if (ship == null || ship.m_body == null) return;
             Vector3 v = ship.m_body.linearVelocity; v.y = 0f;
-            _wayOn[ship] = new Way { V0 = v, Until = Time.time + seconds, T = Mathf.Max(0.5f, seconds) };
+            SettleWay(ship, seconds, v);
+        }
+
+        /// <summary>The same, with the way given: two boats lashed together must settle with ONE velocity, or their
+        /// hold spots run apart and the plank between them ends in the water.</summary>
+        internal static void SettleWay(Ship ship, float seconds, Vector3 way)
+        {
+            if (ship == null || ship.m_body == null) return;
+            way.y = 0f;
+            _wayOn[ship] = new Way { V0 = way, Until = Time.time + seconds, T = Mathf.Max(0.5f, seconds) };
         }
 
         /// <summary>Move the spot a held boat is kept at (owner only): warping her along a line.</summary>

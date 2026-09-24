@@ -198,6 +198,10 @@ namespace SailTrim
 
         /// <summary>A boat just made fast under way keeps it and loses it over the seconds given, instead of stopping dead.</summary>
         public static void SettleWay(Ship ship, float seconds) => Mooring.SettleWay(ship, seconds);
+        /// <summary>Settle with a given way: give two lashed boats the same one so they stay together.</summary>
+        public static void SettleWay(Ship ship, float seconds, Vector3 way) => Mooring.SettleWay(ship, seconds, way);
+        /// <summary>The hull's own timber material (what the gangway and tow post are made of).</summary>
+        public static Material ShipTimber(Ship ship) => Gangway.ShipTimber(ship);
 
         /// <summary>A held boat's spot (moored or lashed): move it to warp her along, e.g. hauling two hulls together.</summary>
         public static void SetHoldSpot(Ship ship, Vector3 pos, float yaw) => Mooring.SetHold(ship, pos, yaw);
