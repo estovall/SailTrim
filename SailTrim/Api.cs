@@ -108,6 +108,13 @@ namespace SailTrim
             ship.m_body.AddForce(fwd * (b.Accel * fade * ship.m_body.mass * dt), ForceMode.Impulse);
         }
 
+        /// <summary>Make one hull faster than her length allows: the hull speed the drag builds toward is multiplied.</summary>
+        public static void SetSpeedBonus(Ship ship, float factor)
+        {
+            var st = SailTrimShip.Get(ship);
+            if (st != null) st.SpeedBonus = Mathf.Max(0.1f, factor);
+        }
+
         /// <summary>Wind direction the true wind comes from, in the world, flat.</summary>
         public static Vector3 TrueWindFrom()
         {

@@ -124,9 +124,11 @@ namespace SailTrim
             get
             {
                 float len = _ship != null && _ship.m_floatCollider != null ? _ship.m_floatCollider.size.z : 10f;
-                return 2.43f * Mathf.Sqrt(Mathf.Max(1f, len)) * Plugin.HullSpeedScale.Value;
+                return 2.43f * Mathf.Sqrt(Mathf.Max(1f, len)) * Plugin.HullSpeedScale.Value * SpeedBonus;
             }
         }
+        /// <summary>A faster hull than her length says (a raider's): multiplies the hull speed. 1 = normal.</summary>
+        public float SpeedBonus { get; internal set; } = 1f;
         /// <summary>Forward speed in knots.</summary>
         public float SpeedKnots => _ship != null ? Mathf.Max(0f, _ship.GetSpeed()) * 1.94384f : 0f;
         /// <summary>Speed as a fraction of hull speed; above 1 the boat is being pushed past its limit.</summary>
