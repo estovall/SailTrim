@@ -998,7 +998,7 @@ namespace SailTrim
         internal void StowIfEmpty()
         {
             if (_nview == null || !_nview.IsValid() || !_nview.IsOwner() || _ship == null) return;
-            if (SailTrimApi.CrewCount(_ship) > 0) return;
+            if (SailTrimApi.CrewAboard(_ship) > 0) return;
             if (SailAmount <= 0.001f && RowDir == 0) return;
             SailAmount = 0f;
             RowDir = 0;

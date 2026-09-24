@@ -145,6 +145,7 @@ namespace SailTrim
         internal static ConfigEntry<bool> BuoyEnabled;
         internal static ConfigEntry<bool> GangwayEnabled;
         internal static ConfigEntry<float> GangwayLength;
+        internal static ConfigEntry<float> TowLength, TowBreak, TowPull, TowRange;
         internal static ConfigEntry<float> GangwayMountZ;
         internal static ConfigEntry<float> GangwayMaxAngle;
 
@@ -562,6 +563,10 @@ namespace SailTrim
                 new ConfigDescription("A tied-up boat mends itself: this percent of its full health per minute (the dock knocks it about between tides). 0 = off.", new AcceptableValueRange<float>(0f, 100f)));
             GangwayEnabled = Config.Bind("10. Gangway", "GangwayEnabled", true,
                 "Adds the Gangway: a plank of fine wood and iron nails you craft at the workbench and fit to a boat's rail (any hull but the raft, one a side). Lower it to walk between the deck and the dock with a load you could not climb with.");
+            TowLength = Config.Bind("12. Tow", "TowLength", 12f, "Length of a tow line, metres from the tug's stern to the towed boat's bow, before it pulls.");
+            TowBreak = Config.Bind("12. Tow", "TowBreak", 20f, "Metres of stretch beyond TowLength at which the line parts.");
+            TowPull = Config.Bind("12. Tow", "TowPull", 1.5f, "Pull of the line in m/s^2 per metre of stretch, capped at four times this.");
+            TowRange = Config.Bind("12. Tow", "TowRange", 25f, "How close a boat must be to be taken in tow from the bollard.");
             GangwayLength = Config.Bind("10. Gangway", "GangwayLength", 6f,
                 new ConfigDescription("How long the plank is, in metres. At six metres and the standard slope limit the far end can sit about three and a half metres below the rail, which covers most docks and a shelving beach. Stowed it lies along the rail, so a longer plank wants a longer boat.",
                     new AcceptableValueRange<float>(1.5f, 10f)));

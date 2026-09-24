@@ -29,8 +29,24 @@ namespace SailTrim
         {
             if (ship == null) return 0;
             int n = ship.m_players != null ? ship.m_players.Count : 0;
-            return n + AiCrew(ship);
+            // Under tow she must not be stopped as an empty boat, whoever is aboard.
+            return n + AiCrew(ship) + (Tow.IsTowed(ship) ? 1 : 0);
         }
+
+        /// <summary>Players and AI crew only: what "empty" means for furling the sail.</summary>
+        public static int CrewAboard(Ship ship)
+        {
+            if (ship == null) return 0;
+            return (ship.m_players != null ? ship.m_players.Count : 0) + AiCrew(ship);
+        }
+
+        // ---- tow line ----
+        /// <summary>Give a boat a tow bollard at her stern (persisted in her ZDO); she can then take another boat in tow.</summary>
+        public static void SetTowCapable(Ship ship, bool on) => Tow.SetCapable(ship, on);
+        public static Ship Towing(Ship tug) => Tow.Towing(tug);
+        public static Ship TowedBy(Ship ship) => Tow.TowedBy(ship);
+        public static void TakeInTow(Ship tug, Ship towed) => Tow.Request(tug, towed);
+        public static void CastOffTow(Ship tug) => Tow.Request(tug, null);
 
         /// <summary>A readout of the boat's sailing state for an AI helm.</summary>
         public struct Trim

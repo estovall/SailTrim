@@ -44,6 +44,8 @@ namespace SailTrim
                 __instance.gameObject.AddComponent<SailTrimShip>().Init(__instance);
             try { Gangway.OnShipAwake(__instance); }
             catch (System.Exception e) { Plugin.Log.LogError("SailTrim: gangway mounts: " + e); }
+            try { Tow.OnShipAwake(__instance); }
+            catch (System.Exception e) { Plugin.Log.LogError("SailTrim: tow post: " + e); }
             if (__instance.m_mastObject != null)
             {
                 // Vanilla ships have a "Hold fast" seat at the mast (a Chair somewhere in the ship hierarchy,
@@ -85,6 +87,7 @@ namespace SailTrim
             SailTrimShip.Get(__instance)?.OnShipStart();
             Mooring.OnShipStart(__instance);
             Gangway.OnShipStart(__instance);
+            Tow.OnShipStart(__instance);
         }
 
         // ---- The cleat: prefab into the world's prefab list and the hammer ----
@@ -374,6 +377,7 @@ namespace SailTrim
             st.StowIfEmpty();
             if (st.ManualMode) st.ApplyHullEffects(fixedDeltaTime);
             SailTrimApi.ApplyRowBoost(__instance, fixedDeltaTime);
+            Tow.FixedStep(__instance, fixedDeltaTime);
         }
 
         // Camera roll with the ship: blend between "level" and vanilla's tilted result by config.
