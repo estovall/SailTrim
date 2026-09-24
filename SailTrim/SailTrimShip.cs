@@ -442,6 +442,15 @@ namespace SailTrim
                 _nview.GetZDO().Set(ZdoSheetHandHash, SheetHand);
         }
 
+        /// <summary>Crew (another mod's AI hands) haul the sheet: the local value at once, the owner's record by RPC.</summary>
+        internal void CrewSetSheet(float value)
+        {
+            SheetAngle = Mathf.Clamp(value, 0f, Plugin.MaxSheetAngle.Value);
+            if (_nview == null || !_nview.IsValid()) return;
+            if (_nview.IsOwner()) _nview.GetZDO().Set(ZdoSheetHash, SheetAngle);
+            else _nview.InvokeRPC(RpcName, SheetAngle);
+        }
+
         internal void CrewSetSheetHand(bool take)
         {
             var p = Player.m_localPlayer;

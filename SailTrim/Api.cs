@@ -119,6 +119,13 @@ namespace SailTrim
             public float HeelAngle;
         }
 
+        /// <summary>Set the sheet only (sail amount, rudder and rowing untouched): crew trimming for the helmsman.</summary>
+        public static void SetSheet(Ship ship, float sheetDeg)
+        {
+            var st = SailTrimShip.Get(ship);
+            if (st != null) st.CrewSetSheet(sheetDeg);
+        }
+
         public static Trim GetTrim(Ship ship)
         {
             var st = SailTrimShip.Get(ship);
