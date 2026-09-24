@@ -78,11 +78,20 @@ namespace SailTrim
                 var other = go != null ? go.GetComponent<Ship>() : null;
                 if (other != null) Gangway.RaiseAll(other, false);
             }
+            // Written straight into the records as well, on this boat and on whoever is lashed to her, so
+            // nothing waits on an RPC and nothing stale holds her.
+            Gangway.ForceClear(ship);
+            if (partner != null) Gangway.ForceClear(partner);
+            if (!from.IsNone() && ZNetScene.instance != null)
+            {
+                var go2 = ZNetScene.instance.FindInstance(from);
+                var other2 = go2 != null ? go2.GetComponent<Ship>() : null;
+                if (other2 != null) Gangway.ForceClear(other2);
+            }
             if (ship.m_nview.IsOwner())
             {
                 var z = ship.m_nview.GetZDO();
                 z.Set(Mooring.CleatKey, ZDOID.None);
-                z.Set(Gangway.LashLockKey, false);
             }
             SetAiCrew(ship, 0);
             SetRowBoost(ship, 0f, 0f);

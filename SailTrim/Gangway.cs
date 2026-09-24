@@ -328,6 +328,29 @@ namespace SailTrim
             if (any && p != null) p.Message(MessageHud.MessageType.TopLeft, "Gangway up: cast off alongside");
         }
 
+        /// <summary>Owner only: every plank up and every lash record gone, written straight into the ZDO. For a
+        /// boat that must be free now (a prize under a player's helm), not after an RPC round trip.</summary>
+        internal static void ForceClear(Ship ship)
+        {
+            var nv = ship != null ? ship.m_nview : null;
+            if (nv == null || !nv.IsValid() || !nv.IsOwner()) return;
+            var zdo = nv.GetZDO();
+            int state = zdo.GetInt(StateHash);
+            state &= ~(DownPort | DownStbd);
+            zdo.Set(StateHash, state);
+            foreach (int side in Sides)
+            {
+                ZDOID was = zdo.GetZDOID(LashKey(side));
+                if (!was.IsNone()) TellLashed(ship, was, false);
+                zdo.Set(LashKey(side), ZDOID.None);
+                zdo.Set(LashTagKey(side), 0L);
+            }
+            zdo.Set(LashedByKey, ZDOID.None);
+            zdo.Set(LashedByTagKey, 0L);
+            zdo.Set(LashLockKey, false);
+            _lashMissingSince.Remove(ship);
+        }
+
         internal static void RaiseAll(Ship ship, bool message)
         {
             bool any = false;
