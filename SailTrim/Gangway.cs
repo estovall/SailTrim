@@ -997,6 +997,9 @@ namespace SailTrim
             if (_itemPrefab == null) return;
             var drop = _itemPrefab.GetComponent<ItemDrop>();
             if (drop == null || drop.m_itemData == null) return;
+            // A prefab's own item data has no drop prefab set (that is filled in when the item is picked up);
+            // DropItem instantiates it, and instantiating null threw out of WearNTear.Destroy.
+            if (drop.m_itemData.m_dropPrefab == null) drop.m_itemData.m_dropPrefab = _itemPrefab;
 
             int n = 0;
             foreach (int side in Sides) if (Fitted(ship, side)) n++;
