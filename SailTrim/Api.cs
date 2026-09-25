@@ -215,6 +215,13 @@ namespace SailTrim
             if (st != null) st.SpeedBonus = Mathf.Max(0.1f, factor);
         }
 
+        /// <summary>Scale one hull's heel (1 = as configured, 0.5 = half the heeling moment).</summary>
+        public static void SetHeelScale(Ship ship, float factor)
+        {
+            var st = SailTrimShip.Get(ship);
+            if (st != null) st.HeelScale = Mathf.Clamp(factor, 0f, 2f);
+        }
+
         /// <summary>Wind direction the true wind comes from, in the world, flat.</summary>
         public static Vector3 TrueWindFrom()
         {

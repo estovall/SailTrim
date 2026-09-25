@@ -130,6 +130,9 @@ namespace SailTrim
         }
         /// <summary>A faster hull than her length says (a raider's): multiplies the hull speed. 1 = normal.</summary>
         public float SpeedBonus { get; internal set; } = 1f;
+        /// <summary>Heel of this hull times this (1 = as configured). An AI-crewed hull is sailed flatter: its crew
+        /// ease the sheet in the gusts the way a player cannot see them do.</summary>
+        public float HeelScale { get; internal set; } = 1f;
         /// <summary>Forward speed in knots.</summary>
         public float SpeedKnots => _ship != null ? Mathf.Max(0f, _ship.GetSpeed()) * 1.94384f : 0f;
         /// <summary>Speed as a fraction of hull speed; above 1 the boat is being pushed past its limit.</summary>
@@ -949,7 +952,7 @@ namespace SailTrim
             // hull beam (Karve float collider = 4 m wide, the reference) so a narrow hull lies over more than a beamy one.
             float halfBeam = _ship.m_floatCollider != null ? _ship.m_floatCollider.size.x * 0.5f : 2f;
             float beamNorm = Mathf.Pow(Mathf.Max(0.3f, halfBeam) / 2f, 2.5f);
-            float torque = heelMag * windEmphasis * boost * Plugin.HeelTorque.Value * _body.mass * beamNorm; // N*m
+            float torque = heelMag * windEmphasis * boost * Plugin.HeelTorque.Value * _body.mass * beamNorm * HeelScale; // N*m
 
             // Positive torque about +forward lifts the starboard side (roll = asin(right.y) > 0).
             // The boat heels away from the wind: wind from starboard (WindFromAngle > 0) -> heel to port -> positive roll.
