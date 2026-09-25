@@ -314,6 +314,42 @@ namespace SailTrim
         public static void SetHoldSpot(Ship ship, Vector3 pos, float yaw) => Mooring.SetHold(ship, pos, yaw);
         public static bool GetHoldSpot(Ship ship, out Vector3 pos, out float yaw) => Mooring.GetHold(ship, out pos, out yaw);
 
+        /// <summary>
+        /// Would the plank on that side, let down now, come to rest on that boat's deck? From its hinge on the rail,
+        /// straight out to the side: the first point of her deck (or gunwale) under the plank's line within its
+        /// length, no steeper than maxDrop degrees down or 15 up. False when the plank is not fitted there, or it
+        /// would reach only water. For AI crews, so a plank is never dropped into the sea.
+        /// </summary>
+        public static bool GangwayWouldLand(Ship ship, int side, Ship onto, float maxDrop = 40f)
+        {
+            if (ship == null || onto == null) return false;
+            GangwayMount mount = null;
+            foreach (var m in ship.GetComponentsInChildren<GangwayMount>(true)) if (m.Side == side) { mount = m; break; }
+            if (mount == null) return false;
+            Vector3 hinge = mount.HingePoint;
+            Vector3 outDir = ship.transform.right * side; outDir.y = 0f;
+            if (outDir.sqrMagnitude < 1e-4f) return false;
+            outDir.Normalize();
+            float len = Mathf.Max(1.5f, Plugin.GangwayLength.Value);
+            float tanDown = Mathf.Tan(maxDrop * Mathf.Deg2Rad), tanUp = Mathf.Tan(15f * Mathf.Deg2Rad);
+            for (float d = 0.8f; d <= len; d += 0.2f)
+            {
+                Vector3 p = hinge + outDir * d;
+                foreach (var hit in Physics.RaycastAll(p + Vector3.up * 3f, Vector3.down, 8f, ~0, QueryTriggerInteraction.Ignore))
+                {
+                    if (hit.collider == null || hit.normal.y < 0.5f) continue;
+                    var s = hit.collider.GetComponentInParent<Ship>();
+                    if (s == ship) continue;
+                    if (s != onto) continue;
+                    float drop = hinge.y - hit.point.y;
+                    if (drop > d * tanDown || -drop > d * tanUp) continue;
+                    if (d * d + drop * drop > len * len) continue;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         /// <summary>Where a lowered plank starts (the hinge at the rail) and ends (where it rests), for walking it.</summary>
         public static bool GangwayEnds(Ship ship, int side, out Vector3 hinge, out Vector3 foot)
         {
