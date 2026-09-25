@@ -134,7 +134,9 @@ namespace SailTrim
         // ---- Config: mooring ----
         internal static ConfigEntry<bool> CleatEnabled;
         internal static ConfigEntry<float> CleatRange;
-        internal static ConfigEntry<int> CleatCost;
+        internal static ConfigEntry<int> CleatCost, CleatCostMedium, CleatCostLarge;
+        internal static ConfigEntry<float> BerthGap;
+        internal static ConfigEntry<bool> BerthOutline;
         internal static ConfigEntry<float> MooringHold;
         internal static ConfigEntry<float> CastOffDelay;
         internal static ConfigEntry<float> MoorRepairPerMinute;
@@ -249,6 +251,7 @@ namespace SailTrim
             Instance = this;
             Log = Logger;
             BindConfig();
+            SailTrim.BerthOutline.Install(gameObject);
 
             if (!VerifyPatchTargets())
             {
@@ -542,6 +545,10 @@ namespace SailTrim
                 "Adds the Cleat build piece (hammer, Misc). Interact with it to tie up a boat within CleatRange: the boat holds its spot and heading, crew aboard or not, until untied.");
             CleatRange = Config.Bind("8. Mooring", "CleatRange", 10f,
                 new ConfigDescription("How far from the cleat a boat can be to tie it up, metres.", new AcceptableValueRange<float>(2f, 30f)));
+            CleatCostMedium = Config.Bind("8. Mooring", "CleatCostMedium", 2, "Bronze for the medium cleat (a longship's berth).");
+            CleatCostLarge = Config.Bind("8. Mooring", "CleatCostLarge", 3, "Bronze for the large cleat (a drakkar's berth).");
+            BerthGap = Config.Bind("8. Mooring", "BerthGap", 1.2f, "How far off a cleat a ship's side lies at her berth, metres (her gangway reaches the dock from there).");
+            BerthOutline = Config.Bind("8. Mooring", "BerthOutline", true, "With the hammer out, each cleat nearby (and the one being placed) shows the berth it marks: green over deep enough water, amber where too shallow, blue with a boat tied.");
             CleatCost = Config.Bind("8. Mooring", "CleatCost", 1,
                 new ConfigDescription("Bronze per cleat.", new AcceptableValueRange<int>(1, 20)));
             CastOffDelay = Config.Bind("8. Mooring", "CastOffDelay", 1f,

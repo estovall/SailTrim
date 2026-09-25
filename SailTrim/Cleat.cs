@@ -15,6 +15,11 @@ namespace SailTrim
     /// the SailTrim_Moor RPC. Either side that finds the other gone lets go.
     ///
     /// No asset bundle: the model is a procedural mesh, the rope a simulated line.
+    ///
+    /// Three sizes (1.11): small, medium and large, one, two and three bronze, the same horn cast bigger (the
+    /// prefab's own scale, so the rope and the wrap scale with it). Each marks a berth for a karve, a longship
+    /// or a drakkar (Berths.cs): the hammer shows the berth's outline beside it, and AI ships dock at a berth
+    /// their size fits. Any cleat still ties any boat by hand.
     /// </summary>
     internal static class Cleat
     {
@@ -27,6 +32,21 @@ namespace SailTrim
         internal static readonly Vector3 RopePoint = new Vector3(0f, 0.25f, 0f);
 
         private static GameObject _root, _prefab;
+        /// <summary>The three sizes: prefab names (the small keeps the old name, so cleats already built stay), scale, label.</summary>
+        internal static readonly string[] Names = { PrefabName, "SailTrim_CleatMedium", "SailTrim_CleatLarge" };
+        internal static readonly float[] Scales = { 1f, 1.35f, 1.7f };
+        internal static readonly string[] SizeLabels = { "karve", "longship", "drakkar" };
+        private static readonly GameObject[] _prefabs = new GameObject[3];
+
+        /// <summary>A cleat's size from its (prefab) name: 0 small, 1 medium, 2 large; -1 not a cleat.</summary>
+        internal static int SizeOf(string prefabName)
+        {
+            if (string.IsNullOrEmpty(prefabName)) return -1;
+            for (int i = 2; i >= 0; i--) if (prefabName.StartsWith(Names[i])) return i;
+            return -1;
+        }
+
+        private static int Cost(int size) => size == 0 ? Mathf.Max(1, Plugin.CleatCost.Value) : size == 1 ? Mathf.Max(1, Plugin.CleatCostMedium.Value) : Mathf.Max(1, Plugin.CleatCostLarge.Value);
         private static bool _effectsApplied;
         private static Sprite _icon;
 
@@ -49,10 +69,16 @@ namespace SailTrim
         {
             if (_prefab != null) return;
             EnsureRoot();
+            for (int i = 0; i < 3; i++) _prefabs[i] = BuildPrefab(i);
+            _prefab = _prefabs[0];
+        }
 
+        private static GameObject BuildPrefab(int size)
+        {
             int pieceLayer = LayerMask.NameToLayer("piece");
-            var go = new GameObject(PrefabName);
+            var go = new GameObject(Names[size]);
             go.transform.SetParent(_root.transform, false);
+            go.transform.localScale = Vector3.one * Scales[size];
             go.layer = pieceLayer;
 
             var nview = go.AddComponent<ZNetView>();
@@ -60,8 +86,8 @@ namespace SailTrim
             nview.m_type = ZDO.ObjectType.Default;
 
             var piece = go.AddComponent<Piece>();
-            piece.m_name = "Cleat";
-            piece.m_description = "A bronze horn cleat for the dock. Tie up a boat within reach and it stays put, crew aboard or not.";
+            piece.m_name = size == 0 ? "Cleat (karve)" : size == 1 ? "Cleat (longship)" : "Cleat (drakkar)";
+            piece.m_description = $"A bronze horn cleat for the dock, sized for a {SizeLabels[size]}'s berth. Tie up a boat within reach and it stays put, crew aboard or not. With the hammer out, the berth shows beside it: set it on the dock's edge, the berth over deep water.";
             piece.m_category = Piece.PieceCategory.Misc;
             piece.m_groundPiece = false;
             piece.m_allowedInDungeons = false;
@@ -93,8 +119,8 @@ namespace SailTrim
             box.size = new Vector3(0.9f, 0.3f, 0.2f);
 
 
-            _prefab = go;
-            Plugin.Log.LogInfo("SailTrim: cleat prefab built.");
+            Plugin.Log.LogInfo($"SailTrim: cleat prefab built ({Names[size]}, x{Scales[size]}).");
+            return go;
         }
 
         /// <summary>
@@ -194,24 +220,27 @@ namespace SailTrim
             Models.MaybeRenderCandidatePreviews(db);
             // The model needs a material of the game's (see Models.StandardTemplate): built once a world's ObjectDB is up.
             Models.FindStandardTemplate(db);
-            BuildVisual(_prefab.transform);
-            var piece = _prefab.GetComponent<Piece>();
             var bronze = db.GetItemPrefab("Bronze");
             var drop = bronze != null ? bronze.GetComponent<ItemDrop>() : null;
-            if (drop != null)
-                piece.m_resources = new[] { new Piece.Requirement { m_resItem = drop, m_amount = Mathf.Max(1, Plugin.CleatCost.Value), m_recover = true } };
+            for (int i = 0; i < 3; i++) BuildVisual(_prefabs[i].transform);
             if (_icon == null && _prefab.transform.Find("visual") != null)
             {
                 var visual = _prefab.transform.Find("visual");
                 _icon = visual != null ? Models.RenderIcon(visual.gameObject, "icon_cleat", 256, 150f, 32f) : null;
 
             }
-            piece.m_icon = _icon != null ? _icon : (drop != null ? drop.m_itemData.GetIcon() : piece.m_icon);
+            for (int i = 0; i < 3; i++)
+            {
+                var piece = _prefabs[i].GetComponent<Piece>();
+                if (drop != null)
+                    piece.m_resources = new[] { new Piece.Requirement { m_resItem = drop, m_amount = Cost(i), m_recover = true } };
+                piece.m_icon = _icon != null ? _icon : (drop != null ? drop.m_itemData.GetIcon() : piece.m_icon);
+            }
             var hammer = db.GetItemPrefab("Hammer");
             var table = hammer != null ? hammer.GetComponent<ItemDrop>()?.m_itemData.m_shared.m_buildPieces : null;
             MaybeRenderTiedPreview();
             if (table == null) return; // the main menu: the pieces go in when a world's ObjectDB is up
-            if (!table.m_pieces.Contains(_prefab)) table.m_pieces.Add(_prefab);
+            for (int i = 0; i < 3; i++) if (!table.m_pieces.Contains(_prefabs[i])) table.m_pieces.Add(_prefabs[i]);
         }
 
         private static bool _tiedPreviewDone;
@@ -257,9 +286,13 @@ namespace SailTrim
         {
             if (!Plugin.CleatEnabled.Value || scene == null) return;
             EnsurePrefab();
-            int hash = PrefabName.GetStableHashCode();
-            if (!scene.m_prefabs.Contains(_prefab)) scene.m_prefabs.Add(_prefab);
-            if (!scene.m_namedPrefabs.ContainsKey(hash)) scene.m_namedPrefabs.Add(hash, _prefab);
+            for (int i = 0; i < 3; i++)
+            {
+                int hash = Names[i].GetStableHashCode();
+                if (!scene.m_prefabs.Contains(_prefabs[i])) scene.m_prefabs.Add(_prefabs[i]);
+                if (!scene.m_namedPrefabs.ContainsKey(hash)) scene.m_namedPrefabs.Add(hash, _prefabs[i]);
+            }
+            Berths.Measure(scene);
             MaybeRenderTiedPreview();
             if (!_effectsApplied)
             {
@@ -268,9 +301,12 @@ namespace SailTrim
                 if (src != null)
                 {
                     var cp = src.GetComponent<Piece>(); var cw = src.GetComponent<WearNTear>();
-                    var piece = _prefab.GetComponent<Piece>(); var wnt = _prefab.GetComponent<WearNTear>();
-                    if (cp != null) piece.m_placeEffect = cp.m_placeEffect;
-                    if (cw != null) { wnt.m_hitEffect = cw.m_hitEffect; wnt.m_destroyedEffect = cw.m_destroyedEffect; }
+                    foreach (var pf in _prefabs)
+                    {
+                        var piece = pf.GetComponent<Piece>(); var wnt = pf.GetComponent<WearNTear>();
+                        if (cp != null) piece.m_placeEffect = cp.m_placeEffect;
+                        if (cw != null) { wnt.m_hitEffect = cw.m_hitEffect; wnt.m_destroyedEffect = cw.m_destroyedEffect; }
+                    }
                     _effectsApplied = true;
                 }
             }
@@ -317,6 +353,10 @@ namespace SailTrim
         private static readonly List<CleatPiece> _all = new List<CleatPiece>();
 
         internal ZNetView View => _nview;
+        /// <summary>0 small (karve), 1 medium (longship), 2 large (drakkar).</summary>
+        internal int Size { get; private set; }
+        internal static IEnumerable<CleatPiece> All => _all;
+        private string Title => "Cleat (" + Cleat.SizeLabels[Mathf.Clamp(Size, 0, 2)] + " berth)";
 
         private void OnEnable() { if (!_all.Contains(this)) _all.Add(this); }
         private void OnDisable() { _all.Remove(this); }
@@ -333,6 +373,7 @@ namespace SailTrim
         private void Awake()
         {
             _nview = GetComponent<ZNetView>();
+            Size = Mathf.Max(0, Cleat.SizeOf(Utils.GetPrefabName(gameObject)));
         }
 
         private ZDOID Boat
@@ -363,21 +404,21 @@ namespace SailTrim
         }
 
         // ------------------------------------------------------------------
-        public string GetHoverName() => "Cleat";
+        public string GetHoverName() => Title;
         public float GetHoverOffset() => 0f;
 
         public string GetHoverText()
         {
-            if (_nview == null || !_nview.IsValid()) return "Cleat";
+            if (_nview == null || !_nview.IsValid()) return Title;
             var boat = Boat;
             if (!boat.IsNone())
             {
                 var ship = ShipOf(boat);
-                return Localization.instance.Localize("Cleat: " + ShipName(ship) + " tied up\n[<color=yellow><b>$KEY_Use</b></color>] Untie");
+                return Localization.instance.Localize(Title + ": " + ShipName(ship) + " tied up\n[<color=yellow><b>$KEY_Use</b></color>] Untie");
             }
             var near = NearestShip(out float d);
-            if (near == null) return Localization.instance.Localize($"Cleat\nNo boat within {Plugin.CleatRange.Value:0} m");
-            return Localization.instance.Localize("Cleat\n[<color=yellow><b>$KEY_Use</b></color>] Tie up " + ShipName(near) + $" ({d:0.0} m)");
+            if (near == null) return Localization.instance.Localize($"{Title}\nNo boat within {Plugin.CleatRange.Value:0} m");
+            return Localization.instance.Localize(Title + "\n[<color=yellow><b>$KEY_Use</b></color>] Tie up " + ShipName(near) + $" ({d:0.0} m)");
         }
 
         public bool UseItem(Humanoid user, ItemDrop.ItemData item) => false;
@@ -415,8 +456,10 @@ namespace SailTrim
             return d;
         }
 
-        /// <summary>Tie up with nobody's hands on it (a gangway going down alongside).</summary>
+        /// <summary>Tie up with nobody's hands on it (a gangway going down alongside, an AI ship at her berth).</summary>
         internal void TieTo(Ship ship) => Tie(ship, null);
+
+        internal ZDOID BoatId => Boat;
 
         private void Tie(Ship ship, Humanoid user)
         {

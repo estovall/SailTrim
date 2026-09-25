@@ -1,5 +1,22 @@
 # SailTrim pick-up notes
 
+## 1.11.0 dev (2026-09-25): cleats in three sizes, berths, the berth outline (built, NOT published, not play-tested)
+For DirectionalCombat's ports (Max: "3 different sized bronze cleats (small, medium, large) ... 1, 2, and 3
+ingots ... they let the karve, longboats, and drakkar dock there ... when placing each cleat, it shows an
+outline next to it of the area each sized ship needs ... when the hammer is out").
+- Cleat.cs: `SailTrim_Cleat` (the old one, so cleats already built stay) is now the small, karve cleat;
+  `SailTrim_CleatMedium` (x1.35, CleatCostMedium 2 bronze, longship) and `SailTrim_CleatLarge` (x1.7,
+  CleatCostLarge 3, drakkar) are the same model on a scaled prefab root (the rope and wrap scale with it).
+  CleatPiece.Size, hover titles "Cleat (karve berth)". Any cleat still ties any boat by hand.
+- Berths.cs: hulls measured from the Karve / VikingShip / VikingShip_Ashlands (or Drakkar) prefabs' solid
+  colliders on ZNetScene load (fallbacks otherwise); a cleat's berth lies on its deeper side (sampled ground),
+  the ship along the horn's axis, her side BerthGap (1.2 m) off it, "deep" if the water is her draft + 1 m
+  all along. BerthOutline (a MonoBehaviour on the plugin) draws, while `InPlaceMode()`, a hull-shaped outline
+  on the water for every cleat within 70 m and for the placement ghost: green deep, amber shallow, blue taken,
+  labelled.
+- Api: `Berth` struct, `Berths(near, range)`, `ShipSize(ship)`, `BerthHull(size)`, `TieAtBerth(ship, tag)`,
+  `CastOff(ship)`, `GangwayWouldLandAshore(ship, side)`.
+
 ## 1.11.0 (2026-09-23, built, NOT published): an API for an AI crew, for DirectionalCombat's viking ships
 
 `SailTrim/Api.cs`, `public static class SailTrimApi`. DirectionalCombat references `dist/SailTrim.dll` and

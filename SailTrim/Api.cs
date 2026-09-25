@@ -16,6 +16,40 @@ namespace SailTrim
         private static readonly Dictionary<Ship, int> _aiCrew = new Dictionary<Ship, int>();
 
         /// <summary>How many non-player crew are aboard. Set every so often; 0 clears it.</summary>
+        /// <summary>A berth marked by a cleat (Berths.cs): where a ship of its size lies, and whether one is tied.</summary>
+        public struct Berth
+        {
+            public long CleatTag;
+            public Vector3 Cleat;      // the cleat's horn
+            public Vector3 Centre;     // where the ship's middle lies, at the water
+            public float AxisYaw;      // along the dock (a ship lies this way or the opposite)
+            public int Size;           // 0 karve, 1 longship, 2 drakkar
+            public int WaterSide;      // +1: the berth is off the cleat's forward, -1: off its back
+            public bool Deep;          // deep enough all along for its size
+            public bool Occupied;      // a boat is tied to it
+        }
+
+        /// <summary>The berths of the loaded cleats within range of a point.</summary>
+        public static List<Berth> Berths(Vector3 near, float range) => SailTrim.Berths.Near(near, range);
+
+        /// <summary>A ship's berth size: 0 karve, 1 longship, 2 drakkar (by her prefab, else her length).</summary>
+        public static int ShipSize(Ship ship) => SailTrim.Berths.SizeOf(ship);
+
+        /// <summary>Half beam (x) and half length (y) of the ships a berth size is for.</summary>
+        public static Vector2 BerthHull(int size) => SailTrim.Berths.Hull(size);
+
+        /// <summary>Untie a moored ship and let her go (the cleat lets go of her as well).</summary>
+        public static void CastOff(Ship ship) { if (ship != null) Mooring.CastOff(ship); }
+
+        /// <summary>Tie a ship to the cleat with this tag, if it is loaded and free.</summary>
+        public static bool TieAtBerth(Ship ship, long cleatTag)
+        {
+            var c = CleatPiece.ByTag(cleatTag);
+            if (c == null || ship == null || !c.HasNoBoat) return false;
+            c.TieTo(ship);
+            return true;
+        }
+
         public static void SetAiCrew(Ship ship, int count)
         {
             if (ship == null) return;
@@ -320,9 +354,14 @@ namespace SailTrim
         /// length, no steeper than maxDrop degrees down or 15 up. False when the plank is not fitted there, or it
         /// would reach only water. For AI crews, so a plank is never dropped into the sea.
         /// </summary>
-        public static bool GangwayWouldLand(Ship ship, int side, Ship onto, float maxDrop = 40f)
+        /// <summary>As GangwayWouldLand, onto the dock or shore (anything that is not a boat) instead of a boat.</summary>
+        public static bool GangwayWouldLandAshore(Ship ship, int side, float maxDrop = 40f) => WouldLand(ship, side, null, true, maxDrop);
+
+        public static bool GangwayWouldLand(Ship ship, int side, Ship onto, float maxDrop = 40f) => WouldLand(ship, side, onto, false, maxDrop);
+
+        private static bool WouldLand(Ship ship, int side, Ship onto, bool ashore, float maxDrop)
         {
-            if (ship == null || onto == null) return false;
+            if (ship == null || (onto == null && !ashore)) return false;
             GangwayMount mount = null;
             foreach (var m in ship.GetComponentsInChildren<GangwayMount>(true)) if (m.Side == side) { mount = m; break; }
             if (mount == null) return false;
@@ -340,7 +379,7 @@ namespace SailTrim
                     if (hit.collider == null || hit.normal.y < 0.5f) continue;
                     var s = hit.collider.GetComponentInParent<Ship>();
                     if (s == ship) continue;
-                    if (s != onto) continue;
+                    if (ashore ? s != null : s != onto) continue;
                     float drop = hinge.y - hit.point.y;
                     if (drop > d * tanDown || -drop > d * tanUp) continue;
                     if (d * d + drop * drop > len * len) continue;
