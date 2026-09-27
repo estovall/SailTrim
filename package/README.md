@@ -192,7 +192,29 @@ cargo, or raft up for the night. Taking the helm of either boat raises the plank
 seconds and frees them both, so nobody is ever held alongside by someone else's gangway with no way out.
 `GangwayLashShips` turns it off.
 
-## The cleat (1.6.0)
+## The chart (1.11.0)
+
+Open the map and a readout appears in the corner: how she is trimmed, her speed, her sheet and heel, and then
+the two bearings that matter. **Heading** is where her bow points. **Track** is the course she is making good,
+which is not the same thing: a hard-heeled or badly trimmed hull slides to leeward, and over a long board that
+puts you well down from where you aimed. The difference is written out as the set and the drift, and drawn as a
+dotted line running from the boat the way she is really going, fading as it goes further ahead.
+
+Put the cursor on a buoy and press **C** to steer for it. The panel then gives its distance, the **course to
+steer** (the bearing to it with the measured leeway taken out) and how far off it she is running. A mark dead to
+windward is reported as a beat, with the board she is nearest on, rather than a bearing she cannot hold. Press
+`C` away from a buoy to give the mark up. The mark is remembered per world.
+
+The chart states; it does not coach. Nothing here tells you which way to hold the helm or how to trim, on the
+map or on the sailing HUD. `MapHudEnabled`, `SetMarkKey`, `TrackMinutes` and `NoGoAngle` are in the config.
+
+## Towing (1.11.0)
+
+A boat with a tow bollard at her stern can take another in tow: a rope from her stern to the other's bow, and
+the boat behind keeps her way instead of being taken by vanilla's rule for an empty hull. Pull too hard and the
+line parts. `TowLength`, `TowBreak` and `TowRange` are in the config.
+
+## The cleat (1.6.0, three sizes in 1.11.0)
 
 Build a **Cleat** from the hammer's Misc tab (one bronze): a bronze horn cleat that sits on top of planks or a
 floor. Stand at it with a boat within 10 m and press E to tie the boat up. The rope is made fast round the horn
@@ -201,6 +223,11 @@ without people aboard. Creatures and waves cannot shove it away. Press E at the 
 take the helm: after a second at the rudder (`CastOffDelay`) the boat casts off by itself. If the boat sinks,
 or the cleat is broken, the other side lets go too. A tied-up boat also mends itself a few percent a minute
 (`MoorRepairPerMinute`). `CleatRange`, `CleatCost`, `CastOffDelay` and `MooringHold` are in the config.
+
+### Berths (1.11.0)
+
+Cleats come in three sizes, for a karve's berth, a longship's and a drakkar's. Take out the hammer near one and
+the berth it marks is drawn on the ground, so a harbour can be laid out to fit the boats that will lie in it.
 
 ## The buoy (1.6.0)
 
@@ -284,7 +311,9 @@ Boats lashed alongside keep their raft the same way.
 **What are the buoys for?**
 Marking water. Build one from the hammer's Misc tab (6 wood, 2 resin, no workbench) and place it on open water
 like a boat. It floats, holds its spot, lights up at night and shows on the map. Press E to change the banner
-colour: red and green for a channel, yellow for a race mark. They stay loaded from a long way off, so a mark
+colour: red and green for a channel, yellow for a race mark. Since 1.11.0 every buoy in the world is on the map
+whether it is loaded or not, the way a map pin is, and one off the corner map is held against its rim in its own
+colour. They stay loaded from a long way off, so a mark
 shows from down the length of a fjord.
 
 **Can I turn individual features off?**

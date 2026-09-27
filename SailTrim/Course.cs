@@ -1,3 +1,4 @@
+using System.Globalization;
 using UnityEngine;
 
 namespace SailTrim
@@ -10,11 +11,12 @@ namespace SailTrim
     /// mark puts you downwind of it by the end of a long board. The course to steer is the bearing to the mark
     /// with that offset taken out, which is the oldest piece of navigation there is.
     ///
-    /// The second is weather helm. A heeled boat tries to round up into the wind, hard enough close-hauled that
-    /// she will sail herself into irons if you let her, and the answer is to carry a little helm to leeward all
-    /// the time rather than to keep correcting after the fact. That is not obvious to anyone who has not sailed,
-    /// and nothing in the game says it, so the readout says it: which way to hold the helm, and whether what you
-    /// are holding is enough.
+    /// The second is the wind: a course worked from geometry alone will ask for a bearing inside the no-go, and
+    /// a helmsman who is told to steer it will steer it and stop dead.
+    ///
+    /// It states, it does not coach. There was a line here that read the heel and told the helmsman which way to
+    /// hold the helm; it is gone at Max's word, and he is right. Advice on the screen while you steer is advice
+    /// that gets followed instead of read, and it takes the sailing out of sailing.
     /// </summary>
     internal static class Course
     {
@@ -22,12 +24,27 @@ namespace SailTrim
         internal static Vector3 Mark { get; private set; }
         internal static string MarkName { get; private set; } = "";
 
+        /// <summary>
+        /// The world this mark belongs to. A mark is a place, and a place means nothing in another world: without
+        /// this, opening a different save showed a mark sitting at coordinates from the last one.
+        /// </summary>
+        private static string World()
+        {
+            var net = ZNet.instance;
+            string s = net != null ? net.GetWorldName() : null;
+            return string.IsNullOrEmpty(s) ? "" : s;
+        }
+
         internal static void Set(Vector3 pos, string name)
         {
             Mark = pos;
             MarkName = string.IsNullOrEmpty(name) ? "the mark" : name;
             HasMark = true;
-            Plugin.MarkPos.Value = $"{pos.x:0.#},{pos.z:0.#}";
+            // Written plainly, in numbers that read the same everywhere. Formatted in the machine's own way, a
+            // mark saved on a keyboard that writes decimals with a comma came back as four fields instead of
+            // two and was quietly lost.
+            Plugin.MarkPos.Value = pos.x.ToString("0.#", CultureInfo.InvariantCulture) + ","
+                                 + pos.z.ToString("0.#", CultureInfo.InvariantCulture) + "," + World();
             Plugin.MarkName.Value = MarkName;
         }
 
@@ -39,14 +56,31 @@ namespace SailTrim
             Plugin.MarkName.Value = "";
         }
 
-        /// <summary>Restore the mark a player was steering for when they last played.</summary>
+        private static bool _loaded;
+
+        /// <summary>
+        /// Restore the mark, once the world is up: which world it is decides whether the saved mark means
+        /// anything. Called every frame and does nothing after the first.
+        /// </summary>
+        internal static void Tick()
+        {
+            if (ZNet.instance == null) { _loaded = false; return; }
+            if (_loaded) return;
+            _loaded = true;
+            Load();
+        }
+
+        /// <summary>Restore the mark a player was steering for when they last played this world.</summary>
         internal static void Load()
         {
+            HasMark = false;
             string s = Plugin.MarkPos.Value;
             if (string.IsNullOrEmpty(s)) return;
             var bits = s.Split(',');
-            if (bits.Length != 2) return;
-            if (!float.TryParse(bits[0], out float x) || !float.TryParse(bits[1], out float z)) return;
+            if (bits.Length < 2) return;
+            if (bits.Length > 2 && bits[2] != World()) return;   // another world's mark: leave it where it is
+            if (!float.TryParse(bits[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x)) return;
+            if (!float.TryParse(bits[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float z)) return;
             Mark = new Vector3(x, 0f, z);
             MarkName = Plugin.MarkName.Value;
             HasMark = true;
@@ -116,7 +150,11 @@ namespace SailTrim
 
             Vector3 vel = ship.m_body != null ? ship.m_body.linearVelocity : Vector3.zero;
             Vector3 flat = new Vector3(vel.x, 0f, vel.z);
-            f.Moving = flat.magnitude * 1.94384f >= 0.4f;
+            // Fast enough for the track to mean something, and going forwards. Under a knot or so what the hull
+            // is doing is the swell moving it about, and making sternway -- rowing back, or drifting out of
+            // irons -- the track is the reciprocal of the heading, which read as 180 degrees of leeway and
+            // turned the course to steer into a course away from the mark.
+            f.Moving = flat.magnitude * 1.94384f >= 1.5f && Vector3.Dot(flat, ship.transform.forward) > 0f;
             if (f.Moving)
             {
                 f.Track = Bearing(flat);
@@ -161,28 +199,5 @@ namespace SailTrim
             return $"{MarkName}  {dist}   steer {f.Steer:000}   {off}";
         }
 
-        /// <summary>
-        /// What the helm is doing about the heel, in words. She rounds up into the wind as she lies over, so the
-        /// helm has to be held toward the side she is leaning: down, away from the wind. A helmsman who does not
-        /// know that fights her all the way to windward and wonders why she keeps stalling.
-        /// </summary>
-        internal static string HelmAdvice(Ship ship, SailTrimShip st)
-        {
-            if (ship == null || st == null) return "";
-            float heel = st.HeelAngle;                    // positive: lying over to starboard
-            if (Mathf.Abs(heel) < 7f) return "";          // upright enough to carry no helm worth mentioning
-            if (st.SailAmount <= 0.01f) return "";        // under oars she does not round up
-
-            // Rudder: positive turns her one way, and which way that is we take from the boat itself rather than
-            // assume. Held toward the low side is helm that balances her.
-            float rudder = ship.m_rudderValue;
-            float want = Mathf.Sign(heel);                // the low side is the side she is heeled to
-            float held = rudder * want;                   // positive when the helm is already the right way
-            string side = heel > 0f ? "starboard" : "port";
-
-            if (held > 0.15f) return $"Carrying helm to {side}, holding her";
-            if (Mathf.Abs(heel) > 20f) return $"She is rounding up: helm to {side}, or ease the sheet";
-            return $"Weather helm: hold a little to {side}";
-        }
     }
 }

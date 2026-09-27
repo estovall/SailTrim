@@ -424,6 +424,7 @@ namespace SailTrim
         private void OnDestroy()
         {
             RemovePin();
+            All.Remove(this);
         }
 
         private int ColorIndex
@@ -449,22 +450,21 @@ namespace SailTrim
                     for (int k = 0; k < m.Length; k++) if (m[k] != null && m[k].name.StartsWith("SailTrim_Flag_")) m[k] = mats[index];
                     r.sharedMaterials = m;
                 }
-            if (_pin != null) Pins[_pin] = Buoy.PinColors[index];
+            if (_nview != null && _nview.IsValid()) BuoyBook.ReportPiece(_nview, transform.position, index);
         }
 
         // ---- map pin ----
+        /// <summary>
+        /// The pin is the book's, not ours. A buoy used to put its own pin up while it was loaded and take it
+        /// down when it unloaded, so the marks at the far end of a passage -- the ones worth looking at a chart
+        /// for -- were never on it. All this does now is keep the book's entry for this buoy current, which is
+        /// what makes a colour change show at once instead of at the host's next sweep.
+        /// </summary>
         private void UpdatePin()
         {
-            var map = Minimap.instance;
-            if (map == null) return;
-            if (!Plugin.BuoyPins.Value || _nview == null || !_nview.IsValid()) { RemovePin(); return; }
-            if (_pin == null)
-            {
-                _pin = map.AddPin(transform.position, Minimap.PinType.Icon3, "", false, false);
-                _pin.m_icon = Buoy.PinSprite();
-                Pins[_pin] = Buoy.PinColors[ColorIndex];
-            }
-            _pin.m_pos = transform.position;
+            RemovePin();
+            if (_nview == null || !_nview.IsValid()) return;
+            BuoyBook.ReportPiece(_nview, transform.position, ColorIndex);
         }
 
         private void RemovePin()
@@ -499,6 +499,7 @@ namespace SailTrim
             if (_lightTimer > 0f) return;
             _lightTimer = 1f;
             UpdatePin();
+
             if (_light == null) return;
             bool on = Plugin.BuoyLight.Value && EnvMan.instance != null && EnvMan.IsNight();
             if (_light.enabled != on) _light.enabled = on;

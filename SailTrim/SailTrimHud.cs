@@ -181,13 +181,11 @@ namespace SailTrim
             string hint = "";
             if (piloting)
             {
-                // Handling only. Weather helm belongs here because it is about what she is doing this second
-                // and you have to be looking at the water to act on it. Where the mark is and how far off it you
-                // are running belongs on the chart, and only on the chart: a course is a thing you go and work
-                // out, not something that reads itself out at you while you steer.
-                string helm = Course.HelmAdvice(ship, st);
-                if (helm != "") hint = helm;
-                else if (st.SheetHand != 0L) hint = "A crew member is on the sheet with you";
+                // Handling only, and no coaching: nothing here tells you how to sail her. What she is doing is
+                // on the dials, where she is going is on the chart, and what to do about either is the
+                // helmsman's. Max's call, and the right one -- advice on the screen while you steer is advice
+                // that gets followed instead of read, and it takes the sailing out of sailing.
+                if (st.SheetHand != 0L) hint = "A crew member is on the sheet with you";
                 else if (Plugin.ControlHints.Value && !Plugin.ShowControls.Value && !_hintDismissed && !ship.IsSailUp())
                 {
                     string use = Localization.instance != null ? Localization.instance.Localize("$KEY_Use") : "E";

@@ -217,6 +217,7 @@ namespace SailTrim
 
         internal static void ResetAll()
         {
+            BuoyBook.Reset();
             PeerVersions.Clear();
             UnmoddedToWarn.Clear();
             ClientNotices.Clear();

@@ -1026,8 +1026,14 @@ namespace SailTrim
 
         /// <summary>
         /// Bodies on deck move the boat. Crew who are sitting, holding the mast or steering do not count: they are
-        /// braced and their weight is part of the hull already. Nothing is scaled by hand for ship size, because
-        /// the same shove of weight against a longship's inertia is worth a fraction of what it is worth on a karve.
+        /// braced and their weight is part of the hull already.
+        ///
+        /// This began with nothing scaled by hand for ship size, on the reasoning that a longship's inertia should
+        /// decide what a body is worth. The reasoning was sound and the result was wrong: two players on a
+        /// longship's high side moved her by nothing anyone could see. The sail's own heeling moment is scaled by
+        /// the hull (mass and beam) so that every boat heels like a boat; the crew's was the one moment left
+        /// absolute, so it alone shrank away as the hull grew. CrewWeightHullPower gives some of that back. The
+        /// karve is the reference and is untouched, so the boat this was tuned on still behaves as it did.
         /// </summary>
         private void ApplyCrewWeight(float dt, Transform t, Vector3 fwd)
         {
@@ -1049,11 +1055,27 @@ namespace SailTrim
             if (StandingCrew == 0) return;
             CrewArm = lateral / StandingCrew;
 
-            float w = Plugin.CrewMass.Value * 9.81f * Plugin.CrewWeight.Value;
+            float w = Plugin.CrewMass.Value * 9.81f * Plugin.CrewWeight.Value * HullCrewScale();
             // Weight to starboard pushes the starboard side down (positive torque about +forward lifts it), and
             // weight forward pushes the bow down (positive about +right).
             _body.AddTorque(t.forward * (-lateral * w * dt), ForceMode.Impulse);
             _body.AddTorque(t.right * (fore * w * 0.5f * dt), ForceMode.Impulse);
+        }
+
+        /// <summary>
+        /// How much a body on the rail is worth on this hull, against a karve (float collider 4 m by 10 m, the
+        /// reference used by the heel and pitch scaling too). One for a karve and anything smaller, more for a
+        /// longship, more again for a drakkar -- but always less per body than a karve once the hull's own
+        /// inertia has taken its share, which is what a crew expects of a bigger boat.
+        /// </summary>
+        private float HullCrewScale()
+        {
+            float p = Plugin.CrewWeightHullPower.Value;
+            if (p <= 0f) return 1f;
+            var fc = _ship.m_floatCollider;
+            if (fc == null) return 1f;
+            float size = (Mathf.Max(0.3f, fc.size.x * 0.5f) / 2f) * (Mathf.Max(0.5f, fc.size.z * 0.5f) / 5f);
+            return Mathf.Pow(Mathf.Max(1f, size), p);
         }
 
         private void ApplyPitch(float dt, Transform t, Vector3 fwd, float driveN)

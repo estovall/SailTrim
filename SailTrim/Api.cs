@@ -15,6 +15,17 @@ namespace SailTrim
     {
         private static readonly Dictionary<Ship, int> _aiCrew = new Dictionary<Ship, int>();
 
+        /// <summary>
+        /// A number that is not a number. Nothing in Unity's clamps filters these -- every comparison against a
+        /// NaN is false, so it passes straight through Mathf.Clamp and into the boat, and from there into the
+        /// ZDO that is written every physics step and saved with the world. A single one of these from a caller
+        /// would leave a boat that cannot be steered, cannot be trimmed and cannot be mended by anything short
+        /// of editing the save. One line at the door is cheaper than any of that.
+        /// </summary>
+        private static bool Bad(float v) => float.IsNaN(v) || float.IsInfinity(v);
+
+        private static bool Bad(Vector3 v) => Bad(v.x) || Bad(v.y) || Bad(v.z);
+
         /// <summary>How many non-player crew are aboard. Set every so often; 0 clears it.</summary>
         /// <summary>A berth marked by a cleat (Berths.cs): where a ship of its size lies, and whether one is tied.</summary>
         public struct Berth
@@ -130,13 +141,20 @@ namespace SailTrim
                 var other2 = go2 != null ? go2.GetComponent<Ship>() : null;
                 if (other2 != null) Gangway.ForceClear(other2);
             }
-            if (ship.m_nview.IsOwner())
-            {
-                var z = ship.m_nview.GetZDO();
-                z.Set(Mooring.CleatKey, ZDOID.None);
-            }
+            // A tow holds her as surely as a rope does, and Holds() lists it, so letting go means this too.
+            // It also counts her as crewed, which is what keeps vanilla from taking her way off.
+            if (Tow.Towing(ship) != null) Tow.Request(ship, null);
+            var tug = Tow.TowedBy(ship);
+            if (tug != null) Tow.Request(tug, null);
+            // Through the cleat's own path, not by wiping the boat's record: the cleat holds a record of her
+            // too, and a cleat left holding a boat that has gone keeps its berth occupied until somebody walks
+            // back to it. On a server that can be nobody, for days.
+            Mooring.CastOff(ship);
             SetAiCrew(ship, 0);
             SetRowBoost(ship, 0f, 0f);
+            SetCrewOars(ship, false);
+            var st2 = SailTrimShip.Get(ship);
+            if (st2 != null) { st2.SpeedBonus = 1f; st2.HeelScale = 1f; }
         }
 
         // ---- tow line ----
@@ -176,6 +194,7 @@ namespace SailTrim
 
         public static void SetSheet(Ship ship, float sheetDeg)
         {
+            if (Bad(sheetDeg)) return;
             var st = SailTrimShip.Get(ship);
             if (st != null) st.CrewSetSheet(sheetDeg);
         }
@@ -209,6 +228,7 @@ namespace SailTrim
         /// </summary>
         public static bool AiControl(Ship ship, float sheetAngle, float sailAmount, int rowDir, float rudder)
         {
+            if (Bad(sheetAngle) || Bad(sailAmount) || Bad(rudder)) return false;
             var st = SailTrimShip.Get(ship);
             if (st == null || ship.m_nview == null || !ship.m_nview.IsValid() || !ship.m_nview.IsOwner()) return false;
             st.AiSet(sheetAngle, sailAmount, rowDir);
@@ -226,6 +246,7 @@ namespace SailTrim
         /// </summary>
         public static void SetRowBoost(Ship ship, float accel, float maxKnots)
         {
+            if (Bad(accel) || Bad(maxKnots)) return;
             if (ship == null) return;
             if (accel <= 0f) _rowBoost.Remove(ship); else _rowBoost[ship] = new Boost { Accel = accel, MaxKnots = maxKnots };
         }
@@ -245,6 +266,7 @@ namespace SailTrim
         /// <summary>Make one hull faster than her length allows: the hull speed the drag builds toward is multiplied.</summary>
         public static void SetSpeedBonus(Ship ship, float factor)
         {
+            if (Bad(factor)) return;
             var st = SailTrimShip.Get(ship);
             if (st != null) st.SpeedBonus = Mathf.Max(0.1f, factor);
         }
@@ -252,6 +274,7 @@ namespace SailTrim
         /// <summary>Scale one hull's heel (1 = as configured, 0.5 = half the heeling moment).</summary>
         public static void SetHeelScale(Ship ship, float factor)
         {
+            if (Bad(factor)) return;
             var st = SailTrimShip.Get(ship);
             if (st != null) st.HeelScale = Mathf.Clamp(factor, 0f, 2f);
         }
@@ -338,9 +361,9 @@ namespace SailTrim
         }
 
         /// <summary>A boat just made fast under way keeps it and loses it over the seconds given, instead of stopping dead.</summary>
-        public static void SettleWay(Ship ship, float seconds) => Mooring.SettleWay(ship, seconds);
+        public static void SettleWay(Ship ship, float seconds) { if (!Bad(seconds)) Mooring.SettleWay(ship, seconds); }
         /// <summary>Settle with a given way: give two lashed boats the same one so they stay together.</summary>
-        public static void SettleWay(Ship ship, float seconds, Vector3 way) => Mooring.SettleWay(ship, seconds, way);
+        public static void SettleWay(Ship ship, float seconds, Vector3 way) { if (!Bad(seconds) && !Bad(way)) Mooring.SettleWay(ship, seconds, way); }
         /// <summary>The hull's own timber material (what the gangway and tow post are made of).</summary>
         public static Material ShipTimber(Ship ship) => Gangway.ShipTimber(ship);
 

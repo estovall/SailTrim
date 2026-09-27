@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.11.0
+
+- **The chart tells you where she is actually going.** Open the map and a readout sits in its corner: how she is
+  trimmed, her speed, and her heading against the course she is making good. A boat does not travel where her
+  bow points, and over a long board the difference is a mile. A dotted line runs from the boat along the track
+  she is really on, fading as it goes, so a headland either is or is not in the way.
+- **Steer for a buoy.** Put the cursor on one on the chart and press `C`. You get its distance, the course to
+  steer with the leeway taken out of it, and how far off it she is running. A mark dead to windward is reported
+  as a beat, with the board she is nearest, because a course worked from geometry alone will cheerfully ask for
+  a bearing no boat can sail. The mark is remembered per world.
+- **Buoys are on the map whether they are loaded or not.** They behave like map pins now: the server keeps the
+  book of every buoy in the world and each client draws the lot, in their own colours. The ones worth looking at
+  a chart for are the ones at the far end of the passage, and those were exactly the ones that used to be
+  missing. Buoys off the corner map are held against its rim in their colour (`BuoyEdgeMarks`).
+- **Nothing coaches you.** The chart states what she is doing; it does not tell you how to sail her. A line that
+  read the heel and told you which way to hold the helm has been taken out again, along with anything of the
+  sort on the sailing HUD. Advice on the screen while you steer is advice that gets followed instead of read.
+- **Crew weight tells on a big hull.** A body's weight is a fixed thing while a hull's resistance to rolling
+  grows steeply with her size, so two players on a longship's rail did nothing you could see. A karve is
+  unchanged; every bigger hull now gives some of her size back to the crew standing on her rail
+  (`CrewWeightHullPower`), while still answering less, per body, than a small boat does.
+- **Tow lines.** A bollard at the stern of a tow-capable boat, a rope to the bow of the boat behind, and she
+  comes with you instead of being left on a beach. The line parts if you drag her too hard.
+- **Cleats in three sizes**, for a karve's berth, a longship's and a drakkar's, with the berth drawn on the
+  ground while the hammer is out so a harbour can be laid out to fit.
+- **A wrecked boat gives her gangways back**, and the game's own ship dials can be moved and sized with ours.
+- **A surface for an AI crew** (`SailTrimApi`), so another mod can put hands aboard: crew that count in the hull
+  physics, steer, haul the sheet, work a gangway, take a boat in tow. It changes nothing for anyone not running
+  such a mod.
+- Fixed: a tow record was kept in a form that does not survive a world reload, so a reloaded tug either towed
+  nothing or, if the game had handed that id to another boat, towed a stranger.
+- Fixed: the tow bollard was a body of its own bolted inside a floating hull, which is what throws a boat on her
+  beam ends, and it made itself known to the physics only once while a hull's own parts go on arriving for
+  seconds after she loads.
+- Fixed: a mark was saved in the machine's own number format, so on a keyboard that writes decimals with a comma
+  it could not be read back; and it was kept across worlds, so another save showed a mark from the last one.
+- Fixed: making sternway, rowing back or drifting out of irons, turned the course to steer into a course away
+  from the mark. Set and drift now want a knot and a half of way forward before they are reported at all, which
+  also stops the track swinging about on the swell.
+- Fixed: the sailing HUD was the one thing drawn each frame with nothing to catch it, so anything going wrong in
+  it would have killed it silently; and the buoy rim markers could not come back after a world reload.
+
 ## 1.10.0
 
 - **Boats carry their way off instead of stopping dead.** Step off a boat under sail and vanilla takes nine tenths of her speed every physics step, which at fifty steps a second is a wall; she now loses her way evenly over `EmptyCoast` (2.5 seconds) and comes to rest like a boat rather than like a boat hitting one. The same when a line goes on or a gangway goes down: she settles over `MooringSettle` rather than stopping where she stands, and is held at the spot she was made fast at, not wherever she drifted to.

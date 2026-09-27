@@ -18,7 +18,7 @@ namespace SailTrim
     internal static class MapHud
     {
         private static RectTransform _panel;
-        private static TMP_Text _title, _line1, _line2, _line3, _line4, _line5, _prompt;
+        private static TMP_Text _title, _line1, _line2, _line3, _line4, _prompt;
         private static bool _failed;
         private static Vector2 _home;
 
@@ -33,7 +33,8 @@ namespace SailTrim
 
         internal static void Update()
         {
-            try { Edge(); } catch { }
+            // Never silently: an empty catch here is what made the rim marks look unwritten.
+            try { Edge(); } catch (System.Exception e) { Plugin.Once("buoy rim marks", e); }
             if (_failed || !Plugin.MapHudEnabled.Value) { Hide(); return; }
             if (!LargeMapOpen) { Hide(); return; }
 
@@ -70,9 +71,10 @@ namespace SailTrim
             // The map's own reach for "the cursor is on that", which grows as you zoom out. A fixed number of
             // metres is generous close in and hopeless zoomed out, where a few pixels is half a zone.
             Vector3 at = map.ScreenToWorldPoint(ZInput.pointerPosition);
-            var buoy = BuoyPiece.Nearest(at, Mathf.Max(60f, map.PinInteractRadius));
-            if (buoy == null) { Course.Clear(); return; }
-            Course.Set(buoy.transform.position, buoy.MarkName);
+            // The book, not the buoys standing here: the mark you want is usually at the other end of the
+            // passage and nowhere near loaded.
+            if (!BuoyBook.Nearest(at, Mathf.Max(60f, map.PinInteractRadius), out var buoy)) { Course.Clear(); return; }
+            Course.Set(buoy.Pos, buoy.Name);
         }
 
         private static void Hide()
@@ -95,7 +97,7 @@ namespace SailTrim
             if (map == null || map.m_pinRootLarge == null || map.m_mapImageLarge == null) return;
             Vector3 vel = ship.m_body != null ? ship.m_body.linearVelocity : Vector3.zero;
             Vector3 flat = new Vector3(vel.x, 0f, vel.z);
-            if (flat.magnitude * 1.94384f < 0.4f) { foreach (var d in _dots) if (d != null) d.gameObject.SetActive(false); return; }
+            if (flat.magnitude * 1.94384f < 1.5f) { foreach (var d in _dots) if (d != null) d.gameObject.SetActive(false); return; }
 
             // Where she gets to in the next few minutes at this speed on this track, which is the span a chart
             // glance is about.
@@ -134,11 +136,15 @@ namespace SailTrim
                 && map.m_mode == Minimap.MapMode.Small && map.m_pinRootSmall != null && map.m_mapImageSmall != null)
             {
                 float radius = map.m_mapImageSmall.rectTransform.rect.width * 0.5f;
-                foreach (var b in BuoyPiece.All)
+                // A world reload destroys everything parented to the old minimap, which leaves this pool full of
+                // dead slots. Clearing them out is what lets the rim be drawn again afterwards: the pool only
+                // ever grew, so a dead slot was a mark that never came back.
+                for (int i = _edge.Count - 1; i >= 0; i--) if (_edge[i] == null) _edge.RemoveAt(i);
+                foreach (var b in BuoyBook.All)
                 {
-                    if (b == null || used >= 8) continue;
-                    if (Vector3.Distance(b.transform.position, player.transform.position) > Plugin.BuoyEdgeRange.Value) continue;
-                    map.WorldToMapPoint(b.transform.position, out float mx, out float my);
+                    if (used >= 8) continue;
+                    if (Vector3.Distance(b.Pos, player.transform.position) > Plugin.BuoyEdgeRange.Value) continue;
+                    map.WorldToMapPoint(b.Pos, out float mx, out float my);
                     Vector2 at = map.MapPointToLocalGuiPos(mx, my, map.m_mapImageSmall);
                     if (at.magnitude < radius * 0.92f) continue;      // already drawn on the map itself
                     at = at.normalized * (radius * 0.92f);
@@ -150,7 +156,7 @@ namespace SailTrim
                     rt.anchoredPosition = at;
                     rt.gameObject.SetActive(true);
                     var im = rt.GetComponent<Image>();
-                    if (im != null) im.color = b.MarkColor;
+                    if (im != null) im.color = b.Tint;
                     used++;
                 }
             }
@@ -234,12 +240,11 @@ namespace SailTrim
             _line2 = Line("Line2", src, 17f, 52f);
             _line3 = Line("Line3", src, 17f, 72f);
             _line4 = Line("Line4", src, 17f, 94f);
-            _line5 = Line("Line5", src, 16f, 113f);
-            _prompt = Line("Prompt", src, 14f, 133f);
+            _prompt = Line("Prompt", src, 14f, 116f);
             Plugin.Log.LogInfo("SailTrim: map readout built");
         }
 
-        private const float Width = 260f, Height = 152f;
+        private const float Width = 260f, Height = 136f;
 
         /// <summary>A line of the block, measured down from the top-left of the panel.</summary>
         private static TMP_Text Line(string name, TMP_Text src, float size, float down)
@@ -289,11 +294,13 @@ namespace SailTrim
             float heading = Bearing(ship.transform.forward);
             Vector3 vel = ship.m_body != null ? ship.m_body.linearVelocity : Vector3.zero;
             Vector3 flat = new Vector3(vel.x, 0f, vel.z);
-            if (flat.magnitude * 1.94384f < 0.4f)
+            bool astern = Vector3.Dot(flat, ship.transform.forward) < 0f;
+            if (flat.magnitude * 1.94384f < 1.5f || astern)
             {
                 _line2.text = $"heading {heading:000}   track --";
-                _line3.text = "not making way";
+                _line3.text = astern && flat.magnitude * 1.94384f >= 1.5f ? "making sternway" : "not making way";
                 _line3.color = ColText;
+                Mark(ship);
                 return;
             }
 
@@ -313,7 +320,7 @@ namespace SailTrim
                 _line3.text = $"set {Mathf.Abs(off):0} {(off > 0f ? "stbd" : "port")}   drift {sideways:0.0} kn";
                 _line3.color = Mathf.Abs(off) > 8f ? ColBad : ColAdjust;
             }
-            Mark(ship, st);
+            Mark(ship);
         }
 
         /// <summary>Standing ashore with the chart open: no boat to report on, but marks can still be set.</summary>
@@ -326,26 +333,21 @@ namespace SailTrim
             _line3.text = "";
             _line4.text = Course.HasMark ? $"steering for the {Course.MarkName}" : "no mark set";
             _line4.color = Course.HasMark ? ColTrimmed : ColText;
-            _line5.text = "";
             Prompt();
         }
 
-        private static void Mark(Ship ship, SailTrimShip st)
+        private static void Mark(Ship ship)
         {
             var fix = Course.Reckon(ship);
             if (!fix.Valid)
             {
                 _line4.text = Course.HasMark ? $"steering for the {Course.MarkName}" : "no mark set";
                 _line4.color = ColText;
-                _line5.text = "";
             }
             else
             {
                 _line4.text = Course.Line(fix);
                 _line4.color = Mathf.Abs(fix.Off) < 3f ? ColTrimmed : (Mathf.Abs(fix.Off) > 15f ? ColBad : ColAdjust);
-                string helm = Course.HelmAdvice(ship, st);
-                _line5.text = helm;
-                _line5.color = ColAdjust;
             }
             Prompt();
         }
@@ -362,7 +364,7 @@ namespace SailTrim
             if (map != null)
             {
                 Vector3 at = map.ScreenToWorldPoint(ZInput.pointerPosition);
-                overBuoy = BuoyPiece.Nearest(at, Mathf.Max(60f, map.PinInteractRadius)) != null;
+                overBuoy = BuoyBook.Nearest(at, Mathf.Max(60f, map.PinInteractRadius), out _);
             }
             string key = Plugin.SetMarkKey.Value.ToString();
             if (overBuoy) { _prompt.text = $"[{key}] steer for this buoy"; _prompt.color = ColTrimmed; }

@@ -99,6 +99,7 @@ namespace SailTrim
         internal static ConfigEntry<float> MaxHeelAngle;
         internal static ConfigEntry<float> CrewWeight;
         internal static ConfigEntry<float> CrewMass;
+        internal static ConfigEntry<float> CrewWeightHullPower;
         internal static ConfigEntry<bool> CrewWeightHints;
         internal static ConfigEntry<float> MastStrainAngle;
         internal static ConfigEntry<float> MastStrainGrace;
@@ -440,6 +441,9 @@ namespace SailTrim
                     new AcceptableValueRange<float>(0f, 2f)));
             CrewMass = Config.Bind("4. Heel", "CrewMass", 90f,
                 new ConfigDescription("What a viking and their kit weigh, kilograms.", new AcceptableValueRange<float>(20f, 200f)));
+            CrewWeightHullPower = Config.Bind("4. Heel", "CrewWeightHullPower", 1.5f,
+                new ConfigDescription("How much of her own size a big hull gives back to the crew on her rail. A body's weight is a fixed thing while a hull's resistance to rolling grows steeply with her size, so left to the physics alone two men on a longship's rail do nothing you can see. The karve is the reference and is never scaled; every bigger hull has the crew's moment multiplied by her size over the karve's, raised to this. 0 leaves the physics alone, 1.5 makes a longship answer to a couple on the rail while still answering less, per body, than a karve.",
+                    new AcceptableValueRange<float>(0f, 3f)));
             MaxHeelAngle = Config.Bind("4. Heel", "MaxHeelAngle", 45f,
                 new ConfigDescription("The heeling torque fades out over the last 10 degrees before this angle, so the mod can never knock the boat down.",
                     new AcceptableValueRange<float>(5f, 60f)));
@@ -545,8 +549,10 @@ namespace SailTrim
                 "Adds the Cleat build piece (hammer, Misc). Interact with it to tie up a boat within CleatRange: the boat holds its spot and heading, crew aboard or not, until untied.");
             CleatRange = Config.Bind("8. Mooring", "CleatRange", 10f,
                 new ConfigDescription("How far from the cleat a boat can be to tie it up, metres.", new AcceptableValueRange<float>(2f, 30f)));
-            CleatCostMedium = Config.Bind("8. Mooring", "CleatCostMedium", 2, "Bronze for the medium cleat (a longship's berth).");
-            CleatCostLarge = Config.Bind("8. Mooring", "CleatCostLarge", 3, "Bronze for the large cleat (a drakkar's berth).");
+            CleatCostMedium = Config.Bind("8. Mooring", "CleatCostMedium", 2,
+                new ConfigDescription("Bronze for the medium cleat (a longship's berth).", new AcceptableValueRange<int>(1, 40)));
+            CleatCostLarge = Config.Bind("8. Mooring", "CleatCostLarge", 3,
+                new ConfigDescription("Bronze for the large cleat (a drakkar's berth).", new AcceptableValueRange<int>(1, 40)));
             BerthGap = Config.Bind("8. Mooring", "BerthGap", 1.2f, "How far off a cleat a ship's side lies at her berth, metres (her gangway reaches the dock from there).");
             BerthOutline = Config.Bind("8. Mooring", "BerthOutline", true, "With the hammer out, each cleat nearby (and the one being placed) shows the berth it marks: green over deep enough water, amber where too shallow, blue with a boat tied.");
             CleatCost = Config.Bind("8. Mooring", "CleatCost", 1,
@@ -612,7 +618,6 @@ namespace SailTrim
                 "Adds the Buoy build piece (hammer, Misc; 6 wood, 2 resin, no workbench). Placed on open water like a boat, it floats and holds its spot: channel markers, race marks.");
             BuoyLight = Config.Bind("9. Buoy", "BuoyLight", true, "The buoy's lantern burns at night.");
             HudLayout.Bind(Config);
-            Course.Load();
             BuoyEdgeMarks = Config.Bind("9. Buoy", "BuoyEdgeMarks", true,
                 "Buoys that are loaded but off the corner map are held against its rim in the direction they lie, in their own colour, so a glance tells you where a channel mark is without opening the chart.");
             BuoyEdgeRange = Config.Bind("9. Buoy", "BuoyEdgeRange", 500f,
@@ -763,6 +768,8 @@ namespace SailTrim
             try { HudLayout.Update(); } catch (System.Exception e) { Once("hud layout", e); }
             try { MapHud.Update(); } catch (System.Exception e) { Once("map readout", e); }
             try { Gangway.Tick(); } catch (System.Exception e) { Once("gangway tick", e); }
+            try { BuoyBook.Tick(); } catch (System.Exception e) { Once("buoy book", e); }
+            try { Course.Tick(); } catch (System.Exception e) { Once("course", e); }
             if (!Enabled.Value) { _wasPiloting = false; return; }
 
             var player = Player.m_localPlayer;
@@ -869,7 +876,9 @@ namespace SailTrim
 
         private void LateUpdate()
         {
-            SailTrimHud.Update();
+            // Guarded like everything else per frame: the HUD dying quietly is how a feature comes to look
+            // unwritten, and this was the one call left bare.
+            try { SailTrimHud.Update(); } catch (System.Exception e) { Once("sailing HUD", e); }
         }
 
     }

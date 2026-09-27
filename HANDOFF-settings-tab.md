@@ -1,5 +1,71 @@
 # SailTrim pick-up notes
 
+## Status, 2026-09-26: 1.11.0 is built and reviewed, not published
+
+Everything since `v1.10.0` was reviewed before publishing (Max asked; the set and drift had not been tested).
+The review found real faults, they are fixed, and **none of the fixes has been played yet**. 1.10.0 is still
+what is on Hexium and on the server.
+
+### Max's four decisions this round, which override what the code did
+
+1. **The API additions are hookups for his DirectionalCombat mod and must stay invisible to everyone else.**
+   Nothing in `Api.cs` may change how a boat behaves for a player whose game is not driving it.
+2. **Set and drift is chart furniture only.** The dotted track line and the readout live on the map. Nothing
+   about it goes on the sailing HUD.
+3. **No coaching anywhere.** The weather-helm advice is gone, on and off the chart. "I don't think the tips are
+   necessary." The chart states what she is doing; how to sail her is the player's business. Do not put it back.
+4. **Buoys are map pins and behave like map pins**: on the chart whether they are loaded or not.
+5. **Crew weight had to bite harder on big hulls.** Two players on a longship's rail moved her by nothing
+   anyone could see.
+
+### What was done about them
+
+- The advice is deleted, not switched off (`Course.HelmAdvice` is gone). The chart readout lost its last line.
+- `BuoyBook.cs` is new and is now the only thing that makes buoy pins. The **host** reads every buoy straight
+  out of the ZDO table (`GetAllZDOsWithPrefabIterative`, a slice per frame, a full sweep every 10 s) and sends
+  the list to each client over a routed RPC; a buoy standing in front of you updates its own entry at once so a
+  colour change shows immediately. A buoy built before this carries no tag, so it is known by its position.
+  This also fixed picking a mark: `BuoyBook.Nearest` sees buoys that are nowhere near loaded, which is what a
+  chart is for. `BuoyPiece` no longer owns a pin.
+- `CrewWeightHullPower` (default 1.5, Heel section, server-owned). The karve is the reference and is untouched,
+  so the boat the model was tuned on behaves as before; bigger hulls have the crew's moment multiplied by their
+  size over a karve's, raised to that power. The reasoning for the original design was sound and the result was
+  wrong: the sail's heeling moment is scaled by the hull, so the crew's was the one moment left absolute, and
+  it alone shrank away as the hull grew.
+
+### Faults found in review and fixed (none play-tested)
+
+- **The weather-helm advice named the wrong side.** `HeelAngle` is positive when she is lying over to **port**
+  (`SailTrimShip.cs` says so in its own comment), and the advice read positive as starboard. Moot now that it
+  is deleted, but the sign trap is still there for anyone reading heel.
+- **The tow record had no tag**, the one link in the mod that skipped the repair the cleat, the mooring and the
+  lashing all do. Reloaded, a tug towed nothing, or towed whichever boat had been handed that id.
+- **The tow bollard was a kinematic body inside a floating hull** that struck out its collider pairs once, at
+  Awake, while hull colliders go on arriving for seconds. It has no body of its own now: it is a fitting, bolted
+  to the deck, and belongs to the hull's body like any other timber. It also carries `GangwayPart`, so a cleat
+  ropes to the hull rather than to it.
+- **The sailing HUD was drawn each frame with nothing to catch it**, the only per-frame call left bare after
+  1.10.0 made a point of guarding the rest, and the buoy rim markers were behind an empty `catch`.
+- **Making sternway inverted the course to steer.** Set and drift now want a knot and a half of way *forward*.
+- **A saved mark was written in the machine's own number format** and kept across worlds.
+- **The rim-marker pool could not recover from a world reload** (dead slots were never replaced).
+- **The API took any float given to it.** Nothing in Unity's clamps filters NaN, and the sheet angle is written
+  to the ZDO every physics step, so one bad number from a calling mod would have been saved into the world and
+  left a boat that could not be steered or trimmed again. Every numeric entry point now refuses it at the door.
+- **`FreeAll` did not free a tow**, and wiped the boat's mooring record directly instead of casting off through
+  the cleat, which left the cleat holding a berth that nobody would come back to clear.
+- `CleatCostMedium`/`CleatCostLarge` had no range; a config with an old `CleatCost` in it made the big cleats
+  cheaper than the small one. (Still true for anyone with a raised `CleatCost`: it is the small cleat's cost.)
+
+### Still not seen working, and worth watching first
+
+- Everything above. In particular the buoy book (does a distant channel show on the chart, on the server, for
+  someone who has never sailed there?) and the crew weight on a longship with two aboard.
+- Whether `C` collides with anything: nothing in Max's profile binds it and vanilla does not appear to.
+- **Not looked at in review**: `MapHud`'s panel build, `SettingsTab`, `Berths`' raycast cost while the hammer is
+  out (reported, not fixed: it re-measures every cleat in range four times a second and again per GUI pass).
+
+
 ## 1.11.0 dev (2026-09-25): cleats in three sizes, berths, the berth outline (built, NOT published, not play-tested)
 For DirectionalCombat's ports (Max: "3 different sized bronze cleats (small, medium, large) ... 1, 2, and 3
 ingots ... they let the karve, longboats, and drakkar dock there ... when placing each cleat, it shows an
@@ -37,7 +103,7 @@ The Flotilla server runs 1.10.0 and the version check is exact: do not put 1.11.
 until the server has it. It lives in the DirectionalCombat profile as a local mod
 (`DirectionalCombat/tools/deploy-sailtrim.ps1` copies `dist/SailTrim.dll` there after a build).
 
-## Status, 2026-09-23: 1.10.0 is released; the chart work on top of it is untested
+## Previously, 2026-09-23: 1.10.0 released, the chart work untested
 
 **1.10.0 is published** (Hexium `Max/SailTrim 1.10.0`, package 1207, tagged `v1.10.0`). Everything through that
 tag was play-tested by Max, including seven boats lashed alongside in a storm.
