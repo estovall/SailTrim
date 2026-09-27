@@ -14,7 +14,7 @@ namespace SailTrim
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.11.0";
+        public const string VERSION = "1.11.1";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -150,6 +150,7 @@ namespace SailTrim
         internal static ConfigEntry<float> TowLength, TowBreak, TowPull, TowRange;
         internal static ConfigEntry<float> GangwayMountZ;
         internal static ConfigEntry<float> GangwayMaxAngle;
+        internal static ConfigEntry<float> GangwayFoldMax;
 
         internal static ConfigEntry<float> GangwaySwingTime;
         internal static ConfigEntry<float> GangwayRetractDelay;
@@ -583,6 +584,9 @@ namespace SailTrim
             GangwayMaxAngle = Config.Bind("10. Gangway", "GangwayMaxAngle", 35f,
                 new ConfigDescription("Steepest slope the gangway will rest at, in degrees. Anything steeper is refused: carrying a load you could not walk up it anyway.",
                     new AcceptableValueRange<float>(10f, 60f)));
+            GangwayFoldMax = Config.Bind("10. Gangway", "GangwayFoldMax", 45f,
+                new ConfigDescription("When the plank crosses a rail with the deck behind it lower (another boat alongside, a quay with a kerb), the joint just past the rail bends and the rest of the plank comes down onto that deck instead of standing out in the air. This is the steepest it may hang, in degrees below horizontal. 0: it stays straight.",
+                    new AcceptableValueRange<float>(0f, 70f)));
             GangwaySwingTime = Config.Bind("10. Gangway", "GangwaySwingTime", 2.4f,
                 new ConfigDescription("Seconds for the whole movement: the three sections unfold, the ramp swings out from along the rail, then it lowers onto what it rests on.",
                     new AcceptableValueRange<float>(0.2f, 8f)));
