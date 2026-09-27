@@ -1,10 +1,14 @@
 # SailTrim pick-up notes
 
-## Status, 2026-09-26: 1.11.0 is built and reviewed, not published
+## Status, 2026-09-26: 1.11.0 is published, and nothing in it has been played
+
+Published at Max's word (`https://cdn.hexium.gg/upload/1207/1.11.0.zip`); the package page may still show
+1.10.0 for a while, which is Hexium's listing lag, so check the CDN zip and the submission's own answer rather
+than the listing. `releases/SailTrim-1.11.0.zip` is committed for the box. **The dedicated server was on 1.10.0
+when this went up and must be moved: the version check is exact, so the server and every client move together.**
 
 Everything since `v1.10.0` was reviewed before publishing (Max asked; the set and drift had not been tested).
-The review found real faults, they are fixed, and **none of the fixes has been played yet**. 1.10.0 is still
-what is on Hexium and on the server.
+The review found real faults, they are fixed, and **none of the fixes has been played yet**.
 
 ### Max's four decisions this round, which override what the code did
 
