@@ -2,7 +2,13 @@
 
 ## Status, 2026-09-28: 1.11.1 fixes a mod conflict 1.11.0 caused; one report is still unexplained
 
-**1.11.1 is built and committed** (`releases/SailTrim-1.11.1.zip`), not yet published.
+**1.11.1 is published** (`https://cdn.hexium.gg/upload/1207/1.11.1.zip`), and
+`releases/SailTrim-1.11.1.zip` is committed for the box. **The dedicated server is still on 1.10.0 and is now
+two versions behind; the version check is exact, so it refuses every current client until it is moved.**
+
+Hexium answered the submission with `denikson-BepInExPack_Valheim-5.4.2351` where the manifest asks for
+`...-5.4.2350`: it resolves the dependency to the current BepInEx pack itself. Nothing to do, but do not read it
+as the manifest having been edited.
 
 ### What it fixes: SailTrim was taking Zen's World Settings down with it
 
