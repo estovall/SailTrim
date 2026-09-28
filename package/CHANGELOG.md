@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.11.1
+
+- Fixed: SailTrim stopped Zen's World Settings from loading its ship rules. Both mods change the same handful of
+  instructions in the game's boat physics -- the ones that read how many players are aboard, which is what makes
+  an unoccupied boat stop -- and SailTrim replaced them with a call of its own so that a crew that is not made of
+  players still counts as crew. Zen's mod then went looking for instructions that were no longer there and threw,
+  which took its whole ship section down and left an alarming stack trace with its name on it. SailTrim now adds
+  to the game's count where it stood rather than putting something else in its place, and goes last so that every
+  other mod reads the method before SailTrim has touched it. Two mods adding to a count can share it; two mods
+  replacing it cannot.
+
 ## 1.11.0
 
 - **The chart tells you where she is actually going.** Open the map and a readout sits in its corner: how she is

@@ -161,29 +161,55 @@ namespace SailTrim
 
         // A crew that is not made of players (DirectionalCombat's vikings, through SailTrimApi.SetAiCrew) must
         // count as crew to the hull physics: vanilla resets speed and rudder and takes nine tenths of the boat's
-        // way every step when m_players is empty. Every read of m_players.Count inside CustomFixedUpdate becomes
-        // SailTrimApi.CrewCount(ship), which is players plus the AI crew.
+        // way every step when m_players is empty. Both reads of m_players.Count inside CustomFixedUpdate get the
+        // AI crew, and a tow, added to what they counted.
+        //
+        // It adds to the game's own two instructions rather than putting a call of its own in their place, and it
+        // goes last. Those two instructions are a landmark: other mods find this method by searching for exactly
+        // "ldfld m_players / callvirt get_Count" -- Zen's World Settings matches on it to make the empty-boat
+        // rules configurable -- and a transpiler that rewrites a landmark another mod is still looking for takes
+        // that mod down with it, in a stack trace that names the other mod and not us. Appending is invisible to
+        // such a search, and Priority.Last means everyone else reads the method before we have touched it. Two
+        // mods appending to the same count compose; two mods replacing it cannot.
         [HarmonyPatch(typeof(Ship), nameof(Ship.CustomFixedUpdate))]
         [HarmonyTranspiler]
+        [HarmonyPriority(Priority.Last)]
         private static IEnumerable<CodeInstruction> Ship_CustomFixedUpdate_CrewCount(IEnumerable<CodeInstruction> instructions)
         {
-            var players = AccessTools.Field(typeof(Ship), "m_players");
-            var getCount = AccessTools.PropertyGetter(typeof(List<Player>), "Count");
-            var crewCount = AccessTools.Method(typeof(SailTrimApi), nameof(SailTrimApi.CrewCount));
-            var list = new List<CodeInstruction>(instructions);
-            int replaced = 0;
-            for (int i = 0; i + 1 < list.Count; i++)
+            var original = new List<CodeInstruction>(instructions);
+            var list = new List<CodeInstruction>(original);
+            try
             {
-                if (list[i].opcode == OpCodes.Ldfld && list[i].operand as FieldInfo == players
-                    && list[i + 1].opcode == OpCodes.Callvirt && list[i + 1].operand as MethodInfo == getCount)
+                var players = AccessTools.Field(typeof(Ship), "m_players");
+                var getCount = AccessTools.PropertyGetter(typeof(List<Player>), "Count");
+                var plus = AccessTools.Method(typeof(SailTrimApi), nameof(SailTrimApi.PlusCrew));
+                int found = 0;
+                for (int i = 0; i + 1 < list.Count; i++)
                 {
-                    list[i] = new CodeInstruction(OpCodes.Call, crewCount).WithLabels(list[i].labels);
-                    list.RemoveAt(i + 1);
-                    replaced++;
+                    if (list[i].opcode != OpCodes.Ldfld || list[i].operand as FieldInfo != players) continue;
+                    if (list[i + 1].opcode != OpCodes.Callvirt || list[i + 1].operand as MethodInfo != getCount) continue;
+                    // ldarg.0, ldfld m_players, callvirt get_Count  ->  ... , ldarg.0, call PlusCrew(count, ship)
+                    list.Insert(i + 2, new CodeInstruction(OpCodes.Ldarg_0));
+                    list.Insert(i + 3, new CodeInstruction(OpCodes.Call, plus));
+                    i += 3;
+                    found++;
                 }
+                if (found == 2)
+                    Plugin.Log.LogInfo("SailTrim: Ship.CustomFixedUpdate counts AI crew (2 sites)");
+                else
+                    Plugin.Log.LogWarning($"SailTrim: Ship.CustomFixedUpdate counts AI crew at {found} of 2 sites."
+                        + " Another mod has rewritten the player count; a crew that is not players may not hold"
+                        + " the boat. Sailing with players aboard is unaffected.");
+                return list;
             }
-            Plugin.Log.LogInfo($"SailTrim: Ship.CustomFixedUpdate counts AI crew ({replaced} sites)");
-            return list;
+            catch (System.Exception e)
+            {
+                // Hand the method back exactly as it came. A transpiler that throws does not fail alone: Harmony
+                // abandons the whole method, so every other mod's patch on it dies too. Ours is a convenience for
+                // one other mod of ours; it is not worth anyone else's crash.
+                Plugin.Log.LogError("SailTrim: leaving Ship.CustomFixedUpdate alone, AI crew will not count: " + e);
+                return original;
+            }
         }
 
         // The rudder animation and the rowing sound key on a controlling player; an AI crew counts as one.

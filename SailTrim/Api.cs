@@ -73,9 +73,19 @@ namespace SailTrim
         public static int CrewCount(Ship ship)
         {
             if (ship == null) return 0;
-            int n = ship.m_players != null ? ship.m_players.Count : 0;
+            return PlusCrew(ship.m_players != null ? ship.m_players.Count : 0, ship);
+        }
+
+        /// <summary>
+        /// Everything else aboard, added to a count of players somebody has already made. The hull physics reach
+        /// this through Ship.CustomFixedUpdate, which keeps its own m_players.Count and passes it in here rather
+        /// than having the count taken out from under it -- see the transpiler for why that matters.
+        /// </summary>
+        public static int PlusCrew(int players, Ship ship)
+        {
+            if (ship == null) return players;
             // Under tow she must not be stopped as an empty boat, whoever is aboard.
-            return n + AiCrew(ship) + (Tow.IsTowed(ship) ? 1 : 0);
+            return players + AiCrew(ship) + (Tow.IsTowed(ship) ? 1 : 0);
         }
 
         /// <summary>Players and AI crew only: what "empty" means for furling the sail.</summary>

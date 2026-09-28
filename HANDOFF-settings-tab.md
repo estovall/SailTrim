@@ -1,5 +1,57 @@
 # SailTrim pick-up notes
 
+## Status, 2026-09-28: 1.11.1 fixes a mod conflict 1.11.0 caused; one report is still unexplained
+
+**1.11.1 is built and committed** (`releases/SailTrim-1.11.1.zip`), not yet published.
+
+### What it fixes: SailTrim was taking Zen's World Settings down with it
+
+A player running both got a stack trace with Zen's name on it and no ship rules:
+
+    Failed to patch virtual void Ship::CustomFixedUpdate(float)
+    InvalidOperationException: Unable to match ship player count IL
+      at ZenWorldSettings.Sections.ShipRules.Ship_CustomFixedUpdate
+
+Both mods change the same two instructions. `Ship.CustomFixedUpdate` reads `m_players.Count` twice -- once to
+force speed and rudder to nothing, once to take nine tenths of her way -- and that pair of instructions,
+`ldfld m_players / callvirt get_Count`, is how a transpiler *finds* those places. SailTrim replaced the pair
+with a call of its own so an AI crew would count as crew. Zen's mod then searched for a landmark that was no
+longer there, its `CodeMatcher.ThrowIfInvalid` threw, and Harmony abandoned the whole method -- which is why
+the error names Zen and not us, and why it is not Zen's bug.
+
+Two changes, either of which would have been enough, and together they hold under any patch order:
+
+- **It adds to the game's own count instead of replacing it.** The two instructions stay exactly where they
+  were and `ldarg.0 / call SailTrimApi.PlusCrew(count, ship)` goes after them. A search for the landmark still
+  finds it. Two mods that each *add* to a count compose; two that each replace it cannot.
+- **`[HarmonyPriority(Priority.Last)]`**, so every other mod reads the method before SailTrim has touched it.
+  Harmony re-runs every transpiler from the original IL each time another patch lands on the method (the local
+  log shows ours running five times), so this holds on each re-application, not just the first.
+
+It also **hands the method back untouched if anything throws**, and **warns instead of going quiet** when it
+finds fewer than two sites -- which is what it will do if some other mod has replaced the count outright. The
+AI crew then stops counting; sailing with players aboard is unaffected. A transpiler that throws does not fail
+alone: Harmony abandons the method and every other mod's patch on it dies too.
+
+The two sites were read out of the game rather than assumed -- `ilspycmd -il -t Ship` shows exactly two
+`ldarg.0 / ldfld m_players / callvirt get_Count / brtrue.s`, and neither `brtrue.s` is a branch target, so
+there is nothing to inserting between the count and the branch.
+
+### Still unexplained: "indestructible ships since this new update"
+
+**Not reproduced and no mechanism found in SailTrim.** Searched for one: nothing in the mod writes a ship's
+health except the mooring mend (`Cleat.cs`, gated on actually being tied to a cleat, 5% a minute), the
+`WearNTear.Damage` / `RPC_Damage` / `ApplyDamage` prefixes only ever spare something carrying a `BuoyPiece` or
+a `CleatPiece` and neither of those is ever on a ship, the `WearNTear.Destroy` prefix returns void so it cannot
+cancel a destruction, and every `Physics.IgnoreCollision` is a gangway collider against a hull. None of it is
+new in 1.11.0 either.
+
+The leading guess is that it is **the same conflict seen from the other end**: when Zen's transpiler throws,
+Harmony abandons `Ship.CustomFixedUpdate` entirely, so Zen's whole ship section is gone -- and SailTrim's own
+prefix and postfix on that method go with it, which is where `ApplyHullEffects` runs, and that is the only
+place SailTrim damages a hull. If so 1.11.1 fixes it too. **Before chasing it further, get: whether it happens
+with SailTrim alone, what exactly will not break (hammer, ramming, a serpent), and the log.**
+
 ## Status, 2026-09-26: 1.11.0 is published, and nothing in it has been played
 
 Published at Max's word (`https://cdn.hexium.gg/upload/1207/1.11.0.zip`); the package page may still show
