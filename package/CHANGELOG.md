@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.12.0
+
+- **The gangway lies on what it lands on.** It used to aim at the surface and pass through a rail that stood
+  higher than the plank: now it measures the top of whatever lies beside the boat along its whole length and
+  rests on the first thing it meets, climbing as readily as it drops.
+- **The last section folds down onto the deck.** Resting on a rail short of its end, the plank bends at the
+  joint past the rail and the far part swings down until it meets something, so you step off onto the deck and
+  not off the end of a plank in the air.
+- The way the plank lies is sent by the boat's owner, so everyone sees it in the same place.
+- Fixed: the sailing readout could stay on screen ashore. It only shows while you are inside a hull.
+
 ## 1.11.1
 
 - Fixed: SailTrim stopped Zen's World Settings from loading its ship rules. Both mods change the same handful of

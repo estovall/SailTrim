@@ -1,5 +1,17 @@
 # SailTrim pick-up notes
 
+## Status, 2026-10-04: main is 1.12.0 (NOT published, not play-tested as merged)
+
+The test server's branch `server/gangway-hinge` (the gangway that rests on the rail and folds onto the deck, its
+pose synced; the sailing readout only inside a hull) called itself 1.11.1, and so did the published fix for the
+Zen's World Settings conflict: two different builds under one number, with an exact version check between
+server and client. They are merged here and the result is **1.12.0** (the owner's choice). The section "1.11.1
+dev (2026-09-27)" below is that gangway work; read "1.12.0" for its version.
+- Published and on Hexium: still 1.11.1 (the conflict fix). 1.12.0 has not been packaged or submitted.
+- The Flotilla server is on 1.10.0; the test server must be rebuilt from main to run 1.12.0, and every client
+  with it (the check is exact).
+- `server/gangway-hinge` and `integration/server-gangway-hinge` are both contained in main now.
+
 ## Status, 2026-09-28: 1.11.1 fixes a mod conflict 1.11.0 caused; one report is still unexplained
 
 **1.11.1 is published** (`https://cdn.hexium.gg/upload/1207/1.11.1.zip`), and
