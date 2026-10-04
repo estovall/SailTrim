@@ -127,6 +127,25 @@ The review found real faults, they are fixed, and **none of the fixes has been p
 - **Not looked at in review**: `MapHud`'s panel build, `SettingsTab`, `Berths`' raycast cost while the hammer is
   out (reported, not fixed: it re-measures every cleat in range four times a second and again per GUI pass).
 
+## 1.11.1 dev (2026-09-27): the gangway lies on the rail and bends onto the deck (built, NOT play-tested)
+Max: "it often isn't exactly on the rail and is more so clipping through it, especially for ships taller than
+it or high gangways; maybe make the last section hinge downward to contact the deck".
+- Why it clipped: `AngleOnto` cast down from the plank's own line and threw away anything more than 0.4 m above
+  it as "overhead", so a taller rail was passed through; the line was aimed at the surface itself, so the
+  planking (0.2 m below the line) sat in whatever it rested on; the climb was capped at 20 degrees.
+- `GangwayMount.Profile` now samples the top of what lies beside the boat every 10 cm along the plank's line,
+  three lines across its width, cast from 6 m above the hinge; higher than the plank can climb and below head
+  height (a hull, a wall) blocks it. `Solve` lays the plank on the first thing it meets with its underside
+  (`Under`, from the built leaf) on it; climbing is limited by GangwayMaxAngle like going down.
+- The chain: resting on something short of the last section, the first joint past it (joint 1 if the rail is
+  within a section of the hinge, else joint 2) bends and the part beyond swings down to the first thing it
+  meets, at most `GangwayFoldMax` (45) below horizontal (hangs there if the deck is further down). `_joint`,
+  `_bend`, a foot anchor like the rest anchor; `Follow` re-aims both every frame. A second BoxCollider
+  (`SailTrim_GangwayLeaf`) is the walking surface past the joint. `FootPoint` is the bent end.
+- Sync: the boat's owner writes the lie into her ZDO (`Gangway.RestKey`: Seq, Rest/RestOn, Foot/FootOn, Fold;
+  points in the frame of the boat they lie on, or world), cleared by the RPC whenever a plank goes down or up;
+  every other client takes it up (`ReadLie`), probing for itself only until it arrives or when it names a boat
+  not loaded. Clients need 1.11.1 too (the version check is exact anyway).
 
 ## 1.11.0 dev (2026-09-25): cleats in three sizes, berths, the berth outline (built, NOT published, not play-tested)
 For DirectionalCombat's ports (Max: "3 different sized bronze cleats (small, medium, large) ... 1, 2, and 3

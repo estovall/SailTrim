@@ -151,6 +151,7 @@ namespace SailTrim
         internal static ConfigEntry<float> TowLength, TowBreak, TowPull, TowRange;
         internal static ConfigEntry<float> GangwayMountZ;
         internal static ConfigEntry<float> GangwayMaxAngle;
+        internal static ConfigEntry<float> GangwayFoldMax;
 
         internal static ConfigEntry<float> GangwaySwingTime;
         internal static ConfigEntry<float> GangwayRetractDelay;
@@ -185,8 +186,24 @@ namespace SailTrim
             if (_crewShip != null && _crewShip.IsPlayerInBoat(player)) return _crewShip;
             var standing = player.GetStandingOnShip();
             if (standing != null) return standing;
+            // The game's "local ship" and its list of players aboard are kept by the hull's trigger volume, entry
+            // and exit, and an exit it never hears of (the boat unloaded or moved away under a player who was
+            // teleported, died or respawned; a second entry without an exit) leaves both saying he is aboard for
+            // the rest of the session: the sailing HUD stayed up ashore (a Linux player, 2026-09-28). So he must
+            // also be within her hull's footprint.
             var local = Ship.GetLocalShip();
-            return local != null && local.IsPlayerInBoat(player) ? local : null;
+            return local != null && local.IsPlayerInBoat(player) && WithinHull(local, player.transform.position) ? local : null;
+        }
+
+        /// <summary>A point within a ship's hull footprint (her float collider, 1.5 m round it), from 3 m below her
+        /// deck line to 8 m above it.</summary>
+        internal static bool WithinHull(Ship ship, Vector3 p)
+        {
+            var fc = ship != null ? ship.m_floatCollider : null;
+            if (fc == null) return ship != null;
+            Vector3 l = fc.transform.InverseTransformPoint(p) - fc.center;
+            Vector3 half = fc.size * 0.5f;
+            return Mathf.Abs(l.x) <= half.x + 1.5f && Mathf.Abs(l.z) <= half.z + 1.5f && l.y >= -half.y - 3f && l.y <= half.y + 8f;
         }
 
         private static bool _releasing;
@@ -589,6 +606,9 @@ namespace SailTrim
             GangwayMaxAngle = Config.Bind("10. Gangway", "GangwayMaxAngle", 35f,
                 new ConfigDescription("Steepest slope the gangway will rest at, in degrees. Anything steeper is refused: carrying a load you could not walk up it anyway.",
                     new AcceptableValueRange<float>(10f, 60f)));
+            GangwayFoldMax = Config.Bind("10. Gangway", "GangwayFoldMax", 45f,
+                new ConfigDescription("When the plank crosses a rail with the deck behind it lower (another boat alongside, a quay with a kerb), the joint just past the rail bends and the rest of the plank comes down onto that deck instead of standing out in the air. This is the steepest it may hang, in degrees below horizontal. 0: it stays straight.",
+                    new AcceptableValueRange<float>(0f, 70f)));
             GangwaySwingTime = Config.Bind("10. Gangway", "GangwaySwingTime", 2.4f,
                 new ConfigDescription("Seconds for the whole movement: the three sections unfold, the ramp swings out from along the rail, then it lowers onto what it rests on.",
                     new AcceptableValueRange<float>(0.2f, 8f)));

@@ -61,6 +61,15 @@ namespace SailTrim
 
         private static string LashKey(int side) => side < 0 ? LashPortKey : LashStbdKey;
 
+        // Where a lowered plank lies, worked out once by the boat's owner and written into her ZDO, so every
+        // client lays it the same way rather than each probing for itself (which could put the plank on a
+        // different spot, or bend a different joint, from one machine to the next). Per side: Seq (0 = not
+        // worked out yet; cleared whenever the plank goes down or comes up), Rest (the spot the plank crosses
+        // or rests on) and Foot (where its bent end comes down), each in the frame of the boat they lie on
+        // (RestOn / FootOn; none: the world), and Fold (x the joint that bends, y degrees it bends, z 1 if the
+        // end has a foot to follow). ZDOID keys are strings in this build, so they all are.
+        internal static string RestKey(string what, int side) => "SailTrim_GwRest" + what + (side < 0 ? "P" : "S");
+
         private static GameObject _itemPrefab;
         private static Sprite _icon;
         private static Material _woodMat;
@@ -116,10 +125,12 @@ namespace SailTrim
                     var st = SailTrimShip.Get(ship);
                     if (st != null) st.OnMoored();
                     SetLash(ship, side, onto);
+                    zdo.Set(RestKey("Seq", side), 0);   // laid afresh: the owner's mount works out where
                     break;
                 case 2:
                     state &= ~DownBit(side);
                     SetLash(ship, side, ZDOID.None);
+                    zdo.Set(RestKey("Seq", side), 0);
                     break;
                 default: return;
             }
@@ -1151,11 +1162,6 @@ namespace SailTrim
         private GameObject _step;
         private Rigidbody _rb;
         private float _nextProbe;
-        // The probe is noisy: the boat lifts and rolls under it and a ray can catch an edge. Keep the last few
-        // readings and steer for the middle one, then move smoothly toward that, rather than following each frame.
-        private readonly float[] _probes = new float[5];
-        private int _probeCount;
-        private float _restDist;   // how far out along the plank the thing it rests on was found
         // Where the plank was set down, kept in the frame of the thing it was set down on. Re-probing every
         // frame meant the landing moved with every wave: half a metre of swell and the tip was reading the top
         // of a beam one frame and the ground beside it the next, so the plank climbed in and out of the timber.
@@ -1177,6 +1183,25 @@ namespace SailTrim
         private GameObject _brackets;
         private bool _timbered;
         private GameObject _lashing;
+        // The plank is a chain, not a board: where it crosses a rail with a lower deck behind, the joint just past
+        // the rail bends and the rest of it comes down onto that deck. _joint is which joint (1 after the first
+        // section, 2 before the last; 2 and no bend when it lies straight), _bend how far below the rest of the
+        // plank the part past it hangs, and the foot is the spot on the deck that part comes down on, kept like
+        // the rest spot in the frame of what it lies on.
+        private int _joint = 2;
+        private float _bend;
+        private Transform _footOn;
+        private Vector3 _footLocal, _footWorld;
+        private bool _footAnchored;
+        private BoxCollider _leafBox;     // the walking surface past the joint
+        private Transform _leafT;
+        private int _seenSeq;             // the owner's record of the lie last taken up (Gangway.RestKey "Seq")
+        // Steepest the plank climbs, degrees above horizontal: the same slope limit as going down. Twenty (the old
+        // figure) left a taller hull alongside out of reach, and the plank was laid through her side instead.
+        private static float MaxUp => Mathf.Max(5f, Plugin.GangwayMaxAngle.Value);
+        // How far the plank's underside hangs below its line (its origin), measured off a built section: the line
+        // is laid that far above whatever it rests on, so the timber sits on a rail instead of through it.
+        private float Under => Mathf.Clamp(-_leafLo - 0.03f, 0.06f, 0.25f);
         // How far each folded leaf must stand clear of the one below it, measured off a leaf once it is built.
         // A fixed figure was right until the edge beams got thicker, and then the leaves folded into each other.
         // A folded leaf is not symmetrical: its planking hangs below its origin and its kerbs stand above. Leaf
@@ -1247,8 +1272,16 @@ namespace SailTrim
         internal bool IsDown => _walkable;
         /// <summary>The hinge at the rail: where the plank starts on this deck.</summary>
         internal Vector3 HingePoint => transform.position;
-        /// <summary>The far end of the plank, where it rests (the plank runs along the mount's own x axis).</summary>
-        internal Vector3 FootPoint => transform.TransformPoint(new Vector3(Length, -0.05f, 0f));
+        /// <summary>The far end of the plank, where it rests (the plank runs along the mount's own x axis, and
+        /// the part past the bent joint hangs _bend below it).</summary>
+        internal Vector3 FootPoint
+        {
+            get
+            {
+                float lj = _joint * Length / 3f, ll = Length - lj, b = _bend * Mathf.Deg2Rad;
+                return transform.TransformPoint(new Vector3(lj + ll * Mathf.Cos(b), -0.05f - ll * Mathf.Sin(b), 0f));
+            }
+        }
         /// <summary>The plank has found something to rest on.</summary>
         internal bool Anchored => _anchored;
         /// <summary>The boat the plank rests on, if it rests on a boat.</summary>
@@ -1270,7 +1303,8 @@ namespace SailTrim
         internal string Describe()
         {
             return $"rail(measured) {_railLocal}, inset {_place.Inset:0.00}, rise {_place.Rise:0.00}, " +
-                   $"deckDrop {_deckDrop:0.00}, step {_place.Step}, deploy {_deploy:0.00}, rest {_restAngle:0.0} deg, length {Length:0.0}";
+                   $"deckDrop {_deckDrop:0.00}, step {_place.Step}, deploy {_deploy:0.00}, rest {_restAngle:0.0} deg, " +
+                   $"joint {_joint} bent {_bend:0.0} deg{(_footAnchored ? " onto a foot" : "")}, underside {Under:0.00}, length {Length:0.0}";
         }
 
         private float Length => Mathf.Max(1.5f, Plugin.GangwayLength.Value);
@@ -1289,6 +1323,15 @@ namespace SailTrim
             _box.size = new Vector3(Length, 0.12f, 0.84f);
             // The layer the hull uses, so it hovers, blocks and carries a player exactly as the deck does.
             gameObject.layer = HullLayer(ship);
+            // The walking surface past the bending joint: a child of the plank, so it belongs to the plank's own
+            // body like the rest of it, and it is struck out of the boat's collisions with the rest (IgnoreShip).
+            var leaf = new GameObject("SailTrim_GangwayLeaf");
+            leaf.layer = gameObject.layer;
+            leaf.transform.SetParent(transform, false);
+            _leafT = leaf.transform;
+            _leafBox = leaf.AddComponent<BoxCollider>();
+            _leafBox.enabled = false;
+            _mine.Add(_leafBox);
             // A child collider of the boat is part of the boat to the physics engine: resting the far end on the
             // shore propped the hull up and heeled it over as the water fell. Give the plank its own kinematic
             // body and it stops being part of the boat: still solid to stand on, but it cannot push the boat about.
@@ -1341,12 +1384,19 @@ namespace SailTrim
             // the brackets is what you interact with, and it is not solid.
             bool on = mode != 0;
             if (_box.enabled != on) _box.enabled = on;
+            if (_leafBox != null && _leafBox.enabled != (mode == 2)) _leafBox.enabled = mode == 2;
             if (!on) return;
             switch (mode)
             {
-                case 2: // the plank you walk on
-                    _box.center = new Vector3(Length * 0.5f, -0.05f, 0f);
-                    _box.size = new Vector3(Length, 0.12f, 0.84f);
+                case 2: // the plank you walk on: up to the bending joint, and past it on its own (it may bend)
+                    float lj = _joint * Length / 3f, ll = Length - lj;
+                    _box.center = new Vector3(lj * 0.5f, -0.05f, 0f);
+                    _box.size = new Vector3(lj, 0.12f, 0.84f);
+                    if (_leafBox != null)
+                    {
+                        _leafBox.center = new Vector3(ll * 0.5f, -0.05f, 0f);
+                        _leafBox.size = new Vector3(ll, 0.12f, 0.84f);
+                    }
                     break;
                 case 1: // folded and stowed: one section long, three leaves thick
                     float top = LiftKerbs + LiftPlanks + _leafHi;
@@ -1381,7 +1431,8 @@ namespace SailTrim
         /// metres of timber and keeps it clear of the shrouds, the mast and the steering oar. Deployed, it is
         /// square out over the side on its hinge. Between the two it swings out, then drops.
         /// </summary>
-        private float _appliedDeploy = float.NaN, _appliedAngle = float.NaN;
+        private float _appliedDeploy = float.NaN, _appliedAngle = float.NaN, _appliedBend = float.NaN;
+        private int _appliedJoint = -1;
         private bool _appliedFitted;
 
         private void Apply(float deploy)
@@ -1389,9 +1440,11 @@ namespace SailTrim
             // Stowed and still, there is nothing to write: the rig is a child of the boat and rides with it. This
             // runs on every mount of every boat, so the case of "nothing is happening" wants to cost nothing.
             if (deploy == _appliedDeploy && _wasFitted == _appliedFitted
-                && (deploy <= 0f || _restAngle == _appliedAngle)) return;
+                && (deploy <= 0f || (_restAngle == _appliedAngle && _bend == _appliedBend && _joint == _appliedJoint))) return;
             _appliedDeploy = deploy;
             _appliedAngle = _restAngle;
+            _appliedBend = _bend;
+            _appliedJoint = _joint;
             _appliedFitted = _wasFitted;
 
             _deploy = deploy;
@@ -1424,8 +1477,13 @@ namespace SailTrim
             float folded = 1f - unfold;
             float fold = folded * FoldAngle;
             float seg = Length / 3f;
-            if (_seg2 != null) { _seg2.localPosition = new Vector3(seg, LiftKerbs * folded, 0f); _seg2.localRotation = Quaternion.Euler(0f, 0f, fold); }
-            if (_seg3 != null) { _seg3.localPosition = new Vector3(seg, -LiftPlanks * folded, 0f); _seg3.localRotation = Quaternion.Euler(0f, 0f, -fold); }
+            // Down, the joint past the rail bends (as it comes down, not while it swings out).
+            float bendNow = _bend * drop;
+            float b1 = _joint == 1 ? bendNow : 0f, b2 = _joint == 2 ? bendNow : 0f;
+            if (_seg2 != null) { _seg2.localPosition = new Vector3(seg, LiftKerbs * folded, 0f); _seg2.localRotation = Quaternion.Euler(0f, 0f, fold - b1); }
+            if (_seg3 != null) { _seg3.localPosition = new Vector3(seg, -LiftPlanks * folded, 0f); _seg3.localRotation = Quaternion.Euler(0f, 0f, -fold - b2); }
+            if (_leafT != null) { _leafT.localPosition = new Vector3(_joint * seg, 0f, 0f); _leafT.localRotation = Quaternion.Euler(0f, 0f, -bendNow); }
+            if (_joint != _appliedColliderJoint && _walkable) { _appliedColliderJoint = _joint; RefreshCollider(); }
 
             // The treads come down first: they are what you climb to reach the plank.
             FoldBrow(unfold);
@@ -1437,8 +1495,9 @@ namespace SailTrim
 
             // Only a ramp that is out over the side and unfolded is something to walk on.
             bool walk = deploy > 0.6f;
-            if (walk != _walkable) { _walkable = walk; RefreshCollider(); }
+            if (walk != _walkable) { _walkable = walk; _appliedColliderJoint = _joint; RefreshCollider(); }
         }
+        private int _appliedColliderJoint = -1;
 
         /// <summary>Where the stowed stack sits: inboard of the rail, down on the deck, straddling the mount.</summary>
         private Vector3 StowOffset()
@@ -1561,13 +1620,13 @@ namespace SailTrim
             // from a moving boat is aimed at something it will no longer be over.
             if (!Mooring.SlowEnough(_ship, user)) return false;
             EnsureDeck();
-            if (!FindRest(out float angle, out float _, out float _, out Ship onto, out Vector3 spot, out Transform on))
+            if (!Solve(out Lie lie))
             {
-                user.Message(MessageHud.MessageType.Center, "Nothing within reach to rest it on");
+                user.Message(MessageHud.MessageType.Center, lie.Why);
                 return false;
             }
-            _restAngle = angle;
-            SetAnchor(spot, on);
+            TakeLie(lie);
+            Ship onto = lie.CShip != null ? lie.CShip : lie.FShip;
             // It came down on another boat's deck rather than on the shore: the two are lashed alongside and both
             // hold where they lie. Nothing here decides whether the plank reaches; the plank decides that by
             // landing, exactly as it does on a dock.
@@ -1680,102 +1739,264 @@ namespace SailTrim
             return top;
         }
 
+        /// <summary>How the plank lies, worked out from what is beside the boat.</summary>
+        private sealed class Lie
+        {
+            public bool Ok;
+            public string Why = "Nothing within reach to rest it on";
+            public float A1;             // the plank up to the joint: degrees below horizontal (negative climbs)
+            public int Joint = 2;        // the joint that bends (1 or 2); 2 and no bend when it lies straight
+            public float Bend;           // degrees the part past the joint hangs below the rest
+            public Vector3 C, F;         // the spot it rests on or crosses, and the spot its bent end comes down on
+            public bool HasFoot;
+            public Transform COn, FOn;
+            public Ship CShip, FShip;
+        }
+
+        private struct Sample { public float S, Y; public Transform On; public Ship Ship; }
+
         /// <summary>
-        /// The angle the plank comes to rest at: sweep it down from a little above horizontal and take the first
-        /// thing its far end meets, which is what a plank let down on its hinge does. Nothing within
-        /// GangwayMaxAngle means nothing it could rest on that you could still climb carrying a load.
+        /// The top of whatever lies beside the boat, along the plank's line out from the hinge: every 10 cm, cast
+        /// down from well above the hinge, the highest surface under the three lines the plank's width covers.
+        /// Cast from above rather than from the plank's own line: a rail standing more than a hand above that
+        /// line used to be taken for something overhead and passed over, and the plank went through it. Too high
+        /// to climb onto (a taller hull, a quay wall): the profile stops there, since the plank cannot pass it.
+        /// Well overhead (rigging, a roof you walk under) is not in the way.
         /// </summary>
-        /// <summary>The middle of the last few readings: one ray catching an edge cannot move the plank.</summary>
-        private float ProbeMedian()
+        private List<Sample> Profile(Vector3 hinge, Vector3 outDir, Vector3 across, out bool blocked)
         {
-            int n = Mathf.Min(_probeCount, _probes.Length);
-            var a = new float[n];
-            System.Array.Copy(_probes, a, n);
-            System.Array.Sort(a);
-            return a[n / 2];
-        }
-
-        private void PushProbe(float a, bool reset)
-        {
-            if (reset) { for (int i = 0; i < _probes.Length; i++) _probes[i] = a; _probeCount = _probes.Length; return; }
-            _probes[_probeCount % _probes.Length] = a;
-            _probeCount++;
-        }
-
-        private bool FindRest(out float angle, out float groundY, out float dist, out Ship onto)
-            => FindRest(out angle, out groundY, out dist, out onto, out _, out _);
-
-        private bool FindRest(out float angle, out float groundY, out float dist, out Ship onto,
-                              out Vector3 spot, out Transform on)
-        {
-            angle = 0f;
-            groundY = 0f;
-            dist = 0f;
-            onto = null;
-            spot = Vector3.zero;
-            on = null;
-            float max = Mathf.Max(5f, Plugin.GangwayMaxAngle.Value);
-            // Not the sea, and not people: a gangway rests on something solid, or it does not go down at all.
+            blocked = false;
             int mask = ~LayerMask.GetMask("Water", "WaterVolume", "water", "character", "character_net",
                                           "character_ghost", "character_trigger", "viewblock", "weapon", "smoke");
-            // Whatever the plank would touch first, anywhere along its length, is what holds it up. Looking only
-            // under the far end, a beam halfway out was something the plank went straight through.
-            float shallowest = float.MaxValue;
-            for (float d = 1f; d <= Length + 0.01f; d += 0.4f)
+            float tanUp = Mathf.Tan(MaxUp * Mathf.Deg2Rad), under = Under;
+            var list = new List<Sample>();
+            var offs = new[] { 0f, -0.34f, 0.34f };
+            for (float s = 0.3f; s <= Length + 0.25f; s += 0.1f)
             {
-                float a = AngleOnto(d, max, mask, out float g, out Ship s, out Transform t);
-                if (float.IsNaN(a) || a >= shallowest) continue;
-                shallowest = a;
-                groundY = g;
-                dist = d;
-                onto = s;
-                on = t;
-                spot = PointAt(d, a);
-                spot.y = g;
+                float reach = hinge.y + s * tanUp + under + 0.15f;
+                Sample best = default(Sample);
+                bool any = false;
+                foreach (float off in offs)
+                {
+                    Vector3 p = hinge + outDir * s + across * off;
+                    var hits = Physics.RaycastAll(new Vector3(p.x, hinge.y + 6f, p.z), Vector3.down, 14f, mask, QueryTriggerInteraction.Ignore);
+                    System.Array.Sort(hits, (x, y) => y.point.y.CompareTo(x.point.y));
+                    foreach (var h in hits)
+                    {
+                        if (h.collider == null || _mine.Contains(h.collider)) continue;
+                        if (h.collider.transform.IsChildOf(_ship.transform)) continue;   // the boat's own timber
+                        float y = h.point.y;
+                        Ship sh = h.collider.GetComponentInParent<Ship>();
+                        if (y > reach)
+                        {
+                            // Above what the plank can climb to here: a hull or a wall in the way, unless it is well
+                            // overhead (a boat's rigging, a roof or a beam you would walk under).
+                            if (y < hinge.y + (sh != null ? 3f : 2.2f)) { blocked = true; break; }
+                            continue;
+                        }
+                        if (!any || y > best.Y) { best = new Sample { S = s, Y = y, On = h.collider.transform, Ship = sh }; any = true; }
+                        break;
+                    }
+                    if (blocked) break;
+                }
+                if (blocked) break;
+                if (any) list.Add(best);
             }
-            if (shallowest == float.MaxValue) return false;
-            angle = Mathf.Clamp(shallowest, -20f, max);
+            return list;
+        }
+
+        /// <summary>
+        /// Where the plank comes to rest. Let down on its hinge it stops on the first thing it meets anywhere
+        /// along its length, its underside on that thing (the line is laid Under above it, so the timber sits on
+        /// a rail rather than in it). If that is under the last section, or its end, it lies straight. If it is
+        /// a rail nearer in, the rest of the plank would stand out over the deck behind, in the air: so the joint
+        /// just past the rail (after the first section if the rail is within reach of it, else before the last)
+        /// bends and the part beyond comes down onto that deck, at most GangwayFoldMax below horizontal. It is
+        /// let down the same way: the first thing that part meets as it swings down from straight.
+        /// </summary>
+        private bool Solve(out Lie lie)
+        {
+            lie = new Lie();
+            if (_ship == null || _mount == null) return false;
+            Vector3 hinge = _mount.position;
+            Vector3 outDir = _mount.right; outDir.y = 0f;
+            if (outDir.sqrMagnitude < 1e-4f) return false;
+            outDir.Normalize();
+            Vector3 across = Vector3.Cross(Vector3.up, outDir).normalized;
+            var prof = Profile(hinge, outDir, across, out bool blocked);
+            float L = Length, T = Under, max = Mathf.Max(5f, Plugin.GangwayMaxAngle.Value), seg = L / 3f;
+
+            // The straight plank: the steepest-held (least dropped) angle that touches anything within its length.
+            int best = -1; float aS = float.MaxValue, rS = 0f;
+            for (int i = 0; i < prof.Count; i++)
+            {
+                float dx = prof[i].S, dy = hinge.y - (prof[i].Y + T);
+                float r = Mathf.Sqrt(dx * dx + dy * dy);
+                if (r > L) continue;
+                float a = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
+                if (a < aS) { aS = a; best = i; rS = r; }
+            }
+            if (best < 0)
+            {
+                if (blocked) lie.Why = "The far side stands too high for the gangway";
+                return false;
+            }
+            if (aS < -MaxUp - 0.5f) { lie.Why = "The far side stands too high for the gangway"; return false; }
+            if (aS > max) return false;   // nothing it could rest on that you could still climb carrying a load
+            var c = prof[best];
+            lie.A1 = Mathf.Clamp(aS, -MaxUp, max);
+            lie.C = hinge + outDir * c.S; lie.C.y = c.Y;
+            lie.COn = c.On; lie.CShip = c.Ship;
+            lie.Joint = 2; lie.Bend = 0f;
+
+            float foldMax = Mathf.Clamp(Plugin.GangwayFoldMax.Value, 0f, 70f);
+            if (foldMax > 0.5f && rS < 2f * seg - 0.05f)
+            {
+                // Resting on something short of the last section: bend the first joint past it.
+                lie.Joint = rS <= seg + 0.35f ? 1 : 2;
+                float lj = lie.Joint * seg, ll = L - lj, rad = lie.A1 * Mathf.Deg2Rad;
+                float ks = lj * Mathf.Cos(rad), ky = hinge.y - lj * Mathf.Sin(rad);
+                float hi = Mathf.Max(lie.A1, foldMax);
+                int fb = -1; float bMin = float.MaxValue; bool beyond = false;
+                for (int i = 0; i < prof.Count; i++)
+                {
+                    // Not the rail it rests on at the joint itself: the part past the joint swings down off it.
+                    if (prof[i].S <= ks + 0.3f) continue;
+                    beyond = true;
+                    float dx = prof[i].S - ks, dy = ky - (prof[i].Y + T);
+                    if (dx * dx + dy * dy > ll * ll) continue;
+                    float b = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
+                    if (b < bMin) { bMin = b; fb = i; }
+                }
+                if (fb >= 0)
+                {
+                    float aL = Mathf.Clamp(bMin, lie.A1, hi);
+                    lie.Bend = aL - lie.A1;
+                    if (bMin <= hi + 0.5f)
+                    {
+                        var f = prof[fb];
+                        lie.HasFoot = true;
+                        lie.F = hinge + outDir * f.S; lie.F.y = f.Y;
+                        lie.FOn = f.On; lie.FShip = f.Ship;
+                    }
+                }
+                else if (beyond) lie.Bend = hi - lie.A1;   // a deck further down than it reaches: hang as low as it may
+                if (lie.Bend < 0.5f && !lie.HasFoot) { lie.Joint = 2; lie.Bend = 0f; }
+            }
+            lie.Ok = true;
+            return true;
+        }
+
+        /// <summary>Lay the plank as worked out: both spots held in the frame of what they lie on.</summary>
+        private void TakeLie(Lie lie)
+        {
+            _restAngle = lie.A1;
+            _joint = lie.Joint;
+            _bend = lie.Bend;
+            SetAnchor(lie.C, lie.COn);
+            if (lie.HasFoot) SetFoot(lie.F, lie.FOn); else ClearFoot();
+        }
+
+        private void SetFoot(Vector3 spot, Transform on)
+        {
+            _footOn = on;
+            _footWorld = spot;
+            _footLocal = on != null ? on.InverseTransformPoint(spot) : spot;
+            _footAnchored = true;
+        }
+
+        private void ClearFoot() { _footAnchored = false; _footOn = null; _footWorld = Vector3.zero; }
+
+        private bool FootPointNow(out Vector3 world)
+        {
+            world = _footWorld;
+            if (!_footAnchored) return false;
+            if (_footOn != null) world = _footOn.TransformPoint(_footLocal);
+            return true;
+        }
+
+        // ---- the owner's lie, shared through the boat's ZDO (Gangway.RestKey)
+
+        private static void Frame(Vector3 world, Transform on, out Vector3 local, out ZDOID id)
+        {
+            local = world; id = ZDOID.None;
+            var s = on != null ? on.GetComponentInParent<Ship>() : null;
+            if (s != null && s.m_nview != null && s.m_nview.IsValid())
+            {
+                local = s.transform.InverseTransformPoint(world);
+                id = s.m_nview.GetZDO().m_uid;
+            }
+        }
+
+        private static bool Unframe(Vector3 local, ZDOID id, out Vector3 world, out Transform on)
+        {
+            world = local; on = null;
+            if (id.IsNone()) return true;
+            var go = ZNetScene.instance != null ? ZNetScene.instance.FindInstance(id) : null;
+            if (go == null) return false;   // that boat is not here: probe for ourselves meanwhile
+            on = go.transform;
+            world = on.TransformPoint(local);
+            return true;
+        }
+
+        /// <summary>Owner: write the lie this mount has taken up, for every other client to take up too.</summary>
+        private void WriteLie()
+        {
+            if (!_anchored || !AnchorPoint(out Vector3 c)) return;
+            var zdo = _ship.m_nview.GetZDO();
+            Frame(c, _anchorOn, out Vector3 cl, out ZDOID cid);
+            zdo.Set(Gangway.RestKey("", _side), cl);
+            zdo.Set(Gangway.RestKey("On", _side), cid);
+            bool foot = FootPointNow(out Vector3 f);
+            Frame(foot ? f : Vector3.zero, foot ? _footOn : null, out Vector3 fl, out ZDOID fid);
+            zdo.Set(Gangway.RestKey("Foot", _side), fl);
+            zdo.Set(Gangway.RestKey("FootOn", _side), fid);
+            zdo.Set(Gangway.RestKey("Fold", _side), new Vector3(_joint, _bend, foot ? 1f : 0f));
+            int seq = UnityEngine.Random.Range(1, int.MaxValue);
+            zdo.Set(Gangway.RestKey("Seq", _side), seq);
+            _seenSeq = seq;
+        }
+
+        /// <summary>Take up the owner's lie from the boat's ZDO. False if it names a boat not loaded here.</summary>
+        private bool ReadLie()
+        {
+            var zdo = _ship.m_nview.GetZDO();
+            if (!Unframe(zdo.GetVec3(Gangway.RestKey("", _side), Vector3.zero), zdo.GetZDOID(Gangway.RestKey("On", _side)), out Vector3 c, out Transform con))
+                return false;
+            Vector3 fold = zdo.GetVec3(Gangway.RestKey("Fold", _side), new Vector3(2f, 0f, 0f));
+            Vector3 f = Vector3.zero; Transform fon = null;
+            bool foot = fold.z > 0.5f && Unframe(zdo.GetVec3(Gangway.RestKey("Foot", _side), Vector3.zero), zdo.GetZDOID(Gangway.RestKey("FootOn", _side)), out f, out fon);
+            SetAnchor(c, con);
+            _joint = Mathf.RoundToInt(fold.x) == 1 ? 1 : 2;
+            _bend = Mathf.Clamp(fold.y, 0f, 90f);
+            if (foot) SetFoot(f, fon); else ClearFoot();
+            Follow();
             return true;
         }
 
         /// <summary>
-        /// The angle at which the plank, this far out from its hinge, would come down onto whatever is under it.
-        /// The plank's reach shortens as it tilts, so where it lands moves: two passes settle it.
+        /// Down, the plank follows what it lies on: the boat lifts and rolls on the swell even held at her spot.
+        /// The plank is aimed at its rest spot from wherever the hinge is this frame, and the part past the bent
+        /// joint at its foot from wherever the joint then is, in the boat's own frame so heel is taken care of.
         /// </summary>
-        private float AngleOnto(float d, float max, int mask, out float groundY, out Ship onto, out Transform on)
+        private void Follow()
         {
-            groundY = 0f;
-            onto = null;
-            on = null;
-            float a = 0f;
-            for (int pass = 0; pass < 3; pass++)
+            float max = Mathf.Max(5f, Plugin.GangwayMaxAngle.Value), under = Under;
+            if (!AnchorPoint(out Vector3 target)) return;
+            Vector3 v = target + Vector3.up * under - _mount.position;
+            float reach = Vector3.Dot(v, _mount.right);
+            float drop = -Vector3.Dot(v, _mount.up);
+            _restAngle = Mathf.Clamp(Mathf.Atan2(drop, Mathf.Max(0.05f, reach)) * Mathf.Rad2Deg, -MaxUp, max);
+            if (FootPointNow(out Vector3 foot))
             {
-                Vector3 p = PointAt(d, a);
-                var hits = Physics.RaycastAll(p + Vector3.up * 1.5f, Vector3.down, 6f, mask, QueryTriggerInteraction.Ignore);
-                float top = float.NegativeInfinity;
-                Ship found = null;
-                Transform foundOn = null;
-                foreach (var h in hits)
-                {
-                    if (h.collider.transform.IsChildOf(_ship.transform)) continue;  // the boat's own timber, not the shore
-                    if (h.point.y > p.y + 0.4f) continue;                            // something overhead, not underfoot
-                    if (h.point.y <= top) continue;
-                    top = h.point.y;
-                    foundOn = h.collider.transform;
-                    // Another hull is ground like any other, and the deck of a boat moored alongside is the one
-                    // piece of ground that would sail away: whatever the plank lands on, we remember whose it is.
-                    found = h.collider.GetComponentInParent<Ship>();
-                }
-                onto = found;
-                on = foundOn;
-                if (float.IsNegativeInfinity(top)) return float.NaN;
-                groundY = top;
-                float next = Mathf.Asin(Mathf.Clamp((_mount.position.y - top) / d, -1f, 1f)) * Mathf.Rad2Deg;
-                next = Mathf.Clamp(next, -20f, max);
-                if (Mathf.Abs(next - a) < 0.2f) return next;
-                a = next;
+                float lj = _joint * Length / 3f, rad = _restAngle * Mathf.Deg2Rad;
+                Vector3 knee = _mount.TransformPoint(new Vector3(Mathf.Cos(rad), -Mathf.Sin(rad), 0f) * lj);
+                Vector3 w = foot + Vector3.up * under - knee;
+                float r2 = Vector3.Dot(w, _mount.right), d2 = -Vector3.Dot(w, _mount.up);
+                float aL = Mathf.Atan2(d2, Mathf.Max(0.05f, r2)) * Mathf.Rad2Deg;
+                float hi = Mathf.Max(_restAngle, Mathf.Clamp(Plugin.GangwayFoldMax.Value, 0f, 70f));
+                _bend = Mathf.Clamp(aL, _restAngle, hi) - _restAngle;
             }
-            return a;
         }
 
         /// <summary>
@@ -2123,27 +2344,33 @@ namespace SailTrim
             }
             if (!fitted) { Apply(0f); return; }
 
+            var zdo = _ship.m_nview.GetZDO();
+            bool owner = _ship.m_nview.IsOwner();
+            int seq = down ? zdo.GetInt(Gangway.RestKey("Seq", _side)) : 0;
             if (down != _wasDown)
             {
                 _wasDown = down;
-                if (!down) { _anchored = false; _anchorOn = null; _anchorWorld = Vector3.zero; }
+                if (!down)
+                {
+                    _anchored = false; _anchorOn = null; _anchorWorld = Vector3.zero;
+                    ClearFoot(); _bend = 0f; _joint = 2; _seenSeq = 0;
+                }
                 if (down)
                 {
                     EnsureDeck();
-                    if (FindRest(out float a0, out float g0, out float d0, out Ship _))
+                    // The owner's lie if it is written already, else our own; the owner then writes its own down.
+                    bool taken = seq != 0 && ReadLie();
+                    if (taken) _seenSeq = seq;
+                    else if (!_anchored)
                     {
-                        PushProbe(g0, true);
-                        _restDist = d0;
-                        _restAngle = a0;
+                        if (Solve(out Lie lie)) TakeLie(lie);
+                        else { _restAngle = Plugin.GangwayMaxAngle.Value; _joint = 2; _bend = 0f; }
                     }
-                    else { _restDist = 0f; _restAngle = Plugin.GangwayMaxAngle.Value; }
                     _lashIgnoreAt = 0f;
                 }
             }
             UpdateLashIgnore(down);
 
-            // Down, the plank follows whatever it rests on: the boat still lifts and rolls on the swell even
-            // held at its spot, and a gangway that did not ride with it would hang in the air or sink into the dock.
             if (down && _deploy > 0.5f)
             {
                 // Only if there is nothing to hold to: the spot was chosen when it went down. It is looked for
@@ -2153,34 +2380,26 @@ namespace SailTrim
                     if (Time.time >= _nextProbe)
                     {
                         _nextProbe = Time.time + 0.25f;
-                        if (FindRest(out float _, out float g, out float d, out Ship _, out Vector3 sp, out Transform on2))
-                        {
-                            PushProbe(g, false);
-                            _restDist = d;
-                            SetAnchor(sp, on2);
-                        }
+                        if (Solve(out Lie lie)) TakeLie(lie);
                     }
                 }
-                // Smooth the ground, not the angle. What the plank rests on is a dock or a rock and holds still;
-                // the hinge is the thing that moves, a metre at a time on the swell. Smoothing the angle meant the
-                // plank held the angle that suited the last wave, so every time the boat dropped it drove its far
-                // end into the beach. The ground reading is steadied against a noisy ray, and the angle is worked
-                // out afresh from wherever the hinge is this frame.
-                if (AnchorPoint(out Vector3 target))
-                {
-                    // Straight at the spot it was set down on, in the boat's own frame so heel is taken care of.
-                    Vector3 v = target - _mount.position;
-                    float reach = Vector3.Dot(v, _mount.right);
-                    float drop = -Vector3.Dot(v, _mount.up);
-                    float want = Mathf.Atan2(drop, Mathf.Max(0.05f, reach)) * Mathf.Rad2Deg;
-                    _restAngle = Mathf.Clamp(want + 0.3f, -20f, Mathf.Max(5f, Plugin.GangwayMaxAngle.Value));
-                }
-                else if (_restDist > 0.1f)
-                {
-                    float want = Mathf.Asin(Mathf.Clamp((_mount.position.y - ProbeMedian()) / _restDist, -1f, 1f)) * Mathf.Rad2Deg;
-                    _restAngle = Mathf.Clamp(want + 0.3f, -20f, Mathf.Max(5f, Plugin.GangwayMaxAngle.Value));
-                }
             }
+            if (down)
+            {
+                // One lie for every client: the owner's. Take it up when it arrives or changes; the owner writes
+                // its own when there is none (just lowered, or the record names a boat the world has renumbered).
+                if (seq != 0 && seq != _seenSeq)
+                {
+                    if (ReadLie()) _seenSeq = seq;
+                    else if (owner && _anchored) WriteLie();
+                }
+                else if (seq == 0 && owner && _anchored) WriteLie();
+            }
+
+            // Smooth the ground, not the angle: what the plank rests on holds still and the hinge is the thing
+            // that moves, a metre at a time on the swell, so the angles are worked out afresh every frame from
+            // wherever the hinge is. Holding the angle that suited the last wave drove the far end into the beach.
+            if (down && _deploy > 0.5f) Follow();
 
             float span = Mathf.Max(0.2f, Plugin.GangwaySwingTime.Value);
             Apply(Mathf.MoveTowards(_deploy, down ? 1f : 0f, Time.deltaTime / span));
