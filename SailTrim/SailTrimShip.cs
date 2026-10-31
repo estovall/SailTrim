@@ -325,10 +325,10 @@ namespace SailTrim
         /// Same furled/mid/unfurled interpolation and cloth blend as vanilla; the sail-change sound plays when the
         /// pilot stops adjusting rather than on every tiny move.
         /// </summary>
-        internal void UpdateSailSizeManual(float dt)
+        internal void UpdateSailSizeManual(float dt, bool haveControllingPlayer)
         {
             if (_ship == null || !_ship.m_hasSail) return;
-            if (SailAmount < 0f) { _ship.UpdateSailSize(dt); return; }
+            if (SailAmount < 0f) { _ship.UpdateSailSize(dt, haveControllingPlayer); return; }
             float target = _ship.m_speed == Ship.Speed.Full || _ship.m_speed == Ship.Speed.Half ? SailAmount : 0f;
             _ship.m_sailPosition = Mathf.MoveTowards(_ship.m_sailPosition, target, dt);
             Vector3 a = _ship.m_sailFurledPosition.position;
