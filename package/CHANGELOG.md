@@ -11,6 +11,12 @@
 - The way the plank lies is sent by the boat's owner, so everyone sees it in the same place.
 - Fixed: the sailing readout could stay on screen ashore. It only shows while you are inside a hull.
 
+## 1.11.2
+
+- Fixed for the November 2026 Valheim patch: SailTrim failed to load ("Missing method: Ship.UpdateSail(Single)")
+  because the game's sail update now also takes whether someone is at the helm. SailTrim follows the new
+  signature and passes that along, so the sail-change sound plays only for the helmsman, as in vanilla.
+
 ## 1.11.1
 
 - Fixed: SailTrim stopped Zen's World Settings from loading its ship rules. Both mods change the same handful of
