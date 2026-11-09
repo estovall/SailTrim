@@ -14,7 +14,7 @@ namespace SailTrim
     {
         public const string GUID = "com.maxst.sailtrim";
         public const string NAME = "SailTrim";
-        public const string VERSION = "1.11.1";
+        public const string VERSION = "1.11.2";
 
         internal static ManualLogSource Log;
         internal static Plugin Instance;
@@ -668,8 +668,8 @@ namespace SailTrim
                 new MethodTarget(typeof(ObjectDB), "Awake", Type.EmptyTypes),
                 new MethodTarget(typeof(ObjectDB), nameof(ObjectDB.CopyOtherDB), new[] { typeof(ObjectDB) }),
                 new MethodTarget(typeof(Ship), "GetSailForce", new[] { typeof(float), typeof(float) }),
-                new MethodTarget(typeof(Ship), "UpdateSail", new[] { typeof(float) }),
-                new MethodTarget(typeof(Ship), "UpdateSailSize", new[] { typeof(float) }),
+                new MethodTarget(typeof(Ship), "UpdateSail", new[] { typeof(float), typeof(bool) }),
+                new MethodTarget(typeof(Ship), "UpdateSailSize", new[] { typeof(float), typeof(bool) }),
                 new MethodTarget(typeof(Ship), "UpdateControlls", new[] { typeof(float) }),
                 new MethodTarget(typeof(Ship), nameof(Ship.CustomFixedUpdate), new[] { typeof(float) }),
                 new MethodTarget(typeof(ZInput), nameof(ZInput.GetButtonDown), new[] { typeof(string) }),

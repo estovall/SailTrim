@@ -372,12 +372,12 @@ namespace SailTrim
         // pre-trim with the sail furled. Sail size (furled/half/full) is still vanilla's.
         [HarmonyPatch(typeof(Ship), "UpdateSail")]
         [HarmonyPrefix]
-        private static bool Ship_UpdateSail(Ship __instance, float dt)
+        private static bool Ship_UpdateSail(Ship __instance, float dt, bool haveControllingPlayer)
         {
             if (!Plugin.Enabled.Value) return true;
             var st = SailTrimShip.Get(__instance);
             if (st == null || !st.ManualMode) return true;
-            st.UpdateSailSizeManual(dt);
+            st.UpdateSailSizeManual(dt, haveControllingPlayer);
             st.UpdateYard(dt);
             return false;
         }
