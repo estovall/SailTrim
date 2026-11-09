@@ -1,5 +1,19 @@
 # SailTrim pick-up notes
 
+## Status, 2026-11-09: 1.11.2 is published (fix for the November 2026 Valheim patch)
+
+Valheim's patch (client build 26249040, dedicated server build 26266951) gave `Ship.UpdateSail` and
+`Ship.UpdateSailSize` a second parameter, `bool haveControllingPlayer`; nothing else in `Ship` changed.
+1.11.1 still listed the one-argument forms in `VerifyPatchTargets` and called `UpdateSailSize(dt)` directly, so
+it logged "Missing method: Ship.UpdateSail(Single)" and Hexium flagged it as broken. The fix passes the flag
+through and gates the manual-mode sail-change sound on it, as vanilla now does.
+- Branch `hotfix/1.11.2` off `v1.11.1`, tagged `v1.11.2`, published at Max's word
+  (`https://cdn.hexium.gg/upload/1207/1.11.2.zip`), `releases/SailTrim-1.11.2.zip` committed. Not play-tested.
+- Merged into main, which stays **1.12.0** (still unpublished) and carries the same fix.
+- Every Harmony target in both builds was resolved against the new game's metadata before shipping.
+- The Flotilla server and every client must move to 1.11.2 together (exact version check).
+- `hexium-token.txt` (gitignored) is a copy of `Documents\Hexium_API_Key.txt`, which `publish-mod.ps1` reads.
+
 ## Status, 2026-10-04: main is 1.12.0 (NOT published, not play-tested as merged)
 
 The test server's branch `server/gangway-hinge` (the gangway that rests on the rail and folds onto the deck, its
